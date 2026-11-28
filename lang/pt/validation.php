@@ -184,6 +184,7 @@ return [
         ],
         'permissions' => [
             'not_allowed' => 'Não podes conceder uma permissão que tu próprio não tens.',
+            'admin_panel_only_admin' => '«Accesso pannello amministratore» abre a gestão de todos os condomínios: só um administrador o pode conceder.',
             'privileged_target' => 'Só um administrador pode alterar as permissões adicionais desta conta: tem um perfil diferente de «utente» e «fornitore», ou permissões adicionais que tu não tens.',
         ],
         'default_user_role' => [
@@ -262,6 +263,9 @@ return [
     */
 
     'attributes' => [
+        // Gli allegati di segnalazioni, comunicazioni e commenti: il messaggio nomina l'allegato, non il campo «allegati.0».
+        'allegati' => 'anexos',
+        'allegati.*' => 'anexo',
         'email' => 'endereço de email',
         'emails' => 'endereços de email',
         'buildings' => 'condomínios',

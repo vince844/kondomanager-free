@@ -40,7 +40,8 @@ describe('il nuovo piano dalla delibera e con l\'urgenza', () => {
         const pagina = leggi('PianiRateNew.vue');
         expect(pagina).toMatch(/<LaDeliberaOLUrgenza v-if="gestioneStraordinaria" v-model:tipo="form\.tipo_autorizzazione" v-model:motivo="form\.motivazione_autorizzazione"/);
         expect(pagina).toContain(':scheda="schedaDelPiano"');
-        expect(pagina).toContain('<div v-if="fattureStraordinarie.length > 0 && !gestioneStraordinaria"');
+        // Coda 743: lo Scudo Legale anche con il solo debito ereditato da ripianare nel piano.
+        expect(pagina).toContain('<div v-if="(fattureStraordinarie.length > 0 || ripianamentoSiVede) && !gestioneStraordinaria"');
         expect(pagina).toContain('<Card v-else-if="mostraDataDelibera"');
         expect(pagina).toContain('giorno_dei_lavori: oggiLocale() as string | null,');
         expect(pagina).toContain('form.transform((dati) => ({ ...dati, ...campiDellUrgenza(form.tipo_autorizzazione, schedaDelPiano.value, form.giorno_dei_lavori ?? \'\') }))');

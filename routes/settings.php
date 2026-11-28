@@ -296,6 +296,7 @@ $senzaUtenteDellaSessione = [
     'auth.session',
     CheckSuspendedUser::class,
     CheckForPendingUpdates::class,
+    \App\Http\Middleware\DueFattoriPerIlPannello::class,
     HandleInertiaRequests::class,
     StartSession::class,
     ShareErrorsFromSession::class,

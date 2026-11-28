@@ -49,6 +49,8 @@ const flashMessage = computed(() => page.props.flash.message);
 // «Crea anagrafica» chiede «Crea anagrafiche» (`AnagraficaPolicy`); questa pagina si apre con il solo accesso al pannello.
 // Il collegamento compare solo con tutti e due i permessi.
 const puoCreareAnagrafiche = computed(() => hasPermission([Permission.VIEW_ANAGRAFICHE]) && hasPermission([Permission.CREATE_ANAGRAFICHE]));
+// «Salva e crea un nuovo immobile» porta a «Nuovo immobile», che chiede «Modifica condomini» (`ImmobileController::create`).
+const puoCreareImmobili = computed(() => hasPermission([Permission.EDIT_CONDOMINI]));
 const { toBackend } = useDateConverter();
 
 const showGuide = ref(false);
@@ -377,6 +379,7 @@ const submit = (nextRoute: NextRoute = null) => {
               </Button>
 
               <Button
+                  v-if="puoCreareImmobili"
                   type="button"
                   variant="outline"
                   :disabled="form.processing"

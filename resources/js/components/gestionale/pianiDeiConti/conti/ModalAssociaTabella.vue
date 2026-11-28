@@ -85,7 +85,9 @@ const resetForm = () => {
     const t = props.tabellaEsistente
     form.tabella_millesimale_id    = t.id
     form.coefficiente              = t.coefficiente
-    form.percentuale_proprietario  = t.ripartizioni.find(r => r.soggetto === 'proprietario')?.percentuale  ?? 100
+    // Le righe a zero non si salvano: una riga assente vale 0 se ce n'è un'altra, e senza nessuna riga la voce è tutta del proprietario.
+    // È la regola del motore e di «Modifica voce».
+    form.percentuale_proprietario  = t.ripartizioni.find(r => r.soggetto === 'proprietario')?.percentuale  ?? (t.ripartizioni.length === 0 ? 100 : 0)
     form.percentuale_inquilino     = t.ripartizioni.find(r => r.soggetto === 'inquilino')?.percentuale     ?? 0
     form.percentuale_usufruttuario = t.ripartizioni.find(r => r.soggetto === 'usufruttuario')?.percentuale ?? 0
   } else {

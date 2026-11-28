@@ -29,7 +29,16 @@ class UpdatePianoContoRequest extends FormRequest
             'nome'                => 'required|string|max:255', 
             'descrizione'         => 'required|string|max:255',
             'note'                => 'sometimes|nullable|string',
-            'gestione_id'         => ['required', 'integer', Rule::exists('gestioni', 'id')],
+            // La gestione è di questo condominio: quella di un altro, mandata con una richiesta costruita, darebbe al suo preventivo e al suo
+            // riparto le voci di un piano che non è loro.
+            'gestione_id'         => ['required', 'integer', Rule::exists('gestioni', 'id')->where('condominio_id', $this->route('condominio')->id)],
+        ];
+    }
+
+    public function messages(): array
+    {
+        return [
+            'gestione_id.exists' => 'La gestione scelta non è di questo condominio.',
         ];
     }
 }

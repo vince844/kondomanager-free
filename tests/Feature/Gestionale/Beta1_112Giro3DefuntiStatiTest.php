@@ -111,9 +111,9 @@ function g3dWallet($test, Beta51Scenario $s, string $chi, int $cents, ?Subentro 
 }
 
 /** Una riga non legata nel 2026, l'esercizio del piano, come la scrive l'importatore (la porta del Wallet scrive solo nell'esercizio aperto). */
-function g3dImportata(Beta51Scenario $s, string $chi, int $cents): void
+function g3dImportata(Beta51Scenario $s, string $chi, int $cents, string $esercizio = 'Esercizio 2026'): void
 {
-    Saldo::create(['esercizio_id' => Esercizio::where('condominio_id', $s->c->id)->where('nome', 'Esercizio 2026')->value('id'), 'condominio_id' => $s->c->id,
+    Saldo::create(['esercizio_id' => Esercizio::where('condominio_id', $s->c->id)->where('nome', $esercizio)->value('id'), 'condominio_id' => $s->c->id,
         'anagrafica_id' => $s->persona($chi)->id, 'immobile_id' => $s->unita['A']->id, 'gestione_id' => $s->gestioni['Ordinaria']['g']->id,
         'saldo_iniziale' => $cents, 'origine' => 'importato', 'is_applicato' => false]);
 }
@@ -501,9 +501,9 @@ it('Coda 440 e 463, N4 — tre defunti, Anna con la parte non legata e la riga l
     expect($s->somme('Preventivo 2026', ['ugo', 'ada', 'eva', 'anna', 'bruno']))->toBe(['ugo' => 0, 'ada' => 0, 'eva' => 0, 'anna' => 54001, 'bruno' => 35999]);
 });
 
-it('Coda 463 — con il piano che non applica i saldi le due voci non leggono i saldi non legati di Anna, che occupano il posto del Wallet nel 2026: la seconda dice che sono gli stessi della prima', function () {
+it('Coda 463 — con il piano che non applica i saldi le due voci non leggono i saldi non legati di Anna, che occupano il posto del Wallet (l\'esercizio aperto, il 2027: Coda 286): la seconda dice che sono gli stessi della prima', function () {
     [$s, $sub] = g3dScenario($this, applicaSaldi: false);
-    g3dImportata($s, 'anna', 11836 + G3D_RIPORTO);
+    g3dImportata($s, 'anna', 11836 + G3D_RIPORTO, 'Esercizio 2027');
     foreach (['ugo', 'ada'] as $d) {
         g3dWallet($this, $s, $d, -19726, $sub[$d]);
         g3dWallet($this, $s, 'bruno', 7890, $sub[$d]);

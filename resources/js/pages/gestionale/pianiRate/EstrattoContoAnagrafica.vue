@@ -58,9 +58,17 @@ const props = defineProps<{
     saldo_raw: number;
     saldo_iniziale: string;
     saldo_iniziale_raw: number;
+    /** Il credito netto della persona sulle rate emesse (`CreditoService::nettoDellaPersona`). */
     credito_disponibile: string;
     credito_disponibile_raw: number;
-    credito_per_gestione: Array<{ gestione_id: number | null; gestione_nome: string; importo_cents: number; importo_formatted: string }>;
+    /** Il debito netto della persona sulle rate emesse, quando il suo credito non lo copre. */
+    credito_da_versare?: string;
+    credito_da_versare_raw?: number;
+    /** Il credito lordo delle sue quote, anche delle rate in bozza: sta sotto in piccolo. */
+    credito_lordo?: string;
+    credito_lordo_raw?: number;
+    /** Il netto per gestione (`CreditoService::nettoDellaPersona`): il credito di una gestione non toglie dal debito di un'altra. */
+    credito_per_gestione: Array<{ gestione_id: number | null; gestione_nome: string; importo_cents: number; importo_formatted: string; credito_cents?: number; da_versare_cents?: number; frase?: string }>;
     /** Quanto di quel credito è davvero spendibile sulle rate aperte, e su quale. */
     compensabile: string;
     compensabile_raw: number;
@@ -180,7 +188,20 @@ const apriRimborso = () => {
     rimborsoAperto.value = true;
 };
 
+// Il rimborso a chi ha ancora da versare chiede una conferma: il credito potrebbe andare prima sulle sue rate. Decide l'amministratore.
+const confermaRimborsoAperta = ref(false);
 const inviaRimborso = () => {
+    if ((props.stats.credito_da_versare_raw ?? 0) > 0) {
+        confermaRimborsoAperta.value = true;
+        return;
+    }
+    registraRimborso();
+};
+const confermaRimborso = () => {
+    confermaRimborsoAperta.value = false;
+    registraRimborso();
+};
+const registraRimborso = () => {
     formRimborso.post(route(generateRoute('gestionale.anagrafiche.rimborsi.store'), { condominio: props.condominio.id, anagrafica: props.anagrafica.id }), {
         preserveScroll: true,
         onSuccess: () => { rimborsoAperto.value = false; formRimborso.reset('nota'); },
@@ -370,7 +391,7 @@ const getImportoStyle = (riga: any) => {
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" class="w-80 max-w-[calc(100vw-2rem)] shadow-xl rounded-xl border-slate-100 dark:border-slate-800 p-1.5" data-testid="voci-azioni">
-                            <DropdownMenuLabel class="text-[11px] text-slate-400 uppercase tracking-widest px-2 py-1.5 font-bold">Lettere</DropdownMenuLabel>
+                            <DropdownMenuLabel class="text-xs text-slate-400 uppercase tracking-widest px-2 py-1.5 font-bold">Lettere</DropdownMenuLabel>
                             <DropdownMenuItem
                                 data-testid="prepara-una-lettera"
                                 @click="finestraLettera = true"
@@ -378,7 +399,7 @@ const getImportoStyle = (riga: any) => {
                                 <Mail class="w-3.5 h-3.5 text-indigo-500" />
                                 <div>
                                     <div class="text-xs font-medium">Prepara una lettera</div>
-                                    <div class="text-[10px] text-slate-400">Promemoria, sollecito, diffida, messa in mora</div>
+                                    <div class="text-xs text-slate-400">Promemoria, sollecito, diffida, messa in mora</div>
                                 </div>
                             </DropdownMenuItem>
                             <DropdownMenuItem as-child>
@@ -387,12 +408,12 @@ const getImportoStyle = (riga: any) => {
                                     <AlertCircle class="w-3.5 h-3.5 text-indigo-500" />
                                     <div>
                                         <div class="text-xs font-medium">Rate scadute</div>
-                                        <div class="text-[10px] text-slate-400">L'elenco, con questa persona sola</div>
+                                        <div class="text-xs text-slate-400">L'elenco, con questa persona sola</div>
                                     </div>
                                 </Link>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator class="bg-slate-100 dark:bg-slate-800" />
-                            <DropdownMenuLabel class="text-[11px] text-slate-400 uppercase tracking-widest px-2 py-1.5 font-bold">Addebiti</DropdownMenuLabel>
+                            <DropdownMenuLabel class="text-xs text-slate-400 uppercase tracking-widest px-2 py-1.5 font-bold">Addebiti</DropdownMenuLabel>
                             <DropdownMenuItem
                                 data-testid="voce-nuovo-addebito"
                                 @click="finestraAddebito = true"
@@ -400,7 +421,7 @@ const getImportoStyle = (riga: any) => {
                                 <Plus class="w-3.5 h-3.5 text-amber-600" />
                                 <div>
                                     <div class="text-xs font-medium">Nuovo addebito</div>
-                                    <div class="text-[11px] text-slate-400">Un contributo, o una spesa di una sola unità già fatturata</div>
+                                    <div class="text-xs text-slate-400">Un contributo, o una spesa di una sola unità già fatturata</div>
                                 </div>
                             </DropdownMenuItem>
                             <DropdownMenuItem
@@ -410,11 +431,11 @@ const getImportoStyle = (riga: any) => {
                                 <Clock class="w-3.5 h-3.5 text-amber-600" />
                                 <div>
                                     <div class="text-xs font-medium">Spese del ritardo</div>
-                                    <div class="text-[11px] text-slate-400">Le spese per un pagamento in ritardo</div>
+                                    <div class="text-xs text-slate-400">Le spese per un pagamento in ritardo</div>
                                 </div>
                             </DropdownMenuItem>
                             <DropdownMenuSeparator class="bg-slate-100 dark:bg-slate-800" />
-                            <DropdownMenuLabel class="text-[11px] text-slate-400 uppercase tracking-widest px-2 py-1.5 font-bold">Stampe</DropdownMenuLabel>
+                            <DropdownMenuLabel class="text-xs text-slate-400 uppercase tracking-widest px-2 py-1.5 font-bold">Stampe</DropdownMenuLabel>
                             <DropdownMenuItem
                                 data-testid="stampa-estratto-conto"
                                 @click="printPDF"
@@ -422,7 +443,7 @@ const getImportoStyle = (riga: any) => {
                                 <FileText class="w-3.5 h-3.5 text-indigo-500" />
                                 <div>
                                     <div class="text-xs font-medium">Estratto conto</div>
-                                    <div class="text-[10px] text-slate-400">PDF riepilogativo per anagrafica</div>
+                                    <div class="text-xs text-slate-400">PDF riepilogativo per anagrafica</div>
                                 </div>
                             </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -434,94 +455,93 @@ const getImportoStyle = (riga: any) => {
             <!-- Sei card in due file. Le cifre delle prime cinque vengono dal server (`stats`); quella degli addebiti personali dalla lista dell'elenco. -->
             <div class="lg:col-span-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4" data-testid="le-card">
                 <div class="rounded-lg border bg-gray-50/50 shadow-sm border-gray-200 dark:bg-slate-900/40 dark:border-slate-800">
-                    <div class="flex flex-row items-center justify-between p-4 pb-2">
+                    <div class="flex flex-row items-center justify-between gap-2 p-4 pb-2">
                         <h3 class="text-xs font-medium uppercase text-muted-foreground tracking-wider">Saldo iniziale</h3>
                         <Landmark class="h-4 w-4 text-gray-400" />
                     </div>
                     <div class="p-4 pt-0">
                         <div class="text-xl font-bold" :class="saldoInizialeColorClass">{{ stats.saldo_iniziale }}</div>
-                        <p class="text-[10px] uppercase font-bold mt-1 tracking-wide" :class="saldoInizialeColorClass">
+                        <p class="text-xs uppercase font-bold mt-1 tracking-wide" :class="saldoInizialeColorClass">
                             {{ stats.saldo_iniziale_raw > 0 ? 'A DEBITO' : (stats.saldo_iniziale_raw < 0 ? 'A CREDITO' : 'PAREGGIO') }}
                         </p>
                     </div>
                 </div>
                 <div class="rounded-lg border bg-card text-card-foreground shadow-sm border-gray-200 dark:border-slate-800" data-testid="card-totale-addebiti">
-                    <div class="flex flex-row items-center justify-between p-4 pb-2">
+                    <div class="flex flex-row items-center justify-between gap-2 p-4 pb-2">
                         <h3 class="text-xs font-medium uppercase text-muted-foreground tracking-wider">Totale addebiti</h3>
                         <ArrowDownCircle class="h-4 w-4 text-red-500" />
                     </div>
                     <div class="p-4 pt-0">
                         <div class="text-xl font-bold text-gray-900 dark:text-slate-100">{{ stats.totale_addebiti }}</div>
                         <!-- Un addebito personale è emesso quando si registra, con la sua riga in DARE sulla posizione della persona: è dentro questa cifra. -->
-                        <p class="text-[11px] text-muted-foreground mt-1">Rate emesse e addebiti</p>
+                        <p class="text-xs text-muted-foreground mt-1">Rate emesse e addebiti</p>
                     </div>
                 </div>
                 <div class="rounded-lg border bg-card text-card-foreground shadow-sm border-gray-200 dark:border-slate-800">
-                    <div class="flex flex-row items-center justify-between p-4 pb-2">
+                    <div class="flex flex-row items-center justify-between gap-2 p-4 pb-2">
                         <h3 class="text-xs font-medium uppercase text-muted-foreground tracking-wider">Totale Versato</h3>
                         <ArrowUpCircle class="h-4 w-4 text-emerald-500" />
                     </div>
                     <div class="p-4 pt-0">
                         <div class="text-xl font-bold text-emerald-600">{{ stats.totale_versamenti }}</div>
-                        <p class="text-[10px] text-muted-foreground mt-1">Incassi registrati</p>
+                        <p class="text-xs text-muted-foreground mt-1">Incassi registrati</p>
                     </div>
                 </div>
                 <div class="rounded-lg border shadow-sm border-gray-200" :class="{'bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-900/50': stats.saldo_raw > 0, 'bg-emerald-50 border-emerald-200 dark:bg-emerald-950/20 dark:border-emerald-900/50': stats.saldo_raw < 0, 'bg-white dark:bg-card dark:border-slate-800': stats.saldo_raw === 0}">
-                    <div class="flex flex-row items-center justify-between p-4 pb-2">
+                    <div class="flex flex-row items-center justify-between gap-2 p-4 pb-2">
                         <!-- Uno zero è grigio: né rosso né verde. -->
                         <h3 class="text-xs font-medium uppercase tracking-wider" :class="stats.saldo_raw > 0 ? 'text-red-500' : (stats.saldo_raw < 0 ? 'text-emerald-500' : 'text-slate-500 dark:text-slate-400')">Saldo Finale</h3>
                         <Wallet class="h-4 w-4" :class="stats.saldo_raw > 0 ? 'text-red-500' : (stats.saldo_raw < 0 ? 'text-emerald-500' : 'text-slate-400')" />
                     </div>
                     <div class="p-4 pt-0">
                         <div class="text-2xl font-bold" :class="saldoColorClass">{{ stats.saldo_finale }}</div>
-                        <p class="text-[10px] uppercase font-bold mt-1 tracking-wide" :class="stats.saldo_raw > 0 ? 'text-red-600' : (stats.saldo_raw < 0 ? 'text-emerald-600' : 'text-slate-500 dark:text-slate-400')">
+                        <p class="text-xs uppercase font-bold mt-1 tracking-wide" :class="stats.saldo_raw > 0 ? 'text-red-600' : (stats.saldo_raw < 0 ? 'text-emerald-600' : 'text-slate-500 dark:text-slate-400')">
                             {{ stats.saldo_raw > 0 ? 'DA VERSARE' : (stats.saldo_raw < 0 ? 'A CREDITO' : 'PAREGGIO') }}
                         </p>
                     </div>
                 </div>
                 <div class="rounded-lg border bg-card text-card-foreground shadow-sm border-gray-200 dark:border-slate-800">
-                    <div class="flex flex-row items-center justify-between p-4 pb-2">
+                    <div class="flex flex-row items-center justify-between gap-2 p-4 pb-2">
                         <h3 class="text-xs font-medium uppercase text-muted-foreground tracking-wider">Credito disponibile</h3>
                         <Coins class="h-4 w-4 text-blue-500" />
                     </div>
                     <div class="p-4 pt-0">
                         <div class="flex items-center gap-1.5">
-                            <div class="text-xl font-bold" :class="stats.credito_disponibile_raw > 0 ? 'text-blue-600' : 'text-gray-400'">{{ stats.credito_disponibile }}</div>
-                            <TooltipProvider v-if="stats.credito_per_gestione.length > 1" :delayDuration="0">
-                                <Tooltip>
-                                    <TooltipTrigger as-child>
-                                        <Info class="w-3.5 h-3.5 text-blue-400 cursor-help" />
-                                    </TooltipTrigger>
-                                    <TooltipContent side="bottom" class="bg-slate-900 border-slate-700 text-slate-200 p-3 shadow-2xl rounded-lg z-[100]">
-                                        <div class="text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-wider border-b border-slate-700 pb-1">Spaccato per gestione</div>
-                                        <ul class="space-y-1">
-                                            <li v-for="g in stats.credito_per_gestione" :key="g.gestione_id ?? 0" class="flex justify-between gap-4 text-[11px]">
-                                                <span class="text-slate-300">{{ g.gestione_nome }}</span>
-                                                <span class="font-bold text-blue-400">{{ g.importo_formatted }}</span>
-                                            </li>
-                                        </ul>
-                                    </TooltipContent>
-                                </Tooltip>
-                            </TooltipProvider>
+                            <div v-if="stats.credito_disponibile_raw <= 0 && (stats.credito_da_versare_raw ?? 0) > 0 && (stats.credito_lordo_raw ?? 0) > 0" class="text-xl font-bold text-gray-900 dark:text-slate-100" data-testid="credito-da-versare">{{ stats.credito_da_versare }} <span class="text-xs font-semibold uppercase tracking-wide text-red-600">da versare</span></div>
+                            <div v-else class="text-xl font-bold" :class="stats.credito_disponibile_raw > 0 ? 'text-blue-600' : 'text-gray-400'">{{ stats.credito_disponibile }}</div>
                         </div>
-                        <!-- Non basta dire quanto credito c'è: senza sapere quale rata copre,
-                             l'amministratore deve andarselo a cercare in un elenco. Lo spaccato
-                             per gestione resta nel tooltip qui sopra, dove serve a chi lo cerca. -->
-                        <p v-if="stats.credito_disponibile_raw > 0" class="text-[10px] text-muted-foreground mt-1 leading-tight">
-                            {{ stats.compensabile_frase }}
-                            <a
-                                v-if="stats.compensabile_rata_id"
-                                :href="urlCompensazione"
-                                class="text-blue-600 hover:text-blue-700 underline underline-offset-2 font-medium"
-                            >Compensa</a>
-                        </p>
-                        <p v-else class="text-[10px] text-muted-foreground mt-1">Nessun credito attivo</p>
+                        <!-- Con credito e debito su gestioni diverse, una riga per gestione, a vista: il credito di una gestione copre da sé solo le rate
+                             della sua, quindi non si toglie dal debito di un'altra. Dentro la stessa gestione il netto resta. -->
+                        <div v-if="stats.credito_per_gestione.length > 1" class="mt-2 space-y-1" data-testid="credito-per-gestione">
+                            <div v-for="g in stats.credito_per_gestione" :key="g.gestione_id ?? 0" class="flex justify-between gap-3 text-xs">
+                                <span class="min-w-0 text-slate-600 dark:text-slate-300">{{ g.gestione_nome }}</span>
+                                <span class="shrink-0 whitespace-nowrap font-semibold tabular-nums" :class="(g.da_versare_cents ?? 0) > 0 ? 'text-red-600' : 'text-blue-600'">{{ g.frase ?? g.importo_formatted }}</span>
+                            </div>
+                        </div>
+                        <!-- Le note del credito, in un blocco solo e alla stessa grandezza. -->
+                        <div class="mt-2 space-y-1 text-xs leading-snug text-muted-foreground" data-testid="note-del-credito"
+                             :class="stats.credito_per_gestione.length > 1 ? 'border-t border-gray-100 pt-2 dark:border-slate-800' : ''">
+                            <p v-if="stats.credito_per_gestione.length > 1">Il credito di una gestione copre le rate della stessa gestione.</p>
+                            <!-- Il lordo, quando non coincide con il netto: comprende le quote a credito delle rate in bozza, e quelle già tolte dal debito. -->
+                            <p v-if="(stats.credito_lordo_raw ?? 0) > 0 && stats.credito_lordo_raw !== stats.credito_disponibile_raw" data-testid="credito-lordo">
+                                {{ stats.credito_lordo }} di credito sulle sue quote, anche di rate non ancora emesse: sulle rate emesse è già tolto dal debito della stessa gestione.
+                            </p>
+                            <p v-if="(stats.credito_lordo_raw ?? stats.credito_disponibile_raw) > 0">
+                                {{ stats.compensabile_frase }}
+                                <a
+                                    v-if="stats.compensabile_rata_id"
+                                    :href="urlCompensazione"
+                                    class="text-blue-600 hover:text-blue-700 underline underline-offset-2 font-medium"
+                                >Compensa</a>
+                            </p>
+                            <p v-else>Nessun credito attivo</p>
+                        </div>
                         <!-- B2, S6: il rimborso — denaro che esce a fronte della quota a credito, per chi non ha più rate da compensare -->
                         <button
                             v-if="rimborso && rimborso.quote.length > 0"
                             type="button"
                             @click="apriRimborso"
-                            class="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 transition-colors dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-300 dark:hover:bg-blue-950/50"
+                            class="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 transition-colors dark:border-blue-900/50 dark:bg-blue-950/30 dark:text-blue-300 dark:hover:bg-blue-950/50"
                         >
                             <Banknote class="w-3.5 h-3.5" /> Rimborsa il credito
                         </button>
@@ -543,20 +563,20 @@ const getImportoStyle = (riga: any) => {
                 </div>
                 <!-- Gli addebiti a questa persona sola: il totale e quanti sono, e le due finestre. Nel posto vuoto della seconda fila. -->
                 <div class="rounded-lg border bg-card text-card-foreground shadow-sm border-gray-200 dark:border-slate-800" data-testid="card-addebiti-personali">
-                    <div class="flex flex-row items-center justify-between p-4 pb-2">
+                    <div class="flex flex-row items-center justify-between gap-2 p-4 pb-2">
                         <h3 class="text-xs font-medium uppercase text-muted-foreground tracking-wider">Addebiti personali</h3>
                         <Receipt class="h-4 w-4 text-amber-500" />
                     </div>
                     <div class="p-4 pt-0">
                         <div class="text-xl font-bold" :class="riepilogo.numero > 0 ? 'text-gray-900 dark:text-slate-100' : 'text-gray-400'" data-testid="totale-addebiti-personali">{{ euroTesto(riepilogo.totale) }}</div>
-                        <p class="text-[11px] text-muted-foreground mt-1" data-testid="quanti-addebiti-personali">{{ testoRiepilogoAddebiti(riepilogo.numero) }}</p>
+                        <p class="text-xs text-muted-foreground mt-1" data-testid="quanti-addebiti-personali">{{ testoRiepilogoAddebiti(riepilogo.numero) }}</p>
                         <div class="mt-2 flex flex-wrap gap-1.5">
                             <button type="button" data-testid="card-nuovo-addebito" @click="finestraAddebito = true"
-                                class="inline-flex h-7 items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 transition-colors dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-950/50">
+                                class="inline-flex h-7 items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 transition-colors dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-950/50">
                                 <Plus class="w-3.5 h-3.5" /> Nuovo
                             </button>
                             <button type="button" data-testid="card-spese-del-ritardo" @click="finestraSpese = true"
-                                class="inline-flex h-7 items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 transition-colors dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-950/50">
+                                class="inline-flex h-7 items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 text-xs font-semibold text-amber-800 hover:bg-amber-100 transition-colors dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-950/50">
                                 <Clock class="w-3.5 h-3.5" /> Spese del ritardo
                             </button>
                         </div>
@@ -570,10 +590,10 @@ const getImportoStyle = (riga: any) => {
             <div class="lg:col-span-4 lg:relative" data-testid="colonna-destra">
                 <div class="flex flex-col gap-4 lg:absolute lg:inset-0">
                     <div class="rounded-lg border bg-card text-card-foreground shadow-sm border-gray-200 dark:border-slate-800 overflow-hidden lg:flex-1 lg:min-h-0" data-testid="card-unita">
-                        <div class="flex flex-row items-center justify-between p-4 pb-2">
+                        <div class="flex flex-row items-center justify-between gap-2 p-4 pb-2">
                             <h3 class="text-xs font-medium uppercase text-muted-foreground tracking-wider flex items-center gap-2">
                                 Unità immobiliari
-                                <Badge variant="secondary" class="text-[11px] h-5 px-1.5 normal-case tracking-normal">{{ anagrafica.immobili.length }}</Badge>
+                                <Badge variant="secondary" class="text-xs h-5 px-1.5 normal-case tracking-normal">{{ anagrafica.immobili.length }}</Badge>
                             </h3>
                             <Building2 class="h-4 w-4 text-gray-400" />
                         </div>
@@ -581,11 +601,11 @@ const getImportoStyle = (riga: any) => {
                             <div v-for="immobile in unitaNellaCard" :key="immobile.id" class="flex items-center gap-2 min-w-0" data-testid="unita">
                                 <span class="truncate flex-1 min-w-0 text-xs font-semibold text-gray-800 dark:text-slate-200" :title="formatIndirizzoImmobile(immobile)"
                                     data-testid="nome-unita">{{ formatIndirizzoImmobile(immobile) }}</span>
-                                <Badge variant="secondary" class="shrink-0 text-[11px] px-1.5 h-4">{{ immobile.pivot.tipologia }}</Badge>
-                                <Badge variant="outline" class="shrink-0 text-[11px] px-1.5 h-4 text-gray-500 dark:text-slate-400">{{ percentuale(immobile.pivot.quota) }}</Badge>
+                                <Badge variant="secondary" class="shrink-0 text-xs px-1.5 h-4">{{ immobile.pivot.tipologia }}</Badge>
+                                <Badge variant="outline" class="shrink-0 text-xs px-1.5 h-4 text-gray-500 dark:text-slate-400">{{ percentuale(immobile.pivot.quota) }}</Badge>
                             </div>
                             <button v-if="altreUnita > 0" type="button" data-testid="altre-unita" @click="finestraUnita = true"
-                                class="block text-[11px] leading-4 font-semibold text-indigo-600 hover:text-indigo-700 hover:underline underline-offset-2 dark:text-indigo-400 dark:hover:text-indigo-300">
+                                class="block text-xs leading-4 font-semibold text-indigo-600 hover:text-indigo-700 hover:underline underline-offset-2 dark:text-indigo-400 dark:hover:text-indigo-300">
                                 {{ altreUnita === 1 ? 'e un\'altra unità' : `e altre ${altreUnita} unità` }}
                             </button>
                             <p v-if="anagrafica.immobili.length === 0" class="text-xs leading-4 text-muted-foreground italic">Nessuna unità associata.</p>
@@ -596,7 +616,7 @@ const getImportoStyle = (riga: any) => {
                          righe al massimo, una se sotto c'è la lettera in coda: la card resta della stessa altezza; il testo intero nel `title` e in
                          «Corrispondenza». -->
                     <div class="rounded-lg border bg-card text-card-foreground shadow-sm border-gray-200 dark:border-slate-800 shrink-0" data-testid="ultima-lettera-in-testa">
-                        <div class="flex flex-row items-center justify-between p-4 pb-2">
+                        <div class="flex flex-row items-center justify-between gap-2 p-4 pb-2">
                             <h3 class="text-xs font-medium uppercase text-muted-foreground tracking-wider">Lettere</h3>
                             <Mail class="h-4 w-4 text-gray-400" />
                         </div>
@@ -612,12 +632,12 @@ const getImportoStyle = (riga: any) => {
                                  nella scheda). A 1.440 pixel il collegamento ha 207 px: «Corrispondenza: 1 lettera e 2 ricevute» ne fa 186. Sotto `lg` va a capo. -->
                             <div class="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 lg:flex-nowrap">
                                 <button type="button" data-testid="card-prepara-una-lettera" @click="finestraLettera = true"
-                                    class="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-2.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors dark:border-indigo-900/50 dark:bg-indigo-950/30 dark:text-indigo-300 dark:hover:bg-indigo-950/50">
+                                    class="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-2.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors dark:border-indigo-900/50 dark:bg-indigo-950/30 dark:text-indigo-300 dark:hover:bg-indigo-950/50">
                                     <Mail class="w-3.5 h-3.5" /> Prepara una lettera
                                 </button>
                                 <button v-if="numeroCorrispondenza > 0" type="button" data-testid="vedi-la-corrispondenza" @click="apriCorrispondenza"
                                     :title="`Vedi la corrispondenza: ${riassuntoCorrispondenza}`"
-                                    class="min-w-0 truncate text-[11px] leading-4 font-semibold text-indigo-600 hover:text-indigo-700 hover:underline underline-offset-2 dark:text-indigo-400 dark:hover:text-indigo-300">Corrispondenza: {{ riassuntoCorrispondenza }}</button>
+                                    class="min-w-0 truncate text-xs leading-4 font-semibold text-indigo-600 hover:text-indigo-700 hover:underline underline-offset-2 dark:text-indigo-400 dark:hover:text-indigo-300">Corrispondenza: {{ riassuntoCorrispondenza }}</button>
                             </div>
                         </div>
                     </div>
@@ -628,13 +648,13 @@ const getImportoStyle = (riga: any) => {
             <!-- Coda 167, beta.40: i versamenti fatti per il debito di un altro. Chiudono le quote di chi doveva e non toccano il saldo di questa persona: per questo stanno qui e non nel libro qui sotto. -->
             <div v-if="versamenti_per_altri && versamenti_per_altri.length" class="rounded-lg border border-sky-200 bg-sky-50/70 dark:border-sky-900/40 dark:bg-sky-950/20 px-4 py-3 flex items-start gap-3">
                 <Banknote class="w-4 h-4 mt-0.5 shrink-0 text-sky-600" />
-                <div class="text-[12px] leading-relaxed text-sky-950 dark:text-sky-100">
-                    <span class="font-bold uppercase tracking-wider text-[10px] text-sky-800 dark:text-sky-300 block mb-0.5">Versamenti per conto di altri</span>
+                <div class="text-xs leading-relaxed text-sky-950 dark:text-sky-100">
+                    <span class="font-bold uppercase tracking-wider text-xs text-sky-800 dark:text-sky-300 block mb-0.5">Versamenti per conto di altri</span>
                     <p class="mb-1">Rate di altre persone pagate da {{ anagrafica.nome }}: chiudono il debito di chi le doveva e non cambiano il saldo qui sotto.</p>
                     <ul class="space-y-0.5 tabular-nums">
                         <li v-for="v in versamenti_per_altri" :key="v.scrittura_id" :class="{ 'text-sky-900/50 dark:text-sky-100/50': v.stornato }">
                             Versato il {{ v.data }}: {{ v.importo_formattato }} per conto di {{ v.per_conto_di }}<span v-if="v.protocollo"> (prot. {{ v.protocollo }})</span>
-                            <span v-if="v.stornato" class="ml-1.5 inline-block rounded border border-slate-300 bg-slate-50 px-1.5 text-[10px] font-semibold uppercase leading-4 text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">stornato</span>
+                            <span v-if="v.stornato" class="ml-1.5 inline-block rounded-md border border-slate-300 bg-slate-50 px-1.5 text-xs font-semibold uppercase leading-4 text-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300">stornato</span>
                         </li>
                     </ul>
                 </div>
@@ -653,8 +673,8 @@ const getImportoStyle = (riga: any) => {
             <div v-if="solidarieta && solidarieta.length" class="space-y-2">
                 <div v-for="n in solidarieta" :key="n.subentro_id" class="rounded-lg border border-amber-200 bg-amber-50/70 dark:border-amber-900/40 dark:bg-amber-950/20 px-4 py-3 flex items-start gap-3">
                     <ShieldCheck class="w-4 h-4 mt-0.5 shrink-0 text-amber-600" />
-                    <div class="text-[12px] leading-relaxed text-amber-950 dark:text-amber-100">
-                        <span class="font-bold uppercase tracking-wider text-[10px] text-amber-800 dark:text-amber-300 block mb-0.5">Chi risponde in solido · {{ n.immobile }}</span>
+                    <div class="text-xs leading-relaxed text-amber-950 dark:text-amber-100">
+                        <span class="font-bold uppercase tracking-wider text-xs text-amber-800 dark:text-amber-300 block mb-0.5">Chi risponde in solido · {{ n.immobile }}</span>
                         {{ n.testo }}
                     </div>
                 </div>
@@ -677,7 +697,7 @@ const getImportoStyle = (riga: any) => {
             </TabsContent>
             <TabsContent value="movimenti" class="mt-0 space-y-6">
         <div data-testid="legenda" class="flex flex-wrap gap-4 text-xs text-gray-500 items-center bg-gray-50/80 p-3 rounded-lg border border-dashed border-gray-200 dark:bg-slate-900/60 dark:border-slate-800 dark:text-slate-400">
-            <span class="font-bold uppercase tracking-wider text-[11px] text-gray-400 mr-1 dark:text-slate-500">Legenda:</span>
+            <span class="font-bold uppercase tracking-wider text-xs text-gray-400 mr-1 dark:text-slate-500">Legenda:</span>
             <div class="flex items-center gap-1.5"><div class="w-5 h-5 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-500 shadow-sm dark:border-slate-800 dark:text-slate-400 dark:bg-slate-900"><FileText class="w-3 h-3" /></div><span>Emissione</span></div>
             <div class="flex items-center gap-1.5"><div class="w-5 h-5 rounded-full bg-emerald-100 border border-emerald-200 flex items-center justify-center text-emerald-600 shadow-sm dark:bg-emerald-950/40 dark:border-emerald-900/60"><Banknote class="w-3 h-3" /></div><span>Incasso</span></div>
             <div class="flex items-center gap-1.5"><div class="w-5 h-5 rounded-full bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-sm dark:bg-blue-950/40 dark:border-blue-900/60"><RotateCcw class="w-3 h-3" /></div><span>Storno</span></div>
@@ -705,8 +725,8 @@ const getImportoStyle = (riga: any) => {
                                 <th class="px-4 py-3 w-[50px] text-center">Tipo</th>
                                 <th class="px-4 py-3 w-[120px]">Data</th>
                                 <th class="px-4 py-3">Descrizione</th>
-                                <th class="px-4 py-3 text-right text-gray-700 w-[140px] dark:text-slate-300">Addebiti <span class="block text-[11px] text-gray-400 font-normal normal-case dark:text-slate-500">(Dare)</span></th>
-                                <th class="px-4 py-3 text-right text-gray-700 w-[140px] dark:text-slate-300">Pagamenti <span class="block text-[11px] text-gray-400 font-normal normal-case dark:text-slate-500">(Avere)</span></th>
+                                <th class="px-4 py-3 text-right text-gray-700 w-[140px] dark:text-slate-300">Addebiti <span class="block text-xs text-gray-400 font-normal normal-case dark:text-slate-500">(Dare)</span></th>
+                                <th class="px-4 py-3 text-right text-gray-700 w-[140px] dark:text-slate-300">Pagamenti <span class="block text-xs text-gray-400 font-normal normal-case dark:text-slate-500">(Avere)</span></th>
                                 <th class="px-4 py-3 text-right bg-gray-50 text-gray-800 w-[160px] dark:bg-slate-900 dark:text-slate-200">Saldo</th>
                             </tr>
                         </thead>
@@ -742,31 +762,31 @@ const getImportoStyle = (riga: any) => {
                                 <td class="px-4 py-3 align-top">
                                     <div class="text-sm font-medium text-gray-700 dark:text-slate-300">{{ riga.data }}</div>
                                     <!-- Coda 317: la data è quella del movimento (competenza); il giorno in cui è stato inserito arriva solo se è diverso, ed è per l'amministratore: il PDF non lo stampa. -->
-                                    <div v-if="riga.data_registrazione" class="text-[11px] text-gray-400 leading-tight mt-0.5 dark:text-slate-500">Registrata il {{ riga.data_registrazione }}</div>
-                                    <div v-if="riga.protocollo" class="mt-1"><Badge variant="outline" class="text-[11px] px-1 h-4 tabular-nums text-gray-400 border-gray-200 dark:border-slate-800 dark:text-slate-500">{{ riga.protocollo }}</Badge></div>
+                                    <div v-if="riga.data_registrazione" class="text-xs text-gray-400 leading-tight mt-0.5 dark:text-slate-500">Registrata il {{ riga.data_registrazione }}</div>
+                                    <div v-if="riga.protocollo" class="mt-1"><Badge variant="outline" class="text-xs px-1 h-4 tabular-nums text-gray-400 border-gray-200 dark:border-slate-800 dark:text-slate-500">{{ riga.protocollo }}</Badge></div>
                                 </td>
                                 <td class="px-4 py-3 align-top">
                                     <div class="flex items-center gap-2 mb-1">
                                         <span class="font-semibold text-gray-800 text-sm dark:text-slate-200">{{ riga.descrizione }}</span>
-                                        <Badge v-if="riga.gestione" variant="secondary" class="text-[11px] h-4 px-1.5 bg-gray-100 text-gray-500 font-normal dark:bg-slate-800 dark:text-slate-400">{{ riga.gestione }}</Badge>
+                                        <Badge v-if="riga.gestione" variant="secondary" class="text-xs h-4 px-1.5 bg-gray-100 text-gray-500 font-normal dark:bg-slate-800 dark:text-slate-400">{{ riga.gestione }}</Badge>
                                     </div>
                                     <p v-if="riga.note" class="text-xs text-blue-600 italic mb-1">Note: {{ riga.note }}</p>
                                     <button
                                         v-if="riga.stornabile"
                                         type="button"
                                         @click="chiediStorno(riga)"
-                                        class="inline-flex items-center gap-1 text-[10px] font-semibold text-rose-600 hover:underline mb-1"
+                                        class="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 hover:underline mb-1"
                                     >
                                         <RotateCcw class="w-3 h-3" /> Storna il rimborso
                                     </button>
                                     <div v-if="riga.dettagli && riga.dettagli.length > 0" class="flex flex-col gap-1 mt-1">
                                         <div v-for="(item, index) in riga.dettagli" :key="index" class="flex items-center flex-wrap gap-2">
                                             
-                                            <span class="text-[11px] text-gray-500 flex items-center gap-1.5 dark:text-slate-400">
+                                            <span class="text-xs text-gray-500 flex items-center gap-1.5 dark:text-slate-400">
                                                 <span class="w-1 h-1 rounded-full bg-gray-300 shrink-0 dark:bg-slate-700"></span> {{ item.text }}
                                             </span>
                                             
-                                            <span v-if="getStatoConfig(item.status)" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-bold uppercase tracking-wider" :class="getStatoConfig(item.status)!.class">
+                                            <span v-if="getStatoConfig(item.status)" class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-xs font-bold uppercase tracking-wider" :class="getStatoConfig(item.status)!.class">
                                                 <component :is="getStatoConfig(item.status)!.icon" class="w-3 h-3" />
                                                 <span>{{ getStatoConfig(item.status)!.label }}</span>
                                             </span>
@@ -788,7 +808,7 @@ const getImportoStyle = (riga: any) => {
                                                 </TooltipTrigger>
                                                 <TooltipContent side="right" class="bg-slate-900 border-slate-700 text-slate-200 p-4 w-80 shadow-xl rounded-lg z-50">
                                                     
-                                                    <div class="text-[10px] font-bold text-slate-400 mb-3 uppercase tracking-wider border-b border-slate-700 pb-1 flex justify-between">
+                                                    <div class="text-xs font-bold text-slate-400 mb-3 uppercase tracking-wider border-b border-slate-700 pb-1 flex justify-between">
                                                         <span>
                                                             {{ 
                                                               riga.breakdown.type === 'incasso' ? 'Dettaglio Incasso' : 
@@ -817,7 +837,7 @@ const getImportoStyle = (riga: any) => {
                                                         </div>
 
                                                         <template v-if="riga.breakdown.type === 'emissione' && riga.breakdown.saldo_usato && riga.breakdown.saldo_usato !== 0">
-                                                            <div class="my-1.5 pl-2.5 border-l-2 border-slate-600 ml-1 py-0.5 space-y-1 text-[11px]">
+                                                            <div class="my-1.5 pl-2.5 border-l-2 border-slate-600 ml-1 py-0.5 space-y-1 text-xs">
                                                                 <div class="flex justify-between items-center text-slate-300">
                                                                     <span class="italic text-slate-400">Quota pura:</span>
                                                                     <span class="tabular-nums">{{ euro(riga.breakdown.cost) }}</span>
@@ -882,7 +902,7 @@ const getImportoStyle = (riga: any) => {
                 </DialogHeader>
                 <form class="space-y-4" @submit.prevent="inviaRimborso">
                     <div class="space-y-1.5">
-                        <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Credito da rimborsare</Label>
+                        <Label class="text-xs font-bold uppercase tracking-wider text-slate-500">Credito da rimborsare</Label>
                         <v-select
                             :options="quoteRimborsabili"
                             v-model="formRimborso.rata_quote_id"
@@ -897,18 +917,18 @@ const getImportoStyle = (riga: any) => {
                                 <div class="flex flex-col py-0.5">
                                     <div class="flex items-center justify-between gap-2">
                                         <span class="font-bold text-sm text-slate-800">{{ credito_formattato }}</span>
-                                        <span class="text-[9px] uppercase font-black px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">{{ ETICHETTA_ORIGINE[origine] ?? origine }}</span>
+                                        <span class="text-xs uppercase font-black px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 border border-slate-200">{{ ETICHETTA_ORIGINE[origine] ?? origine }}</span>
                                     </div>
-                                    <span class="text-[10px] text-slate-500 mt-0.5">{{ gestione ?? 'gestione' }}<template v-if="piano">, {{ piano }}</template><template v-if="rata !== null"> · rata {{ rata }}</template><template v-if="immobile"> · {{ immobile }}</template></span>
+                                    <span class="text-xs text-slate-500 mt-0.5">{{ gestione ?? 'gestione' }}<template v-if="piano">, {{ piano }}</template><template v-if="rata !== null"> · rata {{ rata }}</template><template v-if="immobile"> · {{ immobile }}</template></span>
                                 </div>
                             </template>
                             <!-- L'etichetta intera è lunga: nel campo si tronca, nel menu si legge per intero -->
                             <template #selected-option="{ etichetta }">
                                 <span class="block truncate max-w-[24rem] text-sm">{{ etichetta }}</span>
                             </template>
-                            <template #no-options><span class="text-[12px] text-slate-500">Nessun credito da rimborsare.</span></template>
+                            <template #no-options><span class="text-xs text-slate-500">Nessun credito da rimborsare.</span></template>
                         </v-select>
-                        <p v-if="quotaScelta" class="text-[10.5px] text-slate-500 leading-snug">
+                        <p v-if="quotaScelta" class="text-xs text-slate-500 leading-snug">
                             <template v-if="quotaScelta.origine === 'saldi' && quotaScelta.conto === 'passate_gestioni'">Credito riportato da un esercizio precedente, con la sua quota non ancora a giornale: in contabilità esce da «Passate gestioni».</template>
                             <template v-else-if="quotaScelta.origine === 'saldi'">Credito riportato da un esercizio precedente, portato a giornale con la sua rata: in contabilità rovescia l'accredito su «Crediti verso condomini».</template>
                             <template v-else-if="quotaScelta.origine === 'misto' && quotaScelta.conto === 'passate_gestioni'">Credito in parte riportato da un esercizio precedente e in parte delle entrate dell'anno, con la sua quota non ancora a giornale: in contabilità la parte riportata esce da «Passate gestioni», quella delle entrate da «Crediti verso condomini».</template>
@@ -916,11 +936,11 @@ const getImportoStyle = (riga: any) => {
                             <template v-else-if="quotaScelta.origine === 'misto' || quotaScelta.origine === 'entrate'">Credito delle entrate dell'anno (le entrate del piano superano la spesa di questa quota), con la sua quota non ancora a giornale: in contabilità esce da «Crediti verso condomini», e la scrittura della quota, quando va a giornale, lo chiude.</template>
                             <template v-else>Credito da un versamento in eccesso: in contabilità rovescia l'accredito su «Crediti verso condomini».</template>
                         </p>
-                        <p v-if="formRimborso.errors.rata_quote_id" class="text-[11px] text-red-600">{{ formRimborso.errors.rata_quote_id }}</p>
+                        <p v-if="formRimborso.errors.rata_quote_id" class="text-xs text-red-600">{{ formRimborso.errors.rata_quote_id }}</p>
                     </div>
                     <div class="grid grid-cols-2 gap-3">
                         <div class="space-y-1.5 col-span-2 sm:col-span-1">
-                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Cassa</Label>
+                            <Label class="text-xs font-bold uppercase tracking-wider text-slate-500">Cassa</Label>
                             <v-select
                                 :options="rimborso.casse"
                                 v-model="formRimborso.cassa_id"
@@ -934,35 +954,35 @@ const getImportoStyle = (riga: any) => {
                                     <div class="flex flex-col py-0.5">
                                         <div class="flex items-center justify-between gap-2">
                                             <span class="font-bold text-sm text-slate-800">{{ nome }}</span>
-                                            <span class="text-[9px] uppercase font-black px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200">{{ tipo }}</span>
+                                            <span class="text-xs uppercase font-black px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 border border-slate-200">{{ tipo }}</span>
                                         </div>
-                                        <span class="text-[10px] mt-0.5" :class="saldo_cents > 0 ? 'text-slate-500' : 'text-rose-600'">Saldo {{ saldo_formattato }}</span>
+                                        <span class="text-xs mt-0.5" :class="saldo_cents > 0 ? 'text-slate-500' : 'text-rose-600'">Saldo {{ saldo_formattato }}</span>
                                     </div>
                                 </template>
                                 <template #selected-option="{ nome, saldo_formattato }">
                                     <span class="text-sm">{{ nome }} <span class="text-slate-400">· {{ saldo_formattato }}</span></span>
                                 </template>
-                                <template #no-options><span class="text-[12px] text-slate-500">Nessuna cassa banca o contanti attiva.</span></template>
+                                <template #no-options><span class="text-xs text-slate-500">Nessuna cassa banca o contanti attiva.</span></template>
                             </v-select>
-                            <p v-if="formRimborso.errors.cassa_id" class="text-[11px] text-red-600">{{ formRimborso.errors.cassa_id }}</p>
+                            <p v-if="formRimborso.errors.cassa_id" class="text-xs text-red-600">{{ formRimborso.errors.cassa_id }}</p>
                         </div>
                         <div class="space-y-1.5 col-span-2 sm:col-span-1">
-                            <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Data del rimborso</Label>
+                            <Label class="text-xs font-bold uppercase tracking-wider text-slate-500">Data del rimborso</Label>
                             <Input type="date" v-model="formRimborso.data_rimborso" class="h-9 text-sm" />
-                            <p v-if="formRimborso.errors.data_rimborso" class="text-[11px] text-red-600">{{ formRimborso.errors.data_rimborso }}</p>
+                            <p v-if="formRimborso.errors.data_rimborso" class="text-xs text-red-600">{{ formRimborso.errors.data_rimborso }}</p>
                         </div>
                     </div>
                     <div class="space-y-1.5">
-                        <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Importo</Label>
+                        <Label class="text-xs font-bold uppercase tracking-wider text-slate-500">Importo</Label>
                         <div class="relative">
                             <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">€</span>
                             <MoneyInput v-model="formRimborso.importo" :money-options="moneyOptionsRimborso" :lazy="true" class="h-9 pl-6 text-sm text-left" />
                         </div>
-                        <p class="text-[10.5px] text-slate-500">Al massimo {{ quotaScelta?.credito_formattato ?? '—' }}, il credito disponibile su questa quota<template v-if="cassaScelta">; la cassa «{{ cassaScelta.nome }}» ha {{ cassaScelta.saldo_formattato }}</template>.</p>
-                        <p v-if="formRimborso.errors.importo" class="text-[11px] text-red-600">{{ formRimborso.errors.importo }}</p>
+                        <p class="text-xs text-slate-500">Al massimo {{ quotaScelta?.credito_formattato ?? '—' }}, il credito disponibile su questa quota<template v-if="cassaScelta">; la cassa «{{ cassaScelta.nome }}» ha {{ cassaScelta.saldo_formattato }}</template>.</p>
+                        <p v-if="formRimborso.errors.importo" class="text-xs text-red-600">{{ formRimborso.errors.importo }}</p>
                     </div>
                     <div class="space-y-1.5">
-                        <Label class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Nota <span class="font-normal text-slate-400">(facoltativa)</span></Label>
+                        <Label class="text-xs font-bold uppercase tracking-wider text-slate-500">Nota <span class="font-normal text-slate-400">(facoltativa)</span></Label>
                         <Input v-model="formRimborso.nota" placeholder="Es. bonifico del 20/09, IBAN comunicato via mail" class="h-9 text-sm" />
                     </div>
                     <DialogFooter class="gap-2">
@@ -993,13 +1013,24 @@ const getImportoStyle = (riga: any) => {
                     <div v-for="immobile in anagrafica.immobili" :key="immobile.id" class="flex items-center gap-2 min-w-0 py-2" data-testid="unita">
                         <span class="truncate flex-1 min-w-0 text-sm font-semibold text-gray-800 dark:text-slate-200" :title="formatIndirizzoImmobile(immobile)"
                             data-testid="nome-unita">{{ formatIndirizzoImmobile(immobile) }}</span>
-                        <Badge variant="secondary" class="shrink-0 text-[11px] px-1.5 h-5">{{ immobile.pivot.tipologia }}</Badge>
-                        <Badge variant="outline" class="shrink-0 text-[11px] px-1.5 h-5 text-gray-500 dark:text-slate-400">{{ percentuale(immobile.pivot.quota) }}</Badge>
+                        <Badge variant="secondary" class="shrink-0 text-xs px-1.5 h-5">{{ immobile.pivot.tipologia }}</Badge>
+                        <Badge variant="outline" class="shrink-0 text-xs px-1.5 h-5 text-gray-500 dark:text-slate-400">{{ percentuale(immobile.pivot.quota) }}</Badge>
                     </div>
                 </div>
             </DialogContent>
         </Dialog>
 
+        <ConfirmDialog
+            :model-value="confermaRimborsoAperta"
+            title="Rimborsi lo stesso?"
+            confirm-text="Rimborsa"
+            cancel-text="Non ora"
+            variant="warning"
+            @update:model-value="(v: boolean) => { confermaRimborsoAperta = v }"
+            @confirm="confermaRimborso"
+        >
+            <span data-testid="conferma-rimborso">{{ anagrafica.nome }} ha {{ stats.credito_da_versare }} da versare. Rimborsi lo stesso?</span>
+        </ConfirmDialog>
         <ConfirmDialog
             :model-value="stornoAperto"
             title="Stornare il rimborso?"

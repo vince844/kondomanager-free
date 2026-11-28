@@ -58,6 +58,9 @@ const condominio = computed<Building>(() => page.props.condominio as Building);
 // l'intera barra di navigazione — un prop dimenticato in un controller rendeva
 // la pagina inutilizzabile invece di degradare su qualche link in meno.
 const esercizio = computed<Esercizio | undefined>(() => page.props.esercizio as Esercizio | undefined);
+// `null` è «nessun esercizio aperto» (la pagina lo manda così); una pagina che non manda `esercizio` non dice niente in un senso o nell'altro.
+const nessunEsercizioAperto = computed(() => page.props.esercizio === null);
+const indirizzoEsercizi = generatePath('gestionale/:condominio/esercizi', { condominio: condominio.value.id });
 
 const isCurrentRoute = (url?: string) => {
     if (!url) return false;
@@ -110,24 +113,27 @@ const mainNavItems: NavItem[] = [
         icon: Library,
        
     }, 
+    // Le tre voci di un esercizio: senza, non c'è un indirizzo da costruire (puntavano a `esercizi/undefined/…`, una pagina 404).
+    ...(esercizio.value?.id ? [
     {
         type: 'link',
         title: 'Gestioni',
-        href: generatePath('gestionale/:condominio/esercizi/:esercizio/gestioni', { condominio: condominio.value.id, esercizio: esercizio.value?.id }), 
+        href: generatePath('gestionale/:condominio/esercizi/:esercizio/gestioni', { condominio: condominio.value.id, esercizio: esercizio.value.id }),
         icon: ListPlus,
     }, 
     {
         type: 'link',
         title: 'Piani conti',
-        href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-conti', { condominio: condominio.value.id, esercizio: esercizio.value?.id }),
+        href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-conti', { condominio: condominio.value.id, esercizio: esercizio.value.id }),
         icon: HandCoins,
     },
     {
         type: 'link',
         title: 'Piani rate',
-        href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', { condominio: condominio.value.id, esercizio: esercizio.value?.id }),
+        href: generatePath('gestionale/:condominio/esercizi/:esercizio/piani-rate', { condominio: condominio.value.id, esercizio: esercizio.value.id }),
         icon: Wallet,
     },
+    ] as NavItem[] : []),
     {
         type: 'link',
         title: 'Movimenti',
@@ -256,6 +262,15 @@ const isMobileItemExpanded = (title: string) => expandedMobileItems.value.has(ti
                                     </Link>
                                 </template>
 
+                                <!-- Senza esercizio aperto: al posto delle tre voci -->
+                                <Link
+                                    v-if="nessunEsercizioAperto"
+                                    :href="indirizzoEsercizi"
+                                    class="self-start rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200"
+                                >
+                                    Nessun esercizio aperto
+                                </Link>
+
                                 <!-- MOBILE RIGHT NAV -->
                                 <div class="my-4 h-px bg-border" />
 
@@ -335,6 +350,16 @@ const isMobileItemExpanded = (title: string) => expandedMobileItems.value.has(ti
                                 {{ item.title }}
                             </Link>
                         </template>
+
+                        <!-- Senza esercizio aperto: al posto delle tre voci -->
+                        <Link
+                            v-if="nessunEsercizioAperto"
+                            :href="indirizzoEsercizi"
+                            title="Vai agli esercizi"
+                            class="ml-1 flex h-6 shrink-0 items-center whitespace-nowrap rounded-md border border-amber-200 bg-amber-50 px-2 text-xs font-medium text-amber-800 hover:bg-amber-100 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200"
+                        >
+                            Nessun esercizio aperto
+                        </Link>
                     </nav>
                 </div>
 

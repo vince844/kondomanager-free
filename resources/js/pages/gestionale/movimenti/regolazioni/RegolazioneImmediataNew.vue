@@ -25,7 +25,7 @@ import 'vue-select/dist/vue-select.css';
 import type { Breadcrumb } from '@/components/PageHeaderGuide.vue';
 import { oggiLocale } from '@/lib/giorno';
 
-interface Capitolo { id: number; nome: string; parent_nome: string | null; label: string }
+interface Capitolo { id: number; nome: string; parent_nome: string | null; label: string; gestione_id?: number | null }
 interface Cassa { id: number; nome: string; tipo: string | null }
 interface Gestione { id: number; nome: string; tipo: string; esercizio_ids: number[] }
 interface Esercizio { id: number; nome: string }
@@ -87,7 +87,10 @@ interface FormRegolazioneImmediata {
     data_operazione: string;
     causale: string;
     importo: number;
+    /** La data fuori dal periodo della gestione, confermata da chi registra dopo l'avviso del server. */
+    conferma_avviso_data: boolean;
     regolazione_non_ammessa?: string;
+    avviso_data?: string;
 }
 
 // NB: il campo NON può chiamarsi `data` — useForm di Inertia espone già un metodo
@@ -101,6 +104,7 @@ const form = useForm<FormRegolazioneImmediata>({
     data_operazione: pre?.data_operazione ?? oggi,
     causale: pre?.causale ?? '',
     importo: pre?.importo ? Number(pre.importo) : 0,
+    conferma_avviso_data: false,
 });
 
 // Le gestioni disponibili dipendono dall'esercizio scelto (stessa regola del form fattura).
@@ -120,6 +124,38 @@ watch(() => form.esercizio_id, () => {
         form.gestione_id = gestioniDisponibili.value[0].id;
     }
 }, { immediate: true });
+
+// Le voci della gestione scelta: una spesa del riscaldamento non si registra nella gestione ordinaria (il server la rifiuta sul campo della voce).
+const capitoliDisponibili = computed(() =>
+    form.gestione_id
+        ? props.capitoli.filter(c => c.gestione_id == null || c.gestione_id === Number(form.gestione_id))
+        : props.capitoli
+);
+
+watch(() => form.gestione_id, () => {
+    if (form.conto_id && !capitoliDisponibili.value.some(c => c.id === form.conto_id)) {
+        form.conto_id = null;
+    }
+});
+
+// Una voce scelta prima della gestione (il modulo precompilato) porta con sé la sua gestione, se è dell'esercizio.
+watch(() => form.conto_id, (id) => {
+    const voce = props.capitoli.find(c => c.id === id);
+    if (!form.gestione_id && voce?.gestione_id && gestioniDisponibili.value.some(g => g.id === voce.gestione_id)) {
+        form.gestione_id = voce.gestione_id;
+    }
+}, { immediate: true });
+
+// La conferma della data vale per la data, la gestione e l'esercizio per cui è stata data: se cambiano, l'avviso si rilegge.
+watch(() => [form.data_operazione, form.gestione_id, form.esercizio_id], () => {
+    form.conferma_avviso_data = false;
+    form.clearErrors('avviso_data');
+});
+
+const confermaData = () => {
+    form.conferma_avviso_data = true;
+    submit(false);
+};
 
 const capitoloSelezionato = computed(() => props.capitoli.find(c => c.id === form.conto_id) ?? null);
 const cassaSelezionata = computed(() => props.casse.find(c => c.id === form.cassa_id) ?? null);
@@ -156,6 +192,9 @@ const submit = (creaAltro = false) => {
             // produrrebbe un doppione identico. Il modulo riparte pulito.
             onSuccess: () => {
                 if (creaAltro) form.reset();
+            },
+            onFinish: () => {
+                form.conferma_avviso_data = false;
             },
         });
 };
@@ -317,7 +356,7 @@ function onKeydown(e: KeyboardEvent) {
                                 id="capitolo"
                                 :clearable="false"
                                 v-model="form.conto_id"
-                                :options="props.capitoli"
+                                :options="capitoliDisponibili"
                                 :reduce="(c: Capitolo) => c.id"
                                 label="label"
                                 placeholder="Su quale voce di spesa va imputato il costo?"
@@ -353,6 +392,18 @@ function onKeydown(e: KeyboardEvent) {
                                 Non apre alcuna partita: non movimenta i debiti verso fornitori e non genera scadenze.
                             </p>
                             <InputError :message="form.errors.fornitore_id" />
+                        </div>
+
+                        <div v-if="form.errors.avviso_data"
+                             data-test="avviso-data"
+                             class="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+                            <AlertTriangle class="mt-0.5 h-5 w-5 shrink-0" />
+                            <div class="space-y-2">
+                                <p class="text-sm">{{ form.errors.avviso_data }}</p>
+                                <Button type="button" size="sm" variant="outline" :disabled="form.processing" data-test="conferma-data" @click="confermaData">
+                                    Confermo la data e registro
+                                </Button>
+                            </div>
                         </div>
 
                         <div v-if="bloccoRitenuta"

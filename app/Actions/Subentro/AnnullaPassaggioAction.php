@@ -9,6 +9,7 @@ use App\Services\RegistroModifiche\GestiDelRegistro;
 use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Enums\EventoTipo;
 use App\Enums\RuoloAnagraficaImmobile;
+use App\Models\Anagrafica;
 use App\Models\Evento;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\Subentro;
@@ -393,7 +394,7 @@ final class AnnullaPassaggioAction
 
         return ['rate' => $this->quoteDelRegistro($padre)['voci']->pluck('rata_id')->unique()->count(), 'saldi' => Saldo::whereIn('subentro_id', $famiglia->pluck('id'))->count(),
             'arretrato' => count($padre->saldiDellArretrato()), 'legate' => self::legateInParole(Saldo::where('passaggio_id', $padre->id)->orderBy('id')->get()),
-            'interessi' => self::interessiInParole($padre)];
+            'interessi' => self::interessiInParole($padre), 'rimessi' => self::nomiDeiRimessi(self::daRimettere($padre))];
     }
 
     /**
@@ -473,6 +474,11 @@ final class AnnullaPassaggioAction
             $piu = (bool) $conti['legate']['plurale'];
             $frasi[] = sprintf('%s %s: %s.', $piu ? 'I saldi del Wallet legati a questo passaggio' : 'Il saldo del Wallet legato a questo passaggio',
                 $fatto ? ($piu ? 'sono stati tolti' : 'è stato tolto') : ($piu ? 'si tolgono' : 'si toglie'), $conti['legate']['testo']);
+        }
+        // Chi la vendita aveva tolto dalle persone del condominio torna fra loro.
+        if (! empty($conti['rimessi']['testo'])) {
+            $piu = (bool) $conti['rimessi']['plurale'];
+            $frasi[] = $conti['rimessi']['testo'] . ($fatto ? ($piu ? ' sono di nuovo' : ' è di nuovo') : ($piu ? ' tornano' : ' torna')) . ' fra le persone del condominio.';
         }
         // D3 della prova della Coda 663: con «si fermano al decesso» la proposta del defunto torna a contare i giorni dopo il decesso, e quella degli eredi non
         // conta più il debito ereditato.
@@ -1049,6 +1055,9 @@ final class AnnullaPassaggioAction
                 }
             }
 
+            //    Chi la vendita aveva tolto dalle persone del condominio torna fra loro.
+            $rimessi = self::rimetti($padre);
+
             // 4. I promemoria delle rate nel portale seguono di nuovo le quote; il promemoria in agenda del passaggio sparisce.
             if ($rateToccate !== []) {
                 $this->eventi->seguonoLeQuote(array_keys($rateToccate), array_values(array_filter([(int) $padre->anagrafica_uscente_id, (int) $padre->anagrafica_entrante_id])), $utente);
@@ -1077,8 +1086,48 @@ final class AnnullaPassaggioAction
             }
 
             return ['righe' => $righe, 'rate' => count($rateToccate), 'saldi' => $saldi->count(), 'arretrato' => count($padre->saldiDellArretrato()), 'avvisi' => $avvisi, 'uscente' => $uscente, 'entrante' => $entrante,
-                'successione' => $padre->successione(), 'legate' => $legateInParole, 'interessi' => $interessi];
+                'successione' => $padre->successione(), 'legate' => $legateInParole, 'interessi' => $interessi, 'rimessi' => $rimessi];
         });
+    }
+
+    /**
+     * Chi la vendita ha tolto dalle persone del condominio (la casella «Togli … dal condominio», scritta nel registro del passaggio come
+     * `tolti_dal_condominio`) e oggi non c'è: chi, senza scrivere niente. Chi è già stato rimesso dalla rubrica non si conta.
+     *
+     * @return Collection<int, Anagrafica>
+     */
+    private static function daRimettere(Subentro $padre): Collection
+    {
+        $ids = array_values(array_filter(array_map('intval', (array) ($padre->registro['tolti_dal_condominio'] ?? []))));
+        if ($ids === []) {
+            return collect();
+        }
+        $presenti = DB::table('anagrafica_condominio')->where('condominio_id', $padre->condominio_id)->whereIn('anagrafica_id', $ids)->pluck('anagrafica_id')->map(fn ($id) => (int) $id)->all();
+
+        return Anagrafica::whereIn('id', array_diff($ids, $presenti))->orderBy('nome')->get();
+    }
+
+    /** Li rimette fra le persone del condominio, con il registro delle modifiche; i nomi per la frase, o null. @return array{testo: string, plurale: bool}|null */
+    private static function rimetti(Subentro $padre): ?array
+    {
+        $persone = self::daRimettere($padre);
+        foreach ($persone as $persona) {
+            RegistroModifiche::legame($persona, 'condomini', 'Condomini', fn () => $persona->condomini()->syncWithoutDetaching([(int) $padre->condominio_id]));
+        }
+
+        return self::nomiDeiRimessi($persone);
+    }
+
+    /** @param Collection<int, Anagrafica> $persone @return array{testo: string, plurale: bool}|null */
+    private static function nomiDeiRimessi(Collection $persone): ?array
+    {
+        if ($persone->isEmpty()) {
+            return null;
+        }
+        $nomi = $persone->pluck('nome')->map(fn ($n) => (string) $n)->all();
+        $ultimo = array_pop($nomi);
+
+        return ['testo' => $nomi === [] ? $ultimo : implode(', ', $nomi) . ' e ' . $ultimo, 'plurale' => $persone->count() > 1];
     }
 
     // --- Le regole -----------------------------------------------------------------------------------

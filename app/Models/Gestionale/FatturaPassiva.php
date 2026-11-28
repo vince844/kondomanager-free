@@ -721,7 +721,10 @@ class FatturaPassiva extends Model
             return (int) $this->coperture->where('tipo_copertura', 'sopravvenienza')->whereNotNull('conto_id')->sum(fn ($c) => abs((int) $c->importo));
         }
 
-        return (int) $this->righe->filter(fn ($r) => $r->immobile_id !== null || ($r->is_sopravvenienza && $r->conto_id !== null))
+        // Coda 742: anche le righe su una voce che nel preventivo vale € 0, come le offre il carrello.
+        $voceAZero = \App\Services\Gestionale\VoceFuoriDalPreventivo::idDellaFattura((int) $this->id);
+
+        return (int) $this->righe->filter(fn ($r) => $r->immobile_id !== null || ($r->is_sopravvenienza && $r->conto_id !== null) || in_array((int) $r->id, $voceAZero, true))
             ->sum(fn ($r) => (int) $r->importo_imponibile + (int) $r->importo_iva);
     }
 

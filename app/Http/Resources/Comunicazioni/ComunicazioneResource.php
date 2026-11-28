@@ -8,7 +8,7 @@ namespace App\Http\Resources\Comunicazioni;
 use App\Http\Resources\Anagrafica\AnagraficaNomeResource;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
-use App\Http\Resources\User\UserResource;
+use App\Http\Resources\User\AutoreResource;
 use App\Support\Comunicazioni\PubblicazioneProgrammata;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -47,7 +47,7 @@ class ComunicazioneResource extends JsonResource
             'created_at'    => $this->created_at->diffForHumans(),
             'created_by' => $this->whenLoaded('createdBy', function () {
                 return [
-                    'user'       => new UserResource($this->createdBy),
+                    'user'       => new AutoreResource($this->createdBy),
                     // Della persona in rubrica dell'autore, id e nome (Coda 408): il resto sta nella sua scheda.
                     'anagrafica' => $this->createdBy->relationLoaded('anagrafica')
                         ? new AnagraficaNomeResource($this->createdBy->anagrafica)

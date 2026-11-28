@@ -81,6 +81,20 @@ function rotteSenzaVincoloEPerche(): array
             "Da {esercizio} a {conto} ci sono tre salti — il pivot esercizio_gestione, poi\n".
             "piani_conti.gestione_id, poi conti.piano_conto_id — e nessuna relazione Eloquent li fa\n".
             "tutti e tre. La guardia resta quella a mano in MovimentiPerVoceController.",
+        'admin/gestionale/{condominio}/anagrafiche/{anagrafica}/estratto-conto' =>
+            "La persona si cerca con la regola del pagante (Anagrafica::delCondominio): anche chi è stato\n".
+            "tolto dal condominio con rate ancora sue, che il pivot non lega. La guardia è nel controller.",
+        'admin/gestionale/{condominio}/anagrafiche/{anagrafica}/estratto-conto/print' =>
+            "La stessa regola dell'estratto conto: la guardia è in EstrattoContoAnagraficaController.",
+        'admin/gestionale/{condominio}/anagrafiche/{anagrafica}/fascicolo-legale' =>
+            "Il fascicolo per il legale di chi è stato tolto dal condominio con rate ancora sue: la regola\n".
+            "dell'estratto conto (Anagrafica::delCondominio). La guardia è in FascicoloLegaleController.",
+        'admin/gestionale/{condominio}/anagrafiche/{anagrafica}/fascicolo-legale/documenti/{documento}' =>
+            "La stessa regola del fascicolo; {documento} non è un modello legato: si cerca nella riga della\n".
+            "persona in FascicoloLegaleController.",
+        'admin/gestionale/{condominio}/anagrafiche/{anagrafica}/rimborsi' =>
+            "Il rimborso del credito parte dall'estratto conto, con la sua regola (Anagrafica::delCondominio):\n".
+            "la guardia è in RimborsaCreditoRequest::authorize e nel controller.",
     ];
 }
 

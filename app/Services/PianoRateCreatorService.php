@@ -108,9 +108,17 @@ class PianoRateCreatorService
                 $bySetPos = 1;
 
             } else {
-                if ($giorno >= 29) {
+                if ($giorno >= 31) {
                     $rule->setByMonthDay([-1]); // ultimo giorno del mese
                     $byMonthDayVal = -1;
+                } elseif ($giorno >= 29) {
+                    // Il giorno scelto, o l'ultimo del mese se il mese è più corto: min(giorno, giorni del mese), come
+                    // `GenerateDateRateAction` senza ricorrenza. Fra i giorni dal 28 al giorno scelto che il mese ha, l'ultimo:
+                    // il 30 resta 30 a marzo (non il 31) e diventa il 28 a febbraio.
+                    $rule->setByMonthDay(range(28, (int) $giorno));
+                    $rule->setBySetPosition([-1]);
+                    $byMonthDayVal = (int) $giorno;
+                    $bySetPos = -1;
                 } else {
                     $rule->setByMonthDay([$giorno]);
                     $byMonthDayVal = $giorno;

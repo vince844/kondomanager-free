@@ -31,9 +31,9 @@ const props = defineProps<{
     isProcessing: boolean;
 }>();
 
-// Voci con già-versato attivo: solo per queste la rata integrativa chiede il
-// residuo netto invece dell'intero sforo lordo (CalcoloQuoteService::
-// guardiaSovraFinanziamentoGiaVersato) — vale la pena spiegarlo solo qui.
+// Voci con già-versato attivo: solo per queste il piano integrativo chiede meno dello sforo, perché il
+// motore toglie il già versato nella parte che il piano chiede della voce alzata alla spesa
+// (`residuoNettoStimatoCents`, calcolato dalla pagina della fattura) — vale la pena spiegarlo solo qui.
 const vociConGiaVersato = computed(() => props.vociInSforo.filter(v => v.giaVersatoCents > 0));
 
 const emit = defineEmits<{
@@ -210,7 +210,7 @@ const handleConfirm = () => {
                         </div>
                     </div>
 
-                    <!-- Già-versato: la rata integrativa chiederà il netto, non il lordo -->
+                    <!-- Già-versato: la cifra che chiederà il piano integrativo, e il piano base da ricalcolare -->
                     <Transition
                         enter-active-class="transition-all duration-300 ease-out"
                         enter-from-class="opacity-0 -translate-y-4"
@@ -219,27 +219,25 @@ const handleConfirm = () => {
                             class="bg-indigo-50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-900/40 rounded-xl p-4 space-y-2.5">
                             <div class="flex items-start gap-2.5">
                                 <Wallet class="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                                <p class="text-[11px] text-indigo-800 dark:text-indigo-300 leading-relaxed">
+                                <p class="text-xs text-indigo-800 dark:text-indigo-300 leading-relaxed" data-testid="integrativo-gia-versato">
                                     <span v-if="vociConGiaVersato.length === 1">Questa voce ha</span>
                                     <span v-else>Queste voci hanno</span>
-                                    già-versato registrato: il piano rate integrativo terrà conto di quanto già
-                                    contribuito dai condòmini e chiederà solo il residuo netto — non l'intero sforo
-                                    lordo mostrato sopra.
+                                    un già versato: il piano integrativo lo toglie solo nella parte che chiede della voce, e chiede circa:
                                 </p>
                             </div>
                             <div class="space-y-1.5 pl-6">
                                 <div v-for="v in vociConGiaVersato" :key="v.id"
-                                    class="flex items-center justify-between gap-3 text-[11px]">
+                                    class="flex items-center justify-between gap-3 text-xs">
                                     <span class="text-indigo-700/80 dark:text-indigo-400/80 truncate">{{ v.nome }}</span>
-                                    <span class="shrink-0 tabular-nums">
-                                        <span class="text-indigo-500/70 line-through mr-1.5">{{ euro(v.sforoLordoCents) }}</span>
-                                        <span class="font-black text-indigo-800 dark:text-indigo-200">{{ euro(v.residuoNettoStimatoCents) }}</span>
-                                    </span>
+                                    <span class="shrink-0 tabular-nums font-black text-indigo-800 dark:text-indigo-200">{{ euro(v.residuoNettoStimatoCents) }}</span>
                                 </div>
                             </div>
-                            <p class="text-[10px] text-indigo-500/70 pl-6 leading-relaxed">
-                                Stima indicativa (presume che questa fattura sia il costo totale reale della voce):
-                                l'importo definitivo lo calcola il motore di riparto quando generi il piano rate.
+                            <p class="text-xs text-indigo-700/80 dark:text-indigo-400/80 pl-6 leading-relaxed" data-testid="integrativo-ricalcola-base">
+                                Il piano base va ricalcolato: ha tolto il già versato sulla voce di prima, e senza il ricalcolo una parte della spesa
+                                non la chiede nessun piano.
+                            </p>
+                            <p class="text-xs text-indigo-500/80 pl-6 leading-relaxed">
+                                Stima: presume che questa fattura sia tutta la spesa della voce. La cifra esatta la calcola il programma quando generi il piano.
                             </p>
                         </div>
                     </Transition>

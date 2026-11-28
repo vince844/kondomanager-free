@@ -14,6 +14,7 @@ use App\Models\Condominio;
 use App\Models\Tabella;
 use App\Traits\HandleFlashMessages;
 use App\Traits\HasEsercizio;
+use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
@@ -143,6 +144,9 @@ class TabellaQuotaController extends Controller
      */
     public function update(UpdateQuoteRequest $request, Condominio $condominio, Tabella $tabella): RedirectResponse
     {
+        // Cambiare i millesimi della tabella chiede «Modifica condomini», come l'unità e le impostazioni del condominio; la pagina si apre con il solo accesso.
+        Gate::authorize('update', $condominio);
+
         $this->assicuraTabellaDelCondominio($condominio, $tabella);
 
         $validated = $request->validated();

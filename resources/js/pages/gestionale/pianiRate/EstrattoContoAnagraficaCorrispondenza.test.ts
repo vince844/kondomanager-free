@@ -163,7 +163,7 @@ describe('le schede dell\'estratto conto', () => {
         // Il collegamento dice che cosa c'è: con i nomi dei tipi della scheda, contati come la scheda.
         expect(vedi.text()).toBe('Corrispondenza: 1 lettera e 2 ricevute');
         expect(vedi.attributes('title')).toBe('Vedi la corrispondenza: 1 lettera e 2 ricevute');
-        expect(vedi.classes()).toEqual(expect.arrayContaining(['hover:underline', 'text-[11px]']));
+        expect(vedi.classes()).toEqual(expect.arrayContaining(['hover:underline', 'text-xs']));
         expect(vedi.classes().filter((c) => /^(border|h-7|bg-)/.test(c))).toEqual([]);
         expect(prepara.classes()).toEqual(expect.arrayContaining(['h-7', 'shrink-0', 'rounded-md']));
     });

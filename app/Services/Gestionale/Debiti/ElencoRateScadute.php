@@ -247,7 +247,10 @@ final class ElencoRateScadute
                     'residuo' => $r['residuo'],
                     'giorni_ritardo' => $r['giorni_ritardo'],
                     'pregresso' => $r['pregresso'] === null ? null : $r['pregresso'] + ['etichetta' => OriginePregresso::etichetta($r['pregresso'])],
-                    'pregresso_nella_rata' => $r['pregresso_nella_rata'],
+                    // La parte di un debito di prima dentro la rata, ancora da pagare (pagata per prima): con la sua origine, e nelle fasce con l'età
+                    // dell'origine (`LetturaDebiti::totaliDi`). Il segno «la sua età è quella della rata» resta per un credito di prima, che non si divide.
+                    'di_prima' => self::diPrima($r),
+                    'pregresso_nella_rata' => $r['pregresso_nella_rata'] && self::diPrima($r) === null && (int) ($r['pregresso_in_rata'] ?? 0) <= 0,
                     'sei_mesi' => $seiMesi,
                     // La parte della rata in un accordo di rientro in corso: il segno, e quanto le lettere lasciano fuori.
                     'accordo' => $segni['parti'][AccordiRientro::chiave($r['rata_id'], $r['immobile_id'])] ?? null,
@@ -281,9 +284,9 @@ final class ElencoRateScadute
                     'ritardo_testo' => OriginePregresso::fraseRitardo($t['ritardo_massimo'], $t['anzianita_non_nota']),
                     'sei_mesi' => self::piuVicinaDellaPersona($dettaglio),
                     // «Con pregresso»: la rata 0 (o la gemella di un passaggio), e anche il pregresso dentro la rata 1 dei piani che lo spalmano.
-                    'con_pregresso' => collect($dettaglio)->contains(fn ($d) => $d['pregresso'] !== null || $d['pregresso_nella_rata']),
+                    'con_pregresso' => collect($dettaglio)->contains(fn ($d) => $d['pregresso'] !== null || $d['pregresso_nella_rata'] || $d['di_prima'] !== null),
                     'origine_non_dichiarata' => collect($dettaglio)->contains(fn ($d) => ($d['pregresso']['origine'] ?? null) === OriginePregresso::NON_DICHIARATA),
-                    'pregresso_nella_rata' => collect($dettaglio)->contains(fn ($d) => $d['pregresso_nella_rata']),
+                    'pregresso_nella_rata' => collect($dettaglio)->contains(fn ($d) => $d['pregresso_nella_rata'] || $d['di_prima'] !== null),
                 ];
             }
             if ($filtri['minimo'] !== null && $importo < $filtri['minimo']) {
@@ -418,5 +421,19 @@ final class ElencoRateScadute
             'importo' => (int) $quote->sum(fn ($q) => (int) $q->importo - (int) $q->importo_pagato),
             'saldi' => $saldi,
         ];
+    }
+
+    /**
+     * La parte di un debito di prima ancora da pagare dentro una rata (`pregresso_residuo` della lettura, non oltre il residuo), con le parole della sua
+     * origine; null se non c'è.
+     *
+     * @param  array<string, mixed>  $r
+     * @return array{importo: int, etichetta: string}|null
+     */
+    private static function diPrima(array $r): ?array
+    {
+        $importo = min((int) $r['residuo'], (int) ($r['pregresso_residuo'] ?? 0));
+
+        return $importo > 0 ? ['importo' => $importo, 'etichetta' => OriginePregresso::etichetta($r['pregresso_della_rata'] ?? ['origine' => OriginePregresso::NON_DICHIARATA])] : null;
     }
 }

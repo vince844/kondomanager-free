@@ -6,8 +6,6 @@
 namespace App\Http\Requests\Gestionale\Immobile\Documento;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Facades\Auth;
-use App\Enums\Permission;
 
 /**
  * @method bool merge(string $key)
@@ -32,28 +30,12 @@ class UpdateImmobileDocumentoRequest extends FormRequest
         return [
             'name'            => ['sometimes', 'required', 'string'],
             'description'     => ['sometimes', 'nullable', 'string'],
-            'created_by'      => ['sometimes', 'required', 'exists:users,id'],
-            'is_approved'     => ['sometimes', 'required', 'boolean'],
             'is_published'    => ['sometimes', 'required', 'boolean'],
             'file'            => ['nullable', 'file', 'mimes:pdf', 'max:'.\App\Support\LimiteCaricamento::regolaMax()],
         ];
     }
 
-    /**
-     * Prepare the data for validation.
-     *
-     * @return void
-     */
-    public function prepareForValidation(): void
-    {
-
-        $user = Auth::user();
-
-        $this->merge([
-            'created_by' => $user->id,
-            'is_approved' => $user->hasPermissionTo(Permission::PUBLISH_ARCHIVE_DOCUMENTS->value),
-        ]);
-    }
+    // Chi ha caricato il documento e se è approvato si scrivono alla creazione (`CreateImmobileDocumentoRequest`): la modifica non li riceve.
 
     /**
      * Get custom attributes for validator errors.

@@ -27,6 +27,9 @@ class GeneralSettings extends ImpostazioniDelRegistro
     /** Coda 788, decisione 713: i condòmini e i fornitori hanno «Avvisa lo studio» sulla pagina d'errore. Acceso di serie. */
     public bool $errori_avviso_dalla_pagina = true;
 
+    /** Chi entra nel pannello deve avere la verifica in due passaggi confermata (`DueFattoriPerIlPannello`). Spenta di serie. */
+    public bool $due_fattori_obbligatoria_pannello = false;
+
     /**
      * Quante righe mostrano gli elenchi a chi non ha ancora scelto.
      *

@@ -131,13 +131,15 @@ it('il piano che tiene il capitolo di primo livello con le sue tabelle e il capi
 })->with(['il padre «Manutenzione»' => ['capitolo'], 'il padre «Spese generali»' => ['generali']]);
 
 it('due piani approvati tengono il capitolo: il rifiuto li nomina al plurale; riportato in bozza uno solo, il rifiuto nomina l\'altro; con tutti e due in bozza la modifica passa', function () {
-    $s = b53bvScenario($this, ['impianti' => '300,00'], true, ['Integrativo C' => ['impianti' => '50,00']]);
+    // I due piani chiedono il capitolo per € 50,00 ciascuno: il Rimborso vale € 100,00, e un secondo piano oltre il residuo della sottovoce non nasce
+    // (`TettoSulleVoci::primoSforo`). Il soggetto è il capitolo tenuto da due piani approvati, non la cifra.
+    $s = b53bvScenario($this, ['impianti' => '50,00'], true, ['Integrativo C' => ['impianti' => '50,00']]);
     $c = $s['altri']['Integrativo C'];
     $prima = [b53bvPiano($this, $s, $s['b']), b53bvPiano($this, $s, $c)];
 
     b53snModificaVoce($this, $s, $s['rimborso'], 'entrata', '-100,00', (int) $s['capitolo']->id);
 
-    expect([$prima[0]['motore'], $prima[1]['motore']])->toBe([[(int) $s['rimborso']->id => 30000], [(int) $s['rimborso']->id => 5000]])
+    expect([$prima[0]['motore'], $prima[1]['motore']])->toBe([[(int) $s['rimborso']->id => 5000], [(int) $s['rimborso']->id => 5000]])
         ->and(b53snErrori())->toBe(['tipo' => ['Modifica inibita: l\'importo, il padre, il tipo, la tabella e le percentuali della voce non si cambiano finché il suo capitolo «Impianti» è nei piani '
             .'«Preventivo B» e «Integrativo C», approvati: riporta prima i piani in bozza dalle loro pagine, poi modifica la voce. Riportandoli in bozza si azzerano il '
             .'numero del verbale e la nota dell\'approvazione: annotali prima; con delle rate emesse, prima vanno annullate le emissioni.']])
@@ -460,7 +462,7 @@ it('controprova — il sottoconto al terzo livello che nessun piano approvato ti
 });
 
 it('il sottoconto al terzo livello con delle righe di fattura: la frase indica il capitolo padre di primo livello, la sola strada che passa, e non propone di eliminarlo', function (bool $tenuto) {
-    $s = b53bvScenario($this, $tenuto ? ['impianti' => '300,00'] : ['generali' => ''], $tenuto);
+    $s = b53bvScenario($this, $tenuto ? ['impianti' => '300,00'] : ['pulizie' => ''], $tenuto);
     b53bvRigheDiFattura($s, $s['rimborso']);
 
     b53snModificaVoce($this, $s, $s['rimborso'], 'spesa', '-100,00', (int) $s['impianti']->id);

@@ -100,6 +100,9 @@ export const createColumns = (condominio: Building, immobile: Immobile): ColumnD
       };
 
       const canApprove = hasPermission([Permission.APPROVE_ARCHIVE_DOCUMENTS]);
+      // Lo scaricamento chiede «Visualizza documenti archivio» (`ImmobileDocumentoController::download`): senza, il nome resta testo.
+      const canDownload = hasPermission([Permission.VIEW_ARCHIVE_DOCUMENTS]);
+      const nameClass = 'font-semibold text-sm text-slate-900 dark:text-slate-100 truncate leading-tight';
       const MimeIcon = getMimeIcon(documento.mime_type);
 
       const fileIcon = h('div', {
@@ -111,10 +114,12 @@ export const createColumns = (condominio: Building, immobile: Immobile): ColumnD
         // Riga 1: Titolo + Dot
         h('div', { class: 'flex items-center gap-2 mb-0.5' }, [
             renderApprovalDot(documento, canApprove, toggleApproval),
-            h('a', {
-                href: route(generateRoute('gestionale.immobili.documenti.download'), { condominio: condominio.id, immobile: immobile.id, documento: documento.id }),
-                class: 'font-semibold text-sm text-slate-900 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors truncate leading-tight',
-            }, documento.name),
+            canDownload
+              ? h('a', {
+                  href: route(generateRoute('gestionale.immobili.documenti.download'), { condominio: condominio.id, immobile: immobile.id, documento: documento.id }),
+                  class: `${nameClass} hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors`,
+                }, documento.name)
+              : h('span', { class: nameClass }, documento.name),
         ]),
 
         // Riga 2: Descrizione (se presente)
@@ -130,11 +135,13 @@ export const createColumns = (condominio: Building, immobile: Immobile): ColumnD
             h('span', { class: 'text-[10px] text-slate-400 uppercase tracking-widest font-mono' }, documento.mime_type || 'FILE'),
             h('span', { class: 'text-[10px] text-slate-300' }, '•'),
             h('span', { class: 'text-[10px] text-slate-400 tracking-widest' }, documento.file_size ? formatFileSize(documento.file_size) : 'N/A'),
-            h('span', { class: 'text-[10px] text-slate-300' }, '•'),
-            h('span', { class: 'text-[10px] text-slate-400 leading-none truncate flex items-center gap-1 group-hover:text-indigo-500 transition-colors' }, [
-                h(Download, { class: 'w-3 h-3' }),
-                'Scarica'
-            ])
+            ...(canDownload ? [
+              h('span', { class: 'text-[10px] text-slate-300' }, '•'),
+              h('span', { class: 'text-[10px] text-slate-400 leading-none truncate flex items-center gap-1 group-hover:text-indigo-500 transition-colors' }, [
+                  h(Download, { class: 'w-3 h-3' }),
+                  'Scarica'
+              ]),
+            ] : []),
         ])
       ]);
 

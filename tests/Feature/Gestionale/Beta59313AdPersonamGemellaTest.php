@@ -25,14 +25,18 @@ beforeEach(function () {
     $this->user = b59apAdmin();
 });
 
-/** Il piano di E:300 (€ 1.200,00 ad personam su Interno 1 in 12 rate, il pregresso di Rossi di € 180,00 spalmato) e Anna Neri. */
+/**
+ * Il piano di E:300 (€ 1.200,00 ad personam su Interno 1 in 12 rate, il pregresso di Rossi di € 180,00 spalmato) e Anna Neri. La fattura è
+ * del 10 giugno, dopo la vendita del 1° maggio, perché le bozze 5–12 passino ad Anna: dalla Coda 610 la riga sull'unità senza competenza è di
+ * chi è titolare il giorno della fattura, e una fattura di prima della vendita lascerebbe le bozze a Rossi (decisione 26.4).
+ */
 function b59apgPianoEAnna($test, string $suff): array
 {
     $s = b59apBase(tipoGestione: 'ordinaria', saldi: ['mario' => 18000]);
     $anna = Anagrafica::forceCreate(['nome' => 'Anna Neri', 'email' => "b59apg-anna{$suff}@test.it", 'indirizzo' => 'Via Po 2',
         'codice_fiscale' => strtoupper(str_pad("B59APGANNA{$suff}", 16, 'X'))]);
     $anna->condomini()->syncWithoutDetaching([$s['c']->id]);
-    $piano = b59apPianoConSaldi($s, b59apFattura($test, $s, [b59apRigaAdPersonam($s, 1200.00, 0)]), 12, 'tutte_rate');
+    $piano = b59apPianoConSaldi($s, b59apFattura($test, $s, [b59apRigaAdPersonam($s, 1200.00, 0)], data: '2026-06-10'), 12, 'tutte_rate');
 
     return [$s, $anna, $piano];
 }

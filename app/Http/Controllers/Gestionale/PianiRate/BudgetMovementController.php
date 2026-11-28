@@ -21,6 +21,9 @@ use Illuminate\Validation\ValidationException;
 
 class BudgetMovementController extends Controller
 {
+    /** Il rifiuto di «Sposta spesa» in un piano straordinario. */
+    public const RIFIUTO_STRAORDINARIO = 'Nei piani straordinari non si sposta budget: le voci del piano sono le fatture.';
+
     public function __construct(
         protected BudgetMovementService $budgetService
     ) {}
@@ -37,6 +40,10 @@ class BudgetMovementController extends Controller
         abort_unless($pianoRate->condominio_id === $condominio->id, 404);
         if (($rifiuto = $pianoRate->rifiutoDegliAddebiti()) !== null) {
             return back()->withErrors(['piano' => $rifiuto]);
+        }
+        // Nel piano straordinario le voci del piano sono le fatture, che non hanno una riga in `piano_rate_capitoli`: lo spostamento non ha su che cosa lavorare.
+        if ($pianoRate->tipo === 'straordinario') {
+            return back()->withErrors(['piano' => self::RIFIUTO_STRAORDINARIO]);
         }
 
         // 1. Validazione
@@ -94,7 +101,7 @@ class BudgetMovementController extends Controller
             return back()->withErrors($e->errors());
         } catch (\Exception $e) {
             Log::error("Budget Movement Error: " . $e->getMessage());
-            return back()->withErrors(['amount' => 'Errore di sistema: ' . $e->getMessage()]);
+            return back()->withErrors(['amount' => 'Errore di sistema: ' . \App\Support\Errori\MessaggioPerLaPagina::di($e, 'BudgetMovementController@store')]);
         }
     }
 
@@ -121,7 +128,7 @@ class BudgetMovementController extends Controller
             return back()->withErrors($e->errors());
         } catch (\Exception $e) {
             Log::error("Budget Movement Reverse Error: " . $e->getMessage());
-            return back()->withErrors(['amount' => 'Errore di sistema: ' . $e->getMessage()]);
+            return back()->withErrors(['amount' => 'Errore di sistema: ' . \App\Support\Errori\MessaggioPerLaPagina::di($e, 'BudgetMovementController@reverse')]);
         }
     }
 }

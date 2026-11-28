@@ -11,6 +11,8 @@ use App\Http\Requests\Fornitore\Concerns\ChiedeLaNaturaDelPercipiente;
 use App\Helpers\MoneyHelper;
 use App\Models\Fornitore;
 use App\Rules\UniqueEmailAcrossTables;
+use Illuminate\Auth\Access\Response;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Carbon\Carbon;
@@ -20,9 +22,13 @@ class UpdateFornitoreRequest extends FormRequest
 {
     use ChiedeLaNaturaDelPercipiente;
 
-    public function authorize(): bool
+    /**
+     * Il permesso prima dei campi: chi non può modificare fornitori riceve il rifiuto, non l'errore sui dati di un altro
+     * fornitore. La stessa abilità che il controller ripete (`FornitorePolicy::update`).
+     */
+    public function authorize(): Response
     {
-        return true;
+        return Gate::forUser($this->user())->inspect('update', $this->route('fornitore'));
     }
 
     public function rules(): array

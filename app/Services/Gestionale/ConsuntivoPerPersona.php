@@ -19,6 +19,7 @@ use App\Services\CalcoloQuoteService;
 use App\Services\Gestionale\Debiti\LetturaDebiti;
 use App\Services\Riparto\CompetenzaDelPiano;
 use App\Services\Riparto\RisolutoreTitolari;
+use App\Services\Riparto\RuoloDellaVoce;
 use App\Support\PeriodoCompetenza;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
@@ -272,6 +273,8 @@ class ConsuntivoPerPersona
                 'competenze_scritte' => $esito['competenze_scritte'],
                 // Quante volte il motore ha diviso ogni conto (una per competenza): il controllo per unità ne conta i centesimi del resto.
                 'divisioni' => $esito['divisioni'],
+                // Le voci divise con le letture di fine anno: i coefficienti del preventivo e le percentuali del consuntivo, per tabella.
+                'letture' => $esito['letture'] ?? [],
                 // Le voci ferme per i periodi diversi di due piani: i piani, per voce, e che cosa è cambiato nelle unità della voce (`titolare`, `inquilino`,
                 // `titolare_e_inquilino`, come `gia_versato_da_decidere_perche`).
                 'periodi_diversi' => array_map(fn (array $f) => $f['piani'], $periodiDiversi),
@@ -1138,9 +1141,9 @@ class ConsuntivoPerPersona
             ->where('fs.tipo', 'competenza')
             ->whereNull('sc.deleted_at')
             ->where('sc.data_competenza', '<', $dopo)
-            ->groupBy('rf.id', 'rf.fattura_passiva_id', 'rf.immobile_id', 'rf.importo_imponibile', 'rf.importo_iva', 'fp.fattura_rettificata_id', 'fp.data_documento', 'fp.competenza_dal', 'fp.competenza_al', 'sc.gestione_id')
+            ->groupBy('rf.id', 'rf.fattura_passiva_id', 'rf.immobile_id', 'rf.conto_id', 'rf.conto_addebito_id', 'rf.importo_imponibile', 'rf.importo_iva', 'fp.fattura_rettificata_id', 'fp.data_documento', 'fp.competenza_dal', 'fp.competenza_al', 'fp.is_pregresso', 'sc.gestione_id')
             ->orderBy('rf.id')
-            ->get(['rf.id', 'rf.fattura_passiva_id', 'rf.immobile_id', 'rf.importo_imponibile', 'rf.importo_iva', 'fp.fattura_rettificata_id', 'fp.data_documento', 'fp.competenza_dal', 'fp.competenza_al', 'sc.gestione_id']);
+            ->get(['rf.id', 'rf.fattura_passiva_id', 'rf.immobile_id', 'rf.conto_id', 'rf.conto_addebito_id', 'rf.importo_imponibile', 'rf.importo_iva', 'fp.fattura_rettificata_id', 'fp.data_documento', 'fp.competenza_dal', 'fp.competenza_al', 'fp.is_pregresso', 'sc.gestione_id']);
 
         // Le fatture con una parte chiesta su un'unità: con le loro note collegate su quell'unità fanno una cifra sola (righe + note − chiesto).
         $chiestoSu = [];
@@ -1181,6 +1184,11 @@ class ConsuntivoPerPersona
         $destinatariDi = [];
         $esito = [];
         $senzaTitolare = [];
+        // La natura della gestione della scrittura e la voce della riga: la spesa di un'unità in usufrutto segue la voce, e senza una voce che dica
+        // un ruolo solo, su un'ordinaria, può essere dell'usufruttuario (`ordineDelleSpesePersonali`), come nel piano da fatture.
+        $tipiDelleGestioni = DB::table('gestioni')->whereIn('id', $righe->pluck('gestione_id')->filter()->unique()->all())->pluck('tipo', 'id')->all();
+        $basi = [];
+        $ruoliDelleVoci = [];
         foreach ($voci as ['r' => $r, 'importo' => $importo]) {
             if ($importo === 0) {
                 continue;
@@ -1189,17 +1197,34 @@ class ConsuntivoPerPersona
             $fino = $r->competenza_dal !== null && $r->competenza_al !== null ? substr((string) $r->competenza_al, 0, 10) : $giorno;
             $g = isset($nelleGestioni[(int) $r->gestione_id]) ? (int) $r->gestione_id : 0;
             $iid = (int) $r->immobile_id;
+            // La spesa vecchia senza periodo, come nel piano da fatture (`CalcoloQuoteService::giornoDellaSpesaPersonale`): su una gestione ordinaria
+            // dell'esercizio, senza la competenza scritta, con il giorno della fattura prima della base o pregressa, non si indovina chi era titolare quando
+            // il costo è maturato, e si divide sui giorni della base, quella delle spese comuni senza competenza (la gestione dentro l'esercizio).
+            $base = $g === 0 || ($r->competenza_dal !== null && $r->competenza_al !== null) ? null
+                : ($basi[$g] ??= $this->baseDellaGestione($g, $esercizio));
+            $sulleBase = $base !== null && NaturaGestione::daStringa($tipiDelleGestioni[$g] ?? null) !== NaturaGestione::Straordinaria
+                && ((bool) $r->is_pregresso || substr((string) $r->data_documento, 0, 10) < $base->dal->toDateString());
+            if ($sulleBase) {
+                $giorno = $base->dal->toDateString();
+                $fino = $base->al->toDateString();
+            }
             // Un giorno solo (o titolari che non cambiano nei giorni scritti): chi era titolare, per quota. Più tratti: per giorni fra chi era titolare in ognuno.
             $tratti = $this->trattiDellUnita($iid, $giorno, max($giorno, $fino));
+            $tipo = $tipiDelleGestioni[(int) $r->gestione_id] ?? null;
+            // La voce della riga (`conto_id`, sulle righe scritte prima della 1.9.0), altrimenti la voce dell'addebito: la riga di un'unità scritta dalla
+            // pagina della fattura ha la voce comune vuota e la voce scelta in `conto_addebito_id`.
+            $idVoce = $r->conto_id ?? $r->conto_addebito_id;
+            $voce = $idVoce === null ? null : ($ruoliDelleVoci[(int) $idVoce] ??= [RuoloDellaVoce::di((int) $idVoce)])[0];
+            $chiave = $tipo . '|' . ($voce?->value ?? '');
             if (count($tratti) === 1) {
-                $pesi = $destinatariDi[$iid . '|' . $giorno] ??= $this->titolariDiDirittoReale($titolari, $iid, $giorno);
+                $pesi = $destinatariDi[$iid . '|' . $giorno . '|' . $chiave] ??= $this->titolariDiDirittoReale($titolari, $iid, $giorno, $this->ordineDelleSpesePersonali($titolari, $iid, $giorno, $tipo, $voce));
                 $tratti = [];
             } else {
                 $pesi = [];
             }
             $scoperti = 0;
             foreach ($tratti as [$dal, $giorni]) {
-                $chi = $destinatariDi[$iid . '|' . $dal] ??= $this->titolariDiDirittoReale($titolari, $iid, $dal);
+                $chi = $destinatariDi[$iid . '|' . $dal . '|' . $chiave] ??= $this->titolariDiDirittoReale($titolari, $iid, $dal, $this->ordineDelleSpesePersonali($titolari, $iid, $dal, $tipo, $voce));
                 if ($chi === []) {
                     $scoperti += $giorni;
 
@@ -1224,8 +1249,11 @@ class ConsuntivoPerPersona
 
                     continue;
                 }
-                $esito[$g][$aid][$iid][] = ['riga_fattura_id' => (int) $r->id, 'fattura_passiva_id' => (int) $r->fattura_passiva_id, 'giorno' => $giorno,
-                    'importo' => $parte, 'esercizio_prima' => substr((string) $r->data_documento, 0, 10) < $inizio];
+                $esito[$g][$aid][$iid][] = ['riga_fattura_id' => (int) $r->id, 'fattura_passiva_id' => (int) $r->fattura_passiva_id,
+                    'giorno' => $sulleBase ? substr((string) $r->data_documento, 0, 10) : $giorno,
+                    'importo' => $parte, 'esercizio_prima' => substr((string) $r->data_documento, 0, 10) < $inizio,
+                    // La spesa senza periodo divisa sui giorni della base: le stampe dicono quei giorni, non il solo giorno della fattura.
+                    'divisa_sui_giorni' => $sulleBase ? $base->toArray() : null];
             }
         }
 
@@ -1242,6 +1270,21 @@ class ConsuntivoPerPersona
         }
 
         return [$esito, $senzaTitolare, $nonRicostruite, $nonEmesse];
+    }
+
+    /**
+     * La base di una gestione ordinaria nell'esercizio, la stessa del motore per le spese comuni senza competenza (`CalcoloQuoteService::preparaConsuntivo`):
+     * i giorni della gestione dentro l'esercizio, o l'esercizio se la gestione non ha le due date o non ha un giorno in comune con lui.
+     */
+    private function baseDellaGestione(int $gestioneId, Esercizio $esercizio): ?PeriodoCompetenza
+    {
+        $periodoEsercizio = PeriodoCompetenza::daEsercizio($esercizio);
+        $gestione = Gestione::find($gestioneId);
+        if ($periodoEsercizio === null || $gestione === null) {
+            return $periodoEsercizio;
+        }
+
+        return PeriodoCompetenza::daGestione($gestione)?->intersezione($periodoEsercizio) ?? $periodoEsercizio;
     }
 
     /**
@@ -1286,6 +1329,35 @@ class ConsuntivoPerPersona
         $catena = RuoloAnagraficaImmobile::catenaSaldoSolidale($tipoGestione);
 
         return [...$catena, ...array_values(array_filter(RuoloAnagraficaImmobile::titolariDiDirittoReale(), fn ($r) => ! in_array($r, $catena, true)))];
+    }
+
+    /**
+     * L'ordine dei titolari per la spesa di una sola unità in un giorno, la stessa regola del piano da fatture (`CalcoloQuoteService::ordineDellAddebito`).
+     * La spesa segue la voce su cui è scritta (`RuoloDellaVoce`): sul solo «Usufruttuario» prima l'usufruttuario, poi il proprietario e il nudo
+     * proprietario; sul solo «Proprietario» l'ordine di sempre (`null`). Senza una voce che dica un ruolo solo: su una gestione ordinaria, quando quel
+     * giorno l'unità ha delle righe d'usufrutto e ognuna è nata da un passaggio registrato che ha scelto «l'ordinaria all'usufruttuario», prima
+     * l'usufruttuario; altrimenti `null`, l'ordine di sempre.
+     *
+     * @return list<RuoloAnagraficaImmobile>|null
+     */
+    private function ordineDelleSpesePersonali(RisolutoreTitolari $titolari, int $immobileId, string $giorno, ?string $tipoGestione, ?RuoloAnagraficaImmobile $voce = null): ?array
+    {
+        if ($voce !== null) {
+            return $voce === RuoloAnagraficaImmobile::USUFRUTTUARIO
+                ? [RuoloAnagraficaImmobile::USUFRUTTUARIO, RuoloAnagraficaImmobile::PROPRIETARIO, RuoloAnagraficaImmobile::NUDA_PROPRIETA] : null;
+        }
+        if ($tipoGestione !== 'ordinaria') {
+            return null;
+        }
+        $usufrutti = $titolari->vincolaQuery(DB::table('anagrafica_immobile')->where('immobile_id', $immobileId), PeriodoCompetenza::puntuale($giorno))
+            ->where('tipologia', RuoloAnagraficaImmobile::USUFRUTTUARIO->value)->get(['id']);
+        $allUsufruttuario = $usufrutti->isNotEmpty() && $usufrutti->every(function ($riga) use ($immobileId) {
+            $origine = Subentro::origineDellUsufrutto((int) $riga->id, $immobileId);
+
+            return $origine !== null && ! $origine->ordinariaComeLaVoce();
+        });
+
+        return $allUsufruttuario ? [RuoloAnagraficaImmobile::USUFRUTTUARIO, RuoloAnagraficaImmobile::PROPRIETARIO, RuoloAnagraficaImmobile::NUDA_PROPRIETA] : null;
     }
 
     /**
@@ -1489,9 +1561,9 @@ class ConsuntivoPerPersona
     }
 
     /**
-     * Le unità con un cambio di titolare dentro l'esercizio con giorni scoperti fra chi esce e chi entra e senza un passaggio registrato (D7: chi entra
-     * conta dall'inizio, perché la sua riga non ha un predecessore chiuso il giorno prima): la frase, per unità. Il motore non cambia; la scheda e i
-     * controlli dicono di registrare il passaggio.
+     * Le unità con un cambio di titolare dentro l'esercizio con giorni scoperti fra chi esce e chi entra e senza un passaggio registrato: la frase, per
+     * unità. Il motore conta chi entra dalla sua data, come con il passaggio registrato (`RisolutoreTitolari::haPredecessoreChiuso`, il buco fra due
+     * titolari), e i giorni in mezzo restano senza titolare; la scheda e i controlli dicono di registrare il passaggio.
      *
      * @return array<int, list<string>>
      */
@@ -1532,7 +1604,8 @@ class ConsuntivoPerPersona
         foreach ($trovati as $t) {
             $entra = (string) ($nomi[$t['entra']] ?? '');
             $esito[$t['iid']][] = ($unita[$t['iid']] ?? 'Unità '.$t['iid']).': '.($nomi[$t['esce']] ?? '').' fino al '.$data($t['fino']).', '.$entra.' dal '.$data($t['dal'])
-                .', senza un passaggio registrato. Così '.$entra.' conta dall\'inizio dell\'anno; con il passaggio registrato conterebbe dal '.$data($t['dal']).'.';
+                .', senza un passaggio registrato. '.$entra.' conta dal '.$data($t['dal'])
+                .', come se il passaggio fosse registrato: i giorni in mezzo non hanno un titolare e la loro parte non è divisa fra le persone.';
         }
 
         return $esito;

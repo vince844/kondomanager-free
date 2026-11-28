@@ -14,13 +14,14 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Plus, List } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
+import { Permission } from "@/enums/Permission";
 import { useTabellaServer } from '@/composables/useTabellaServer';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { trans } from 'laravel-vue-i18n';
 import type { Table } from '@tanstack/vue-table';
 import type { Categoria } from '@/types/categorie';
 
-const { generateRoute } = usePermission();
+const { generateRoute, hasPermission } = usePermission();
 const nameFilter = ref('')
 const isNewCategorySheetOpen = ref(false)
 
@@ -89,7 +90,9 @@ watchDebounced(
     
     <div class="flex items-center space-x-2">
 
+      <!-- Creare una categoria chiede «Crea documenti archivio» (CategoriaDocumentoPolicy). -->
       <button
+        v-if="hasPermission([Permission.CREATE_ARCHIVE_DOCUMENTS])"
         type="button"
         @click="handleNewCategory"
         class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 dark:bg-slate-700 border border-slate-800 shadow-sm text-xs font-medium text-white hover:bg-slate-800 dark:hover:bg-slate-600 transition-colors"

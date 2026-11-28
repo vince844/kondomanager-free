@@ -391,6 +391,12 @@ export interface RigaStorico {
   /** «7 anni», «8 mesi», «20 giorni». */
   durata: string | null;
   note: string | null;
+  /** Chiusa a mano: nessun passaggio l'ha scritta o chiusa, non continua una riga della stessa persona e non è di un erede. Solo allora si corregge da qui. */
+  correggibile?: boolean;
+  /** La pagina di modifica della riga («Correggi questa riga»), solo se `correggibile`. */
+  url_correggi?: string | null;
+  /** Per una riga di proprietà a quota 0: i giorni del suo periodo in cui nessuno paga per l'unità; zero altrove. */
+  giorni_scoperti?: number;
   subentro: {
     tipo_passaggio: string;
     /** Lo stesso di `PassaggioRegistrato.sottotipo`: la riga si chiama come il suo passaggio (testi T7 della beta.38). */
@@ -406,6 +412,23 @@ export interface RigaStorico {
     /** Decisione 72 (1.11.0-beta.48): nella successione il conguaglio non è stato scritto, con o senza nota. */
     conguaglio_non_scritto?: boolean;
   } | null;
+}
+
+/** Una riga di proprietà chiusa a quota 0 che un altro proprietario segue (`RigheAQuotaZero`): nei suoi giorni nessuno paga per l'unità. */
+export interface RigaAQuotaZero {
+  riga_id: number;
+  immobile_id: number;
+  unita: string;
+  anagrafica_id: number;
+  persona: string;
+  tipologia: string;
+  dal: string | null;
+  al: string;
+  /** «1 gen 2026 – 15 set 2026». */
+  periodo: string;
+  giorni: number;
+  /** Lo storico dell'unità, dove «Correggi questa riga» apre la modifica. */
+  url_storico: string;
 }
 
 /** Un passaggio registrato (`subentri`, S6): il vademecum «chi resta obbligato» ricalcolato dai fatti. */

@@ -24,7 +24,8 @@ use Illuminate\Support\Facades\DB;
  * - **CB, le quote tornano con il riparto**: per ogni unità dei piani con il riparto registrato la spesa delle quote è la somma delle sue righe del
  *   riparto (la regola del deliberato ricostruito). Dove non torna il conguaglio di quell'unità non si calcola: la lettura la dice non disponibile. E dice
  *   dove una tabella è cambiata dopo il piano (il millesimo, la somma dei millesimi o il coefficiente delle righe del riparto contro quelli di oggi): una
- *   segnalazione, perché il conguaglio comprende la differenza.
+ *   segnalazione, perché il conguaglio comprende la differenza. Lo stesso per una voce divisa con le letture di fine anno ({@see frasiDelleLetture()}):
+ *   le rate sono del preventivo, il conguaglio divide con le letture.
  *
  * Senza la lettura (la Sintesi sopra la soglia, il fascicolo senza la parte del conguaglio, la stampa sopra la soglia) i quattro controlli ci sono lo stesso,
  * con un esito loro, «non calcolato», fuori dal conto dei «da leggere», e il rimando alla scheda «Controlli», che la lettura la fa sempre.
@@ -38,9 +39,9 @@ final class ControlliDelConguaglio
 
     /** Quando i costi non tornano con il riepilogo: la 8.3 lo dice e rimanda al controllo che ha il perché. */
     /** I rimedi del passaggio non registrato e delle spese personali: nella stampa hanno una variante senza l'istruzione ({@see ParoleDellaStampa}). */
-    public const RIMEDIO_PASSAGGIO = 'Registra il passaggio dalla pagina dei titolari dell\'unità: con il passaggio chi entra conta dal giorno in cui entra.';
+    public const RIMEDIO_PASSAGGIO = 'I giorni in mezzo non hanno un titolare: se chi è entrato lo è dalla vendita, correggi la sua data di inizio dalla pagina dei titolari dell\'unità.';
 
-    public const RIMEDIO_PASSAGGIO_ANCHE = 'Registra il passaggio dove un titolare è entrato senza.';
+    public const RIMEDIO_PASSAGGIO_ANCHE = 'Dove un titolare è entrato senza un passaggio, i giorni prima non hanno un titolare: se è entrato dalla vendita, correggi la sua data di inizio.';
 
     public const RIMEDIO_PERSONALI = 'Una spesa per una sola unità non è né fra quelle da chiedere né in un piano: guarda le fatture dell\'unità e i piani che le chiedono.';
 
@@ -166,7 +167,7 @@ final class ControlliDelConguaglio
                     }
                 }
             }
-            foreach (self::pesiDelleUnita(array_keys($g['uscite'])) as $cid => $pesi) {
+            foreach (self::pesiDelleUnita(array_keys($g['uscite']), array_map(fn (array $l) => $l['consuntivo'], $g['letture'] ?? [])) as $cid => $pesi) {
                 foreach ($pesi as $iid => $peso) {
                     $esatta[$gid][$iid] = ($esatta[$gid][$iid] ?? 0.0) + (int) $g['uscite'][$cid] * $peso;
                 }
@@ -193,7 +194,8 @@ final class ControlliDelConguaglio
             .', sua parte '.self::euro($f['parte']).($f['persone'] < $f['parte'] ? ', mancano '.self::euro($f['parte'] - $f['persone']) : ', in più '.self::euro($f['persone'] - $f['parte'])),
             array_slice($fuori, 0, self::UNITA_NELLA_NOTA));
 
-        // I cambi di titolare con giorni scoperti e senza un passaggio registrato: il motore non cambia (chi entra conta dall'inizio), il controllo lo dice.
+        // I cambi di titolare con giorni scoperti e senza un passaggio registrato: chi entra conta dalla sua data e i giorni in mezzo restano senza titolare,
+        // come con il passaggio registrato; il controllo lo dice, e il rimedio è la data di inizio di chi è entrato.
         $nonRegistrati = array_filter($letto['passaggi_non_registrati'] ?? []);
         $avvisi = $nonRegistrati === [] ? '' : ' '.implode(' ', array_merge(...array_values($nonRegistrati)));
         $esito = $n !== 0 ? 'non_quadra' : ($nonRegistrati === [] ? 'quadra' : 'segnalazione');
@@ -209,7 +211,7 @@ final class ControlliDelConguaglio
                 ? ($controllate === 0 ? 'Nessuna spesa divisa fra le persone.' : 'Per ognuna delle '.$controllate.' unità la somma delle persone è la sua parte della spesa divisa sulla sola tabella, a meno dei centesimi del resto.')
                 : ($n === 1 ? 'Un\'unità non torna: ' : $n.' unità non tornano: ').implode('; ', $righe).($n > self::UNITA_NELLA_NOTA ? '; e altre '.($n - self::UNITA_NELLA_NOTA) : '')
                     .'. La differenza è fra le spese non attribuite della voce.').$avvisi,
-            'breve' => $n !== 0 ? ($n === 1 ? '1 unità' : $n.' unità') : ($nonRegistrati === [] ? null : 'passaggio da registrare'),
+            'breve' => $n !== 0 ? ($n === 1 ? '1 unità' : $n.' unità') : ($nonRegistrati === [] ? null : 'date da controllare'),
             'rimedio' => $n !== 0
                 ? 'Nei giorni in cui un\'unità non ha un titolare la sua parte non va a nessuno: controlla le date dei titolari dell\'unità.'
                     .($nonRegistrati === [] ? '' : ' '.self::RIMEDIO_PASSAGGIO_ANCHE)
@@ -304,14 +306,23 @@ final class ControlliDelConguaglio
 
     /**
      * I pesi delle unità di ogni conto sulle sue tabelle, senza i titolari: per ogni tabella il coefficiente per il millesimo dell'unità sul totale
-     * della tabella, come il motore del riparto. Le voci con le stesse tabelle e gli stessi coefficienti si leggono una volta.
+     * della tabella, come il motore del riparto. Le voci con le stesse tabelle e gli stessi coefficienti si leggono una volta. Una voce divisa con le
+     * letture di fine anno ha i loro coefficienti (`$letture`, conto => tabella => percentuale), come nel consuntivo.
      *
      * @param  list<int>  $conti
+     * @param  array<int, array<int, float>>  $letture
      * @return array<int, array<int, float>> conto => unità => peso
      */
-    public static function pesiDelleUnita(array $conti): array
+    public static function pesiDelleUnita(array $conti, array $letture = []): array
     {
-        $legami = DB::table('conto_tabella_millesimale')->whereIn('conto_id', $conti)->orderBy('id')->get(['conto_id', 'tabella_id', 'coefficiente'])->groupBy('conto_id');
+        $legami = DB::table('conto_tabella_millesimale')->whereIn('conto_id', $conti)->orderBy('id')->get(['conto_id', 'tabella_id', 'coefficiente'])
+            ->map(function ($r) use ($letture) {
+                if (isset($letture[(int) $r->conto_id][(int) $r->tabella_id])) {
+                    $r->coefficiente = $letture[(int) $r->conto_id][(int) $r->tabella_id];
+                }
+
+                return $r;
+            })->groupBy('conto_id');
         $perFirma = [];
         $esito = [];
         foreach ($legami as $cid => $righe) {
@@ -385,25 +396,73 @@ final class ControlliDelConguaglio
             .($c > self::UNITA_NELLA_NOTA ? '; e altre '.($c - self::UNITA_NELLA_NOTA) : '').'. Il conguaglio comprende la differenza: le quote sono del piano, le spese '
             .'dell\'esercizio sono divise con la tabella di oggi.';
 
+        $letture = self::frasiDelleLetture($letto);
+        $notaLetture = $letture === [] ? '' : ' '.implode(' ', $letture);
+
         return [
             'id' => 'CB',
             'nome' => self::NOMI['CB'][0],
             'titolo' => self::NOMI['CB'][1],
             'sinistra' => $n,
             'destra' => $controllate,
-            'esito' => $n > 0 ? 'non_quadra' : ($c > 0 ? 'segnalazione' : 'quadra'),
+            'esito' => $n > 0 ? 'non_quadra' : ($c > 0 || $letture !== [] ? 'segnalazione' : 'quadra'),
             'nota' => ($n === 0
                 ? ($controllate === 0 ? 'Nessun piano dell\'esercizio ha il riparto registrato: non c\'è niente da confrontare.'
                     : 'Per ognuna delle '.$controllate.' unità dei piani con il riparto registrato la spesa delle quote è il riparto.')
                 : ($n === 1 ? 'Un\'unità non torna: ' : $n.' unità non tornano: ').implode('; ', $righe).($n > self::UNITA_NELLA_NOTA ? '; e altre '.($n - self::UNITA_NELLA_NOTA) : '')
-                    .'. Il conguaglio di queste unità non si calcola: la scheda «Conguaglio» le dice non disponibili.').$notaCambiate,
-            'breve' => $n > 0 ? ($n === 1 ? '1 unità' : $n.' unità') : ($c > 0 ? 'tabella cambiata dopo il piano' : null),
+                    .'. Il conguaglio di queste unità non si calcola: la scheda «Conguaglio» le dice non disponibili.').$notaCambiate.$notaLetture,
+            'breve' => $n > 0 ? ($n === 1 ? '1 unità' : $n.' unità') : ($c > 0 ? 'tabella cambiata dopo il piano' : ($letture !== [] ? 'letture di fine anno' : null)),
             'rimedio' => $n > 0
                 ? 'Le quote dell\'unità sono cambiate dopo il riparto del piano: apri il piano e controlla le quote dell\'unità.'
                 : ($c > 0 ? 'Se la tabella di oggi è quella giusta, il conguaglio comprende la differenza; se no, correggi la tabella. Il piano dice i millesimi che ha usato.' : null),
             'azione' => $n > 0 || $c > 0 ? 'piano' : null,
             'azione_parametro' => $n > 0 ? (string) $fuori[0]['piano_rate_id'] : ($c > 0 ? (string) $pianoDelCambio : null),
         ];
+    }
+
+    /**
+     * Le voci divise con le letture di fine anno: una frase per voce, con le tabelle che cambiano e quanto il conguaglio sposta fra loro. «Energia
+     * elettrica divisa con le letture del 31/12. Ascensore 50 % invece di 40 %, Luci scale 30 % invece di 40 %: il conguaglio sposta € 300,00 da «Luci
+     * scale» a «Ascensore».» Una voce con le letture uguali al preventivo non si dice.
+     *
+     * @return list<string>
+     */
+    public static function frasiDelleLetture(array $letto): array
+    {
+        $perc = fn (float $v) => rtrim(rtrim(number_format($v, 2, ',', '.'), '0'), ',').' %';
+        $elenco = fn (array $nomi) => count($nomi) === 1 ? '«'.$nomi[0].'»' : '«'.implode('», «', array_slice($nomi, 0, -1)).'» e «'.end($nomi).'»';
+        $frasi = [];
+        foreach ($letto['gestioni'] ?? [] as $g) {
+            foreach ($g['letture'] ?? [] as $cid => $l) {
+                $cambiate = [];
+                $piu = [];
+                $meno = [];
+                $spostati = 0;
+                foreach ($l['consuntivo'] as $tid => $cons) {
+                    $prev = (float) ($l['preventivo'][$tid] ?? 0.0);
+                    if (abs($cons - $prev) < 0.005) {
+                        continue;
+                    }
+                    $nome = (string) ($l['nomi'][$tid] ?? '');
+                    $cambiate[] = $nome.' '.$perc($cons).' invece di '.$perc($prev);
+                    $delta = (int) round((int) ($g['uscite'][$cid] ?? 0) * ($cons - $prev) / 100.0);
+                    if ($cons > $prev) {
+                        $piu[] = $nome;
+                        $spostati += $delta;
+                    } else {
+                        $meno[] = $nome;
+                    }
+                }
+                if ($cambiate === []) {
+                    continue;
+                }
+                $giorno = substr((string) $l['al'], 8, 2).'/'.substr((string) $l['al'], 5, 2);
+                $frasi[] = $l['voce'].' divisa con le letture del '.$giorno.'. '.implode(', ', $cambiate)
+                    .($spostati > 0 && $meno !== [] ? ': il conguaglio sposta '.self::euro($spostati).' da '.$elenco($meno).' a '.$elenco($piu) : '').'.';
+            }
+        }
+
+        return $frasi;
     }
 
     private static function euro(int $c): string

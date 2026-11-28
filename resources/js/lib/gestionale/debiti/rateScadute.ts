@@ -42,6 +42,14 @@ export const FRASE_DATA_PASSATA = 'Elenco a una data passata: il credito delle p
 
 export const NOTA_PREGRESSO_NELLA_RATA = 'Questa rata contiene anche una parte di pregresso: la sua età è quella della rata.';
 
+/**
+ * La parte di un debito di prima dentro una rata, ancora da pagare: un versamento parziale la paga per prima, e nelle fasce conta con l'età della sua
+ * origine, come nel § 10 del rendiconto («oltre 90 giorni» quando l'origine non ha un numero di giorni).
+ */
+export function testoDiPrima(d: { importo: number; etichetta: string }): string {
+    return `Di questa rata ${euroTesto(d.importo)} sono ${d.etichetta}: si pagano per primi, e contano con l'età della loro origine.`;
+}
+
 export const FRASE_RISERVATEZZA = 'Contiene dati personali: si mostra all\'assemblea e a chi ha diritto di conoscerlo, come il condòmino o il creditore non ancora '
     + 'pagato che lo chiedono. Non va esposto in bacheca né in altri spazi che vedono anche gli estranei.';
 

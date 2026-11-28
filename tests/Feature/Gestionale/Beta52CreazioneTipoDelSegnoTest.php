@@ -46,13 +46,17 @@ function b52cVoci($test, array $s): array
     return collect($r->json())->keyBy('nome')->all();
 }
 
-/** «Spese generali» € 1.200,00 e il capitolo «Proventi», lasciato «Spesa (uscita)», con dentro solo «Affitto antenna» € 240,00 (entrata, tabella «Box»). */
+/**
+ * «Spese generali» € 1.200,00 e il capitolo «Proventi», lasciato «Spesa (uscita)», con dentro solo «Affitto antenna» € 240,00 (entrata, tabella «Box»).
+ * La pagina oggi rifiuta l'entrata sotto un capitolo di spesa: «Affitto antenna» è scritta sul modello (`b52tVoceDiPrima()`), il dato di un database
+ * installato prima della regola, che la creazione del piano deve continuare a leggere giusto.
+ */
 function b52cProventi($test): array
 {
     $s = b52tScenario($test, '1.200,00', '0,00');
     $s['entrata']->delete();
     $padre = b52tVoce($test, $s, 'Proventi', 'spesa', '0,00', $s['tabella'], null, ['isCapitolo' => true, 'tabella_millesimale_id' => null, 'percentuale_proprietario' => null, 'percentuale_inquilino' => null, 'percentuale_usufruttuario' => null]);
-    b52tVoce($test, $s, 'Affitto antenna', 'entrata', '240,00', $s['box'], $padre->id, ['isSottoConto' => true]);
+    b52tVoceDiPrima($s, 'Affitto antenna', 'entrata', 24000, $s['box'], $padre->id);
 
     return $s + ['padre' => $padre];
 }

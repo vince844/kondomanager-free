@@ -583,10 +583,10 @@ it('la spesa personale di un giorno in cui l\'unità non ha un titolare: la sche
 
 // ─── Il cambio di titolare con giorni scoperti e senza un passaggio registrato ───────────────────────────────────────────────────────
 
-it('un cambio di titolare con giorni scoperti e senza un passaggio registrato: la riga dell\'unità e il controllo per unità lo dicono, con «registra il passaggio»', function () {
+it('un cambio di titolare con giorni scoperti e senza un passaggio registrato: la riga dell\'unità e il controllo per unità lo dicono, con la data di inizio da controllare', function () {
     $s = cpcViaVerdi($this);
     cpcRateEIncassi($this, $s);
-    // Bianchi fino al 30/06, Rossi dal 15/07: due righe scritte a mano, nessun passaggio. Il motore non cambia (Rossi conta da inizio anno).
+    // Bianchi fino al 30/06, Rossi dal 15/07: due righe scritte a mano, nessun passaggio. Il motore conta Rossi dal 15/07, come con il passaggio.
     DB::table('anagrafica_immobile')->where('id', $s['righe']['Bianchi'])->update(['data_fine' => '2026-06-30']);
     DB::table('anagrafica_immobile')->insert(['anagrafica_id' => $s['persone']['Rossi']->id, 'immobile_id' => $s['unita']['U2']->id, 'tipologia' => 'proprietario', 'quota' => 100,
         'attivo' => true, 'data_inizio' => '2026-07-15', 'data_fine' => null, 'created_at' => now(), 'updated_at' => now()]);
@@ -594,13 +594,15 @@ it('un cambio di titolare con giorni scoperti e senza un passaggio registrato: l
     $this->travelTo('2026-12-31 12:00:00');
     ['letto' => $letto, 'righe' => $scheda] = cpdScheda($s);
     $cu = ControlliDelConguaglio::perUnita($letto);
-    $frase = 'Int. U2: Bianchi fino al 30/06/2026, Rossi dal 15/07/2026, senza un passaggio registrato. Così Rossi conta dall\'inizio dell\'anno; '
-        .'con il passaggio registrato conterebbe dal 15/07/2026.';
+    $frase = 'Int. U2: Bianchi fino al 30/06/2026, Rossi dal 15/07/2026, senza un passaggio registrato. Rossi conta dal 15/07/2026, come se il passaggio fosse registrato: '
+        .'i giorni in mezzo non hanno un titolare e la loro parte non è divisa fra le persone.';
 
     // Nella scheda la riga dell'unità dice anche dove si registra; il controllo lo dice nel rimedio.
-    expect(cpdNote($scheda, $s['unita']['U2']->id))->toContain($frase.' Registra il passaggio dalla pagina dei titolari dell\'unità.')
-        ->and($cu['esito'])->toBe('segnalazione')->and($cu['nota'])->toContain($frase)
-        ->and($cu['rimedio'])->toContain('Registra il passaggio')
+    expect(cpdNote($scheda, $s['unita']['U2']->id))->toContain($frase.' Se chi è entrato lo è dalla vendita, correggi la sua data di inizio dalla pagina dei titolari dell\'unità.')
+        // La parte dei 14 giorni senza titolare (€ 1.260,00 × 14/365 = € 48,33) non è delle persone: il controllo la dice, come con il passaggio registrato.
+        ->and($cu['breve'])->toBe('1 unità')->and($cu['esito'])->toBe('non_quadra')->and($cu['nota'])->toContain('mancano € 48,33. La differenza è fra le spese non attribuite della voce.')->toContain($frase)
+        // Il rimedio è la data di inizio di chi è entrato: il passaggio registrato con la stessa data non cambia le cifre.
+        ->and($cu['rimedio'])->toContain('se è entrato dalla vendita, correggi la sua data di inizio')->not->toContain('Registra il passaggio')
         ->and($cu['azione'])->toBe('titolari')->and($cu['azione_parametro'])->toBe((string) $s['unita']['U2']->id);
 });
 

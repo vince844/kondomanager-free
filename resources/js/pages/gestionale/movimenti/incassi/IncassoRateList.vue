@@ -26,12 +26,13 @@ import type { Flash } from '@/types/flash';
 /** Il rilevamento di `RiallineaCreditiService` (decisioni 75.1 e 76.1, 1.11.0-beta.49). Importi in centesimi. */
 interface RiallineamentoCrediti {
   compensazioni: Array<{ scrittura_id: number; protocollo: string | null; data: string | null; quota_id: number; numero_rata: number; persona: string; importo: number }>;
-  rate: Array<{ rata_id: number; numero_rata: number; piano: string; azione: 'scrivi' | 'esercizio_chiuso'; persone: Array<{ nome: string; spesa: number; credito: number }> }>;
+  rate: Array<{ rata_id: number; numero_rata: number; piano: string; azione: 'scrivi' | 'esercizio_chiuso'; persone: Array<{ nome: string; spesa: number; credito: number; ad_personam?: number }> }>;
   da_emettere: Array<{ rata_id: number; numero_rata: number; piano: string; url: string }>;
   restano: Array<{ motivo: string }>;
-  // Coda 313 (decisione 153.1): le emissioni con la spesa ad personam addebitata due volte, per rata e unità, e i piani per cui la
-  // cifra non si calcola. Solo elencate: la conferma non le scrive.
-  ad_personam?: Array<{ rata_id: number; numero_rata: number; piano: string; immobile_id: number; unita: string; data: string | null; esercizio: string | null; esercizio_aperto: boolean; importo: number }>;
+  // Coda 313: le emissioni con la spesa ad personam addebitata due volte, per rata e unità. Con «scrivi» la conferma chiude
+  // l'anticipazione nell'esercizio `nell_esercizio` alla data `data_rettifica`; con «resta» la voce è solo elencata, con il perché.
+  // I piani per cui la cifra non si calcola sono solo elencati.
+  ad_personam?: Array<{ rata_id: number; numero_rata: number; piano: string; immobile_id: number; unita: string; data: string | null; esercizio: string | null; esercizio_aperto: boolean; importo: number; azione?: 'scrivi' | 'resta'; nell_esercizio?: string | null; data_rettifica?: string | null; motivo?: string | null }>;
   ad_personam_non_calcolabili?: Array<{ piano_id: number; piano: string; motivo: string }>;
 }
 
@@ -57,19 +58,24 @@ const flashMessage = computed(() => page.props.flash?.message);
 // rate «emesse» senza righe non le scrive il riallineamento: si emettono dalla pagina del piano (76.1).
 const riallineamento = computed(() => props.riallineamento_crediti ?? null);
 const rateDaScrivere = computed(() => (riallineamento.value?.rate ?? []).filter((r) => r.azione === 'scrivi'));
-const scrittureDaFare = computed(() => (riallineamento.value?.compensazioni.length ?? 0) + rateDaScrivere.value.length);
-const soloLettura = computed(() => scrittureDaFare.value === 0 && (riallineamento.value?.da_emettere.length ?? 0) === 0);
 const adPersonam = computed(() => riallineamento.value?.ad_personam ?? []);
+const adPersonamDaScrivere = computed(() => adPersonam.value.filter((v) => v.azione === 'scrivi'));
+const scrittureDaFare = computed(() => (riallineamento.value?.compensazioni.length ?? 0) + rateDaScrivere.value.length + adPersonamDaScrivere.value.length);
+const soloLettura = computed(() => scrittureDaFare.value === 0 && (riallineamento.value?.da_emettere.length ?? 0) === 0);
 const adPersonamNonCalcolabili = computed(() => riallineamento.value?.ad_personam_non_calcolabili ?? []);
 // In sola lettura il paragrafo «Niente da scrivere…» parla delle voci che restano come sono; la spesa ad personam ha il suo.
 const restanoDiPrima = computed(() => (riallineamento.value?.restano.length ?? 0) > 0);
 
-/** Le parti della quota rimasta fuori: la spesa, le entrate dell'anno (una spesa negativa, rilievo K2), il credito riportato. */
-function partiDellaQuota(p: { spesa: number; credito: number }): string {
+/**
+ * Le parti della quota rimasta fuori: la spesa, le entrate dell'anno (una spesa negativa, rilievo K2), il credito riportato, e la spesa
+ * ad personam che la scrittura chiude sull'unità (l'unica cifra di una quota a zero, Coda 426).
+ */
+function partiDellaQuota(p: { spesa: number; credito: number; ad_personam?: number }): string {
   const parti: string[] = [];
   if (p.spesa > 0) parti.push(`spesa ${euro(p.spesa)}`);
   if (p.spesa < 0) parti.push(`entrate dell'anno ${euro(-p.spesa)}`);
   if (p.credito > 0) parti.push(`credito riportato ${euro(p.credito)}`);
+  if ((p.ad_personam ?? 0) > 0) parti.push(`spesa ad personam ${euro(p.ad_personam ?? 0)} da chiudere sull'unità`);
   return parti.join(' e ');
 }
 
@@ -79,15 +85,21 @@ function partiDellaQuota(p: { spesa: number; credito: number }): string {
 const testoConferma = computed(() => {
   const compensazioni = riallineamento.value?.compensazioni.length ?? 0;
   const rate = rateDaScrivere.value.length;
+  const chiusure = adPersonamDaScrivere.value.length;
   const tipi: string[] = [];
   if (compensazioni > 0) tipi.push(compensazioni === 1 ? 'la rettifica di una compensazione' : `le rettifiche di ${compensazioni} compensazioni`);
-  if (rate > 0) tipi.push(rate === 1 ? 'la quota a credito rimasta fuori da una rata' : `le quote a credito rimaste fuori da ${rate} rate`);
+  if (rate > 0) tipi.push(rate === 1 ? 'la quota rimasta fuori da una rata' : `le quote rimaste fuori da ${rate} rate`);
+  if (chiusure > 0) tipi.push(chiusure === 1 ? 'la chiusura di una spesa ad personam addebitata due volte' : `la chiusura di ${chiusure} spese ad personam addebitate due volte`);
   const una = scrittureDaFare.value === 1;
   return (una ? 'Verrà scritta nel libro giornale 1 scrittura: ' : `Verranno scritte nel libro giornale ${scrittureDaFare.value} scritture: `)
     + tipi.join(' e ')
     + `. ${una ? 'Prende' : 'Prendono'} la data di competenza e l'esercizio della scrittura che ${una ? 'corregge' : 'correggono'}; `
     + 'la registrazione è di oggi, ed è la data che il libro giornale mostra. Le scritture esistenti non si modificano.'
-    + (compensazioni > 0 ? ' La rettifica di una compensazione segue la compensazione: se l\'incasso si storna, si storna con lei.' : '');
+    + (compensazioni > 0 ? ' La rettifica di una compensazione segue la compensazione: se l\'incasso si storna, si storna con lei.' : '')
+    + (adPersonamDaScrivere.value.some((v) => !v.esercizio_aperto)
+      ? ' Una spesa ad personam emessa in un esercizio chiuso si chiude nell\'esercizio aperto, con la data di oggi: l\'esercizio chiuso resta com\'è.'
+      : '')
+    + (chiusure > 0 ? ' La chiusura della spesa ad personam non cambia il debito di nessun condòmino.' : '');
 });
 /**
  * Decisione 538 (1): le due righe sotto il titolo, al posto del testo lungo (che sta nel dettaglio): che cosa c'è da fare, in parole dell'amministratore.
@@ -273,13 +285,15 @@ const pageGuides = [
                     Niente da scrivere: il riallineamento lascia queste voci come sono. Qui sotto, per ognuna, il perché e,
                     dove c'è, la strada.
                   </p>
-                  <!-- Coda 313: le emissioni con la spesa ad personam addebitata due volte. Solo elencate: la conferma non le scrive. La frase
-                       del doppio solo dove c'è una cifra: per i piani da controllare a mano il programma il doppio non l'ha misurato. -->
+                  <!-- Coda 313: le emissioni con la spesa ad personam addebitata due volte; la conferma le chiude, salvo quelle che restano
+                       (un esercizio chiuso senza un esercizio aperto alla data di oggi). La frase del doppio solo dove c'è una cifra: per i
+                       piani da controllare a mano il programma il doppio non l'ha misurato. -->
                   <p v-if="adPersonam.length > 0" data-testid="riallineamento-ad-personam" class="text-xs text-amber-800 leading-relaxed dark:text-amber-200">
                     Spesa ad personam addebitata due volte: la fattura l'ha già scritta su «Crediti verso condomini» con l'unità, e
                     l'emissione della rata l'ha scritta di nuovo, contandola anche fra le entrate di «Gestione rate». Le rate dei
                     condòmini sono giuste: nessuno deve pagare di più. Sono più alti, della stessa cifra, i crediti verso condomini e il
-                    risultato di gestione dell'esercizio dell'emissione. Il riallineamento non la corregge: qui è solo elencata.
+                    risultato di gestione dell'esercizio dell'emissione. Il riallineamento la corregge con una scrittura in aggiunta:
+                    toglie la cifra da «Gestione rate» e chiude l'anticipazione sull'unità, senza cambiare il debito di nessuno.
                   </p>
                   <p v-else-if="adPersonamNonCalcolabili.length > 0" data-testid="riallineamento-ad-personam-da-controllare" class="text-xs text-amber-800 leading-relaxed dark:text-amber-200">
                     Spesa ad personam da controllare: per i piani elencati nel dettaglio il programma non sa calcolare se le emissioni
@@ -300,7 +314,7 @@ const pageGuides = [
                       :key="`r-${r.rata_id}`"
                       class="bg-white/60 border border-amber-100 rounded-md px-3 py-1.5 text-xs text-amber-800 dark:bg-slate-900/40 dark:border-amber-900/40 dark:text-amber-200"
                     >
-                      Rata {{ r.numero_rata }} ({{ r.piano }}), quota a credito rimasta fuori dall'emissione:
+                      Rata {{ r.numero_rata }} ({{ r.piano }}), quota rimasta fuori dall'emissione:
                       <span v-for="(p, i) in r.persone" :key="i">
                         {{ i > 0 ? '; ' : '' }}{{ p.nome }}, {{ partiDellaQuota(p) }}
                       </span>.
@@ -328,6 +342,8 @@ const pageGuides = [
                     >
                       Rata {{ v.numero_rata }} ({{ v.piano }}), {{ v.unita }}, emessa il {{ v.data ?? '—' }}:
                       <strong>{{ euro(v.importo) }}</strong> di spesa ad personam addebitati due volte<template v-if="!v.esercizio_aperto"> (esercizio «{{ v.esercizio }}», chiuso)</template>.
+                      <template v-if="v.azione === 'scrivi'"> Si chiude nell'esercizio «{{ v.nell_esercizio }}» il {{ v.data_rettifica }}: DARE «Gestione rate», AVERE «Crediti verso condomini» di {{ v.unita }}.</template>
+                      <template v-else-if="v.motivo"> Resta com'è: {{ v.motivo }}.</template>
                     </li>
                     <li
                       v-for="p in adPersonamNonCalcolabili"

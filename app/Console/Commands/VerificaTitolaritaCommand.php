@@ -48,6 +48,11 @@ use Illuminate\Support\Facades\DB;
  *    decesso prima del defunto, o lo stesso giorno. Il motore gli intesta anche i giorni dopo il suo decesso; la registrazione oggi
  *    le rifiuta, quelle scritte prima restano. La strada è dell'amministratore: annullare la successione del defunto e registrarla
  *    di nuovo con gli eredi giusti.
+ *
+ * ➕ **Dalla 1.12.0-beta.15 altri tre**: l'erede con un'estinzione dell'usufrutto registrata prima del decesso del defunto (l'estinzione non dice la
+ *    causa: il pannello del passaggio avvisa e non ferma, qui si elencano le successioni già scritte); le righe di proprietà chiuse a quota 0 seguite
+ *    da un altro proprietario (`RigheAQuotaZero`, la stessa lista della pagina delle unità); le pertinenze con due righe in corso della stessa persona
+ *    e dello stesso ruolo, una a quota 0, che fermano il passaggio dell'unità.
  */
 class VerificaTitolaritaCommand extends Command
 {
@@ -79,8 +84,12 @@ class VerificaTitolaritaCommand extends Command
             $sospette  = $this->quoteNonAlCento($condominio->id);
             $stessoGiorno = $this->chiusuraEAperturaLoStessoGiorno($condominio->id);
             $erediMortiPrima = $this->erediMortiPrima($condominio->id);
+            $erediConEstinzione = $this->erediConEstinzionePrima($condominio->id);
+            $aQuotaZero = app(\App\Services\Gestionale\Titolarita\RigheAQuotaZero::class)->perCondominio((int) $condominio->id);
+            $pertinenzeDoppie = $this->pertinenzeConDueRighe($condominio->id);
 
-            $segnali = $conFine->count() + $spente->count() + $sospette->count() + $stessoGiorno->count() + count($erediMortiPrima);
+            $segnali = $conFine->count() + $spente->count() + $sospette->count() + $stessoGiorno->count() + count($erediMortiPrima)
+                + count($erediConEstinzione) + count($aQuotaZero) + count($pertinenzeDoppie);
             if ($segnali === 0) {
                 continue;
             }
@@ -147,11 +156,32 @@ class VerificaTitolaritaCommand extends Command
                 $this->table(['Unità', 'Defunto', 'Decesso', 'Erede', 'Decesso dell\'erede'], $erediMortiPrima);
             }
 
+            if ($erediConEstinzione !== []) {
+                $this->line('');
+                $this->line('  <fg=yellow>Eredi con un\'estinzione dell\'usufrutto prima del decesso del defunto (' . count($erediConEstinzione) . '):</> se l\'usufrutto si è estinto per la morte dell\'erede, il riparto gli intesta anche i giorni dopo.');
+                $this->line('  <fg=gray>L\'estinzione non dice la causa: se è per la morte, annulla la successione del defunto e registrala di nuovo con gli eredi come li dice la dichiarazione.</>');
+                $this->table(['Unità', 'Defunto', 'Decesso', 'Erede', 'Estinzione dell\'usufrutto'], $erediConEstinzione);
+            }
+
+            if ($aQuotaZero !== []) {
+                $this->line('');
+                $this->line('  <fg=red>Righe di proprietà chiuse a quota 0 seguite da un altro proprietario (' . count($aQuotaZero) . '):</> in quei giorni nessuno paga per l\'unità.');
+                $this->line('  <fg=gray>Correggi la riga dallo storico dell\'unità («Correggi questa riga»), una per una.</>');
+                $this->table(['Unità', 'Soggetto', 'Ruolo', 'Periodo', 'Giorni'], array_map(fn (array $r) => [$r['unita'], $r['persona'], $r['tipologia'], $r['periodo'], (string) $r['giorni']], $aQuotaZero));
+            }
+
+            if ($pertinenzeDoppie !== []) {
+                $this->line('');
+                $this->line('  <fg=red>Pertinenze con due righe in corso della stessa persona e dello stesso ruolo, una a quota 0 (' . count($pertinenzeDoppie) . '):</> il passaggio dell\'unità non sa quale chiudere e si ferma.');
+                $this->line('  <fg=gray>Correggi le righe dallo storico della pertinenza prima del passaggio.</>');
+                $this->table(['Pertinenza', 'Soggetto', 'Ruolo', 'Righe', 'Quote'], $pertinenzeDoppie);
+            }
+
             $this->line('');
         }
 
         if ($totaleSegnali === 0) {
-            $this->info('Nessun segnale: nessuna data di fine compilata, nessuna associazione spenta, tutte le quote in corso fanno 100, nessuna chiusura e apertura lo stesso giorno, nessun erede con il decesso prima del defunto.');
+            $this->info('Nessun segnale: nessuna data di fine compilata, nessuna associazione spenta, tutte le quote in corso fanno 100, nessuna chiusura e apertura lo stesso giorno, nessun erede con il decesso prima del defunto o con un\'estinzione dell\'usufrutto di prima, nessuna riga a quota 0 seguita da un altro proprietario, nessuna pertinenza con due righe della stessa persona.');
             return self::SUCCESS;
         }
 
@@ -253,6 +283,59 @@ class VerificaTitolaritaCommand extends Command
         }
 
         return $righe;
+    }
+
+    /**
+     * Le successioni non annullate con un erede che ha un'estinzione dell'usufrutto non annullata del condominio con la data fino al decesso del defunto. La
+     * lettura dell'avviso del pannello (`AnteprimaPassaggioRequest::avvisiDeiDecessi`) sulle successioni già scritte: l'estinzione non dice la causa, e il
+     * segnale non dice che è un errore.
+     *
+     * @return list<array{0: string, 1: string, 2: string, 3: string, 4: string}>
+     */
+    private function erediConEstinzionePrima(int $condominioId): array
+    {
+        $passaggi = \App\Models\Gestionale\Subentro::with(['uscente', 'immobile'])->where('condominio_id', $condominioId)->whereIn('tipo_passaggio', ['successione', 'usufrutto'])
+            ->whereNull('subentro_padre_id')->orderBy('decorrenza')->orderBy('id')->get();
+        $estinzioni = $passaggi->filter(fn ($x) => $x->estinzioneUsufrutto());
+        $righe = [];
+        foreach ($passaggi->where('tipo_passaggio', 'successione') as $s) {
+            foreach ($s->eredi() as $e) {
+                $sua = $estinzioni->first(fn ($x) => (int) $x->anagrafica_uscente_id === (int) $e['anagrafica_id'] && (int) $x->anagrafica_uscente_id !== (int) $s->anagrafica_uscente_id
+                    && $x->decorrenza->toDateString() <= $s->decorrenza->toDateString());
+                if ($sua !== null) {
+                    $righe[] = [(string) ($s->immobile?->nome ?? '—'), (string) ($s->uscente?->nome ?? ($s->registro['nomi']['uscente'] ?? '—')), $s->decorrenza->format('d/m/Y'),
+                        (string) ($sua->uscente?->nome ?? ($sua->registro['nomi']['uscente'] ?? '—')), $sua->decorrenza->format('d/m/Y') . ', estinzione su ' . ($sua->immobile?->nome ?? '—')];
+                }
+            }
+        }
+
+        return $righe;
+    }
+
+    /**
+     * Le pertinenze con due o più righe in corso oggi della stessa persona e dello stesso ruolo, una a quota 0: il passaggio dell'unità principale non sa
+     * quale chiudere (`TitolaritaImmobile::rigaCheEsceDallaPertinenza`) e si ferma. Le righe doppie sull'unità principale non sono qui: lì il modulo
+     * sceglie la riga a mano.
+     *
+     * @return list<array{0: string, 1: string, 2: string, 3: string, 4: string}>
+     */
+    private function pertinenzeConDueRighe(int $condominioId): array
+    {
+        $oggi = DateHelper::oggiUtente();
+
+        return DB::table('anagrafica_immobile as ai')
+            ->join('immobili as i', 'i.id', '=', 'ai.immobile_id')
+            ->leftJoin('anagrafiche as an', 'an.id', '=', 'ai.anagrafica_id')
+            ->where('i.condominio_id', $condominioId)->whereNotNull('i.pertinenza_di_immobile_id')->where('ai.attivo', true)
+            ->where(fn ($q) => $q->whereNull('ai.data_fine')->orWhereDate('ai.data_fine', '>=', $oggi))
+            ->where(fn ($q) => $q->whereNull('ai.data_inizio')->orWhereDate('ai.data_inizio', '<=', $oggi))
+            ->orderBy('i.nome')->orderBy('ai.id')
+            ->get(['i.id as immobile_id', 'i.nome as unita', 'ai.anagrafica_id', 'an.nome as soggetto', 'ai.tipologia', 'ai.quota'])
+            ->groupBy(fn ($r) => $r->immobile_id . '|' . $r->anagrafica_id . '|' . $r->tipologia)
+            ->filter(fn ($g) => $g->count() > 1 && $g->contains(fn ($r) => (float) $r->quota == 0.0))
+            ->map(fn ($g) => [(string) ($g->first()->unita ?? '—'), (string) ($g->first()->soggetto ?? '—'), (string) $g->first()->tipologia, (string) $g->count(),
+                $g->map(fn ($r) => rtrim(rtrim(number_format((float) $r->quota, 2, '.', ''), '0'), '.') . ' %')->implode(', ')])
+            ->values()->all();
     }
 
     private function quoteNonAlCento(int $condominioId)

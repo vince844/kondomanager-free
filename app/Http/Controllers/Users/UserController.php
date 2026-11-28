@@ -231,9 +231,13 @@ class UserController extends Controller
     {
         Gate::authorize('create', User::class);
 
+        // Il pannello come permesso aggiuntivo lo concede solo l'amministratore (`regolaPermessiConcedibili`): agli altri la tendina non lo propone.
+        $permessi = $this->permessiAssegnabili()->reject(fn ($permesso) => $permesso->name === \App\Enums\Permission::ACCESS_ADMIN_PANEL->value
+            && ! Auth::user()?->hasRole(\App\Enums\Role::AMMINISTRATORE->value))->values();
+
         return Inertia::render('utenti/NuovoUtente',[
             'roles'       => RoleResource::collection($this->ruoliAssegnabili()),
-            'permissions' => PermissionResource::collection($this->permessiAssegnabili()),
+            'permissions' => PermissionResource::collection($permessi),
             // La tendina «Anagrafica» mostra il nome e, sotto, l'indirizzo (Coda 408): il resto della persona sta nella sua
             // scheda, che chiede «Visualizza anagrafiche».
             'anagrafiche' => AnagraficaConIndirizzoResource::collection(Anagrafica::get(['id', 'nome', 'indirizzo'])),

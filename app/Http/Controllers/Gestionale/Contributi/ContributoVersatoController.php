@@ -17,6 +17,7 @@ use App\Models\Condominio;
 use App\Models\Gestionale\Cassa;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\ContributoVersato;
+use App\Models\TitolaritaImmobile;
 use App\Services\Assemblee\CollegamentiDelleDelibere;
 use App\Services\Assemblee\DeliberaInParole;
 use App\Services\Gestionale\InboxService;
@@ -217,22 +218,16 @@ class ContributoVersatoController extends Controller
             ->get()
             ->groupBy('immobile_id');
 
-        // Chi può aver versato, unità per unità: i titolari di diritto reale in corso OGGI (la pagina non ha
-        // una data del versamento: «alla data» qui vuol dire oggi, e lo si dice a video).
+        // Chi può aver versato, unità per unità: i titolari di diritto reale di oggi e, dopo di loro, chi lo è stato (ha venduto), con i suoi
+        // periodi. La pagina non ha una data del versamento: a chi va lo decide l'amministratore.
         $oggi = DateHelper::oggiUtenteImmutable();
-        $titolariPerImmobile = \App\Models\TitolaritaImmobile::with('anagrafica:id,nome')
-            ->whereIn('immobile_id', array_keys($immobili))
-            ->whereIn('tipologia', ['proprietario', 'nuda_proprietario', 'usufruttuario'])
-            ->get()
-            ->filter(fn ($t) => $t->inCorsoIl($oggi))
-            ->groupBy('immobile_id')
-            ->map(fn ($righe) => $righe->map(fn ($t) => [
-                'id' => (int) $t->anagrafica_id, 'nome' => $t->anagrafica?->nome, 'tipologia' => $t->tipologia, 'quota' => (float) $t->quota, 'chiusa_il' => null,
-            ])->values()->all());
+        // La parte di ciascuno si conta per giorni nell'esercizio, come nel piano: gli esercizi della voce, e quello su cui la pagina calcola.
+        $esercizi = $this->eserciziDellaVoce($conto, $condominio);
+        $senzaTitolare = [];
+        $titolariPerImmobile = $this->titolariDiOggiEDiPrima(array_keys($immobili), $oggi, $esercizi, $senzaTitolare);
 
-        // Chi ha già una riga di versato su questa voce ma non è più titolare (ha venduto): resta nell'elenco con la
-        // sua titolarità chiusa, così la sua riga si legge, si conserva e la quota lorda è quella della sua quota
-        // storica — e l'acquirente può aggiungere la sua accanto (verifica S6, R15).
+        // Chi ha già una riga di versato su questa voce e non ha più nessuna riga di titolarità sull'unità (per esempio dissociato): resta
+        // nell'elenco, così la sua riga si legge e si conserva (verifica S6, R15).
         foreach ($giaVersato as $immobileId => $righeVersato) {
             $presenti = collect($titolariPerImmobile->get($immobileId, []))->pluck('id')->all();
             foreach ($righeVersato as $cv) {
@@ -250,6 +245,10 @@ class ContributoVersatoController extends Controller
                     'tipologia' => $storica?->tipologia ?? 'proprietario',
                     'quota' => (float) ($storica?->quota ?? 100),
                     'chiusa_il' => $storica?->data_fine?->toDateString(),
+                    'periodi' => [],
+                    'in_corso' => false,
+                    // Senza righe di titolarità sull'unità non paga niente della voce: tutto il suo versato resta suo.
+                    'parti' => $esercizi->mapWithKeys(fn ($e) => [(int) $e->id => 0.0])->all(),
                 ];
                 $titolariPerImmobile->put($immobileId, $elenco);
                 $presenti[] = (int) $cv->anagrafica_id;
@@ -285,16 +284,24 @@ class ContributoVersatoController extends Controller
             }
         }
 
+        // L'esercizio su cui la pagina conta i giorni: quello scelto in «Vale per»; con «Tutti gli esercizi» o senza scelta, l'esercizio di oggi se è della
+        // voce, altrimenti l'ultimo della voce.
+        $valoriDelleRighe = $giaVersato->flatten()->map(fn (ContributoVersato $cv) => $cv->esercizio_id)->unique()->values();
+        $esercizioDiCalcolo = $this->esercizioDiCalcolo($esercizi, $condominio, $valoriDelleRighe->count() === 1 ? $valoriDelleRighe->first() : null);
+
         // Una riga per (unità, persona): le righe registrate come stanno; un'unità senza righe ne ha una,
-        // con la persona già scelta se il proprietario in corso è uno solo (fatto, non deduzione), altrimenti
-        // «l'unità» finché l'amministratore non sceglie. La quota lorda della persona è quella dell'unità
-        // per la sua quota di possesso: è il tetto che il motore applica al suo versato.
-        $righe = collect($immobili)->flatMap(function ($im) use ($lordi, $giaVersato, $titolariPerImmobile) {
+        // con la persona già scelta se il proprietario in corso è uno solo e nessun altro è stato titolare nell'esercizio (fatto, non deduzione),
+        // altrimenti «l'unità» finché l'amministratore non sceglie: dopo una vendita il piano divide «l'unità» per giorni, e chi ha comprato
+        // proposto da solo prenderebbe anche i giorni di chi ha venduto. La quota lorda della persona è quella dell'unità per la sua parte
+        // nell'esercizio (la quota per i giorni in cui è stata titolare): è il tetto che il motore applica al suo versato.
+        $righe = collect($immobili)->flatMap(function ($im) use ($lordi, $giaVersato, $titolariPerImmobile, $esercizioDiCalcolo) {
             $lordoUnita = $lordi[$im['id']] ?? 0;
             $titolari = collect($titolariPerImmobile->get($im['id'], []));
-            $rigaPer = function (?int $anagraficaId, ?ContributoVersato $cv) use ($im, $lordoUnita, $titolari) {
+            $parteDi = fn (array $t): float => $esercizioDiCalcolo !== null && isset($t['parti'][$esercizioDiCalcolo])
+                ? (float) $t['parti'][$esercizioDiCalcolo] : (float) $t['quota'] / 100;
+            $rigaPer = function (?int $anagraficaId, ?ContributoVersato $cv) use ($im, $lordoUnita, $titolari, $parteDi) {
                 $t = $anagraficaId ? $titolari->firstWhere('id', $anagraficaId) : null;
-                $quotaPersona = $t ? (float) $t['quota'] : null;
+                $quotaPersona = $t ? $parteDi($t) * 100 : null;
 
                 return [
                     'chiave'         => $im['id'] . ':' . ($anagraficaId ?? 0),
@@ -313,9 +320,10 @@ class ContributoVersatoController extends Controller
             if ($esistenti->isNotEmpty()) {
                 return $esistenti->map(fn ($cv) => $rigaPer($cv->anagrafica_id ? (int) $cv->anagrafica_id : null, $cv));
             }
-            $proprietari = $titolari->where('tipologia', 'proprietario');
+            $proprietari = $titolari->where('in_corso', true)->where('tipologia', 'proprietario');
+            $altriNellEsercizio = $titolari->where('in_corso', false)->contains(fn (array $t) => $parteDi($t) > 0);
 
-            return [$rigaPer($proprietari->count() === 1 ? (int) $proprietari->first()['id'] : null, null)];
+            return [$rigaPer($proprietari->count() === 1 && ! $altriNellEsercizio ? (int) $proprietari->first()['id'] : null, null)];
         })->sortBy([['interno', 'asc'], ['anagrafica_id', 'asc']])->values();
 
         // Coda 438 (decisione 183.1): per quale esercizio vale il già versato della voce, una scelta per voce come la natura, dell'amministratore. Gli
@@ -323,8 +331,6 @@ class ContributoVersatoController extends Controller
         // righe non si propone niente: se il versamento è per la spesa di un anno o di più lo sa solo l'amministratore, anche su una gestione di un
         // esercizio solo (un fondo lavori continua nell'anno dopo). Righe con esercizi diversi (scritte fuori da questa pagina): niente, e la pagina
         // dice quali sono.
-        $esercizi = $this->eserciziDellaVoce($conto, $condominio);
-        $valoriDelleRighe = $giaVersato->flatten()->map(fn (ContributoVersato $cv) => $cv->esercizio_id)->unique()->values();
         $valePer = match (true) {
             $valoriDelleRighe->isEmpty(), $valoriDelleRighe->count() > 1 => null,
             $valoriDelleRighe->first() === null => 'tutti',
@@ -384,6 +390,8 @@ class ContributoVersatoController extends Controller
             ],
             'righe'              => $righe,
             'titolari'           => $titolariPerImmobile,
+            // Per unità e per esercizio, la parte della spesa dei giorni in cui il motore non trova nessun titolare: non si chiede a nessuno.
+            'senza_titolare'     => (object) $senzaTitolare,
             'natura'             => $naturaCorrente,
             'descrizione'        => $descrizioneCorrente,
             // La delibera del già versato, se è collegata (ruolo «nota», facoltativa): la stessa per tutte le righe della voce.
@@ -396,7 +404,196 @@ class ContributoVersatoController extends Controller
             'esercizi'           => $esercizi->map(fn ($e) => ['id' => (int) $e->id, 'nome' => $e->nome, 'stato' => $e->stato])->values(),
             'vale_per'           => $valePer,
             'vale_per_diversi'   => $valePerDiversi,
+            // L'esercizio su cui si contano i giorni quando «Vale per» non ne sceglie uno.
+            'esercizio_di_calcolo' => $esercizioDiCalcolo,
         ]);
+    }
+
+    /** I ruoli di diritto reale: chi può essere indicato in «Versato da». L'inquilino no. */
+    private const RUOLI_DEL_VERSATO = ['proprietario', 'nuda_proprietario', 'usufruttuario'];
+
+    /**
+     * Le scelte di «Versato da», unità per unità: prima chi è titolare di diritto reale oggi, poi chi lo è stato e oggi non lo è più, dal più
+     * recente, con i periodi in cui lo è stato (`periodi`, quelli attaccati uniti) e con il ruolo e la quota della sua ultima riga. Chi lo diventa
+     * dopo oggi non c'è: titolare non è ancora stato. Le unità sono quelle delle tabelle della voce, e solo le loro righe si leggono.
+     *
+     * `parti`, per ogni esercizio della voce: la parte della spesa dell'unità che tocca a quella persona, con i giorni del motore
+     * ({@see partiDelMotore()}). `$senzaTitolare[unità][esercizio]`: la parte dei giorni in cui il motore non trova nessun titolare.
+     *
+     * @param  list<int>  $immobiliIds
+     * @param  \Illuminate\Support\Collection<int, \App\Models\Esercizio>  $esercizi
+     * @param  array<int, array<int, float>>  $senzaTitolare
+     * @return \Illuminate\Support\Collection<int, list<array<string,mixed>>>
+     */
+    private function titolariDiOggiEDiPrima(array $immobiliIds, \Carbon\CarbonImmutable $oggi, ?\Illuminate\Support\Collection $esercizi = null, array &$senzaTitolare = []): \Illuminate\Support\Collection
+    {
+        $esercizi ??= collect();
+        $tutte = TitolaritaImmobile::with('anagrafica:id,nome')
+            ->whereIn('immobile_id', $immobiliIds)
+            ->whereIn('tipologia', self::RUOLI_DEL_VERSATO)
+            ->orderBy('data_inizio')->orderBy('id')
+            ->get()
+            ->groupBy('immobile_id');
+        // Le parti del motore, unità per unità: esercizio → [anagrafica → [tipologia → parte]], e i giorni senza titolare.
+        $delMotore = $tutte->map(function ($righe, $immobileId) use ($esercizi, &$senzaTitolare) {
+            $perEsercizio = [];
+            foreach ($esercizi as $e) {
+                [$perEsercizio[(int) $e->id], $senza] = $this->partiDelMotore($righe, $e);
+                if ($senza > 0) {
+                    $senzaTitolare[(int) $immobileId][(int) $e->id] = $senza;
+                }
+            }
+
+            return $perEsercizio;
+        });
+        // La parte di una persona: i suoi ruoli dati; con `$ancheGliAltri`, anche quelli che oggi non ha più (era proprietario, oggi è nudo
+        // proprietario), così la sua parte di prima non resta fuori.
+        $parti = function (int $immobileId, int $anagraficaId, ?array $ruoli) use ($delMotore, $esercizi) {
+            $out = [];
+            foreach ($esercizi as $e) {
+                $dellUnita = $delMotore[$immobileId][(int) $e->id] ?? [];
+                // Nessuno con giorni nell'esercizio: niente parte, e la pagina usa la quota di possesso.
+                if ($dellUnita === []) {
+                    continue;
+                }
+                $sue = $dellUnita[$anagraficaId] ?? [];
+                $out[(int) $e->id] = round(array_sum($ruoli === null ? $sue : array_intersect_key($sue, array_flip($ruoli))), 6);
+            }
+
+            return $out;
+        };
+        $voce = fn (TitolaritaImmobile $t, bool $inCorso, ?string $chiusaIl, array $periodi, array $partiSue) => [
+            'id' => (int) $t->anagrafica_id, 'nome' => $t->anagrafica?->nome, 'tipologia' => $t->tipologia, 'quota' => (float) $t->quota,
+            'chiusa_il' => $chiusaIl, 'periodi' => $periodi, 'in_corso' => $inCorso, 'parti' => $partiSue,
+        ];
+
+        return $tutte
+            ->map(fn ($righe) => $righe->filter(fn (TitolaritaImmobile $t) => $this->cominciata($t, $oggi))->values())
+            ->filter(fn ($righe) => $righe->isNotEmpty())
+            ->map(function ($righe, $immobileId) use ($oggi, $voce, $parti) {
+                $immobileId = (int) $immobileId;
+                $diOggi = $righe->filter(fn (TitolaritaImmobile $t) => $t->inCorsoIl($oggi))->values();
+                $diPrima = $righe->whereNotIn('anagrafica_id', $diOggi->pluck('anagrafica_id')->all())
+                    ->groupBy('anagrafica_id')
+                    ->map(function ($sue) use ($voce, $parti, $immobileId) {
+                        $ultima = $sue->sortByDesc(fn (TitolaritaImmobile $t) => $t->data_fine?->toDateString() ?? '')->first();
+
+                        return $voce($ultima, false, $ultima->data_fine?->toDateString(), $this->periodiUniti($sue), $parti($immobileId, (int) $ultima->anagrafica_id, null));
+                    })
+                    ->sortByDesc('chiusa_il');
+
+                $giaContati = [];
+                $elenco = $diOggi->map(function (TitolaritaImmobile $t) use ($voce, $parti, $immobileId, $diOggi, &$giaContati) {
+                    $aid = (int) $t->anagrafica_id;
+                    $ruoli = [$t->tipologia];
+                    // Alla prima riga di oggi della persona anche i ruoli che oggi non ha più.
+                    if (! isset($giaContati[$aid])) {
+                        $giaContati[$aid] = true;
+                        $diOggiSue = $diOggi->where('anagrafica_id', $aid)->pluck('tipologia')->all();
+                        $ruoli = array_values(array_diff(self::RUOLI_DEL_VERSATO, array_diff($diOggiSue, [$t->tipologia])));
+                    }
+
+                    return $voce($t, true, null, [], $parti($immobileId, $aid, $ruoli));
+                })->values()->concat($diPrima->values())->all();
+
+                return $elenco;
+            });
+    }
+
+    /**
+     * Le parti di un'unità in un esercizio con la regola dei giorni del motore (`RisolutoreTitolari::giorniDiTitolarita` e `giorniScoperti` sulle
+     * righe attive dell'unità): per ogni persona e ruolo la quota per i giorni del suo tratto effettivo, divisa come il motore divide fra chi c'è
+     * (quota × giorni sulla somma), sulla parte dell'esercizio che qualcuno copre. I giorni senza nessun titolare non si danno a chi c'è: sono la
+     * seconda cifra, la parte che il piano mette fra le quote non assegnate. Senza nessuno con giorni nell'esercizio, niente parti: la pagina usa la
+     * quota di possesso.
+     *
+     * @param  \Illuminate\Support\Collection<int, TitolaritaImmobile>  $righe  tutte le righe dei ruoli di diritto reale dell'unità
+     * @return array{0: array<int, array<string, float>>, 1: float}
+     */
+    private function partiDelMotore(\Illuminate\Support\Collection $righe, \App\Models\Esercizio $esercizio): array
+    {
+        $periodo = new \App\Support\PeriodoCompetenza(
+            \Carbon\CarbonImmutable::parse($esercizio->data_inizio)->toDateString(),
+            \Carbon\CarbonImmutable::parse($esercizio->data_fine)->toDateString(),
+        );
+        $giorniEsercizio = $periodo->giorni();
+        $attive = $righe->filter(fn (TitolaritaImmobile $t) => (bool) $t->attivo)->values();
+        if ($giorniEsercizio <= 0 || $attive->isEmpty()) {
+            return [[], 0.0];
+        }
+        $risolutore = app(RisolutoreTitolari::class);
+        $pesi = [];
+        foreach ($attive as $t) {
+            $g = $risolutore->giorniDiTitolarita($t, $periodo, $attive);
+            if ($g <= 0 || (float) $t->quota <= 0) {
+                continue;
+            }
+            $pesi[(int) $t->anagrafica_id][$t->tipologia] = ($pesi[(int) $t->anagrafica_id][$t->tipologia] ?? 0.0) + (float) $t->quota * $g;
+        }
+        $somma = array_sum(array_map('array_sum', $pesi));
+        if ($somma <= 0) {
+            return [[], 0.0];
+        }
+        $scoperti = $risolutore->giorniScoperti($attive, $periodo)?->giorni() ?? 0;
+        $coperta = ($giorniEsercizio - $scoperti) / $giorniEsercizio;
+        $parti = array_map(fn (array $perRuolo) => array_map(fn (float $p) => round($p / $somma * $coperta, 6), $perRuolo), $pesi);
+
+        return [$parti, round($scoperti / $giorniEsercizio, 6)];
+    }
+
+    /**
+     * L'esercizio su cui la pagina conta i giorni: quello delle righe, se ne indicano uno; altrimenti quello di oggi, se è della voce; altrimenti
+     * l'ultimo della voce. Null se la gestione della voce non ha esercizi.
+     *
+     * @param  \Illuminate\Support\Collection<int, \App\Models\Esercizio>  $esercizi
+     */
+    private function esercizioDiCalcolo(\Illuminate\Support\Collection $esercizi, Condominio $condominio, mixed $delleRighe): ?int
+    {
+        if ($esercizi->isEmpty()) {
+            return null;
+        }
+        $ids = $esercizi->pluck('id')->map(fn ($id) => (int) $id);
+        if ($delleRighe !== null && $ids->contains((int) $delleRighe)) {
+            return (int) $delleRighe;
+        }
+        $corrente = $this->getEsercizioCorrente($condominio);
+        if ($corrente !== null && $ids->contains((int) $corrente->id)) {
+            return (int) $corrente->id;
+        }
+
+        return (int) $ids->last();
+    }
+
+    /** La riga è cominciata: la persona è, o è stata, titolare con lei. */
+    private function cominciata(TitolaritaImmobile $t, \Carbon\CarbonImmutable $oggi): bool
+    {
+        return $t->data_inizio === null || $t->data_inizio->toDateString() <= $oggi->toDateString();
+    }
+
+    /**
+     * I periodi delle righe, in ordine di inizio: due righe attaccate o sovrapposte (la quota o il ruolo cambiati senza uscire) sono un
+     * periodo solo. `dal` nullo = da sempre; `al` nullo = una riga spenta senza data di fine.
+     *
+     * @param  \Illuminate\Support\Collection<int, TitolaritaImmobile>  $righe  già in ordine di `data_inizio`
+     * @return list<array{dal: ?string, al: ?string}>
+     */
+    private function periodiUniti(\Illuminate\Support\Collection $righe): array
+    {
+        $periodi = [];
+        foreach ($righe as $t) {
+            $dal = $t->data_inizio?->toDateString();
+            $al = $t->data_fine?->toDateString();
+            $i = count($periodi) - 1;
+            if ($i >= 0 && $periodi[$i]['al'] !== null
+                && ($dal === null || $dal <= \Carbon\CarbonImmutable::parse($periodi[$i]['al'])->addDay()->toDateString())) {
+                $periodi[$i]['al'] = $al === null ? null : max($al, $periodi[$i]['al']);
+
+                continue;
+            }
+            $periodi[] = ['dal' => $dal, 'al' => $al];
+        }
+
+        return $periodi;
     }
 
     /** Come la pagina chiama «tutti i piani della voce, di ogni esercizio». */
@@ -415,7 +612,7 @@ class ContributoVersatoController extends Controller
         }
 
         return $gestione->esercizi()->where('esercizi.condominio_id', $condominio->id)
-            ->orderBy('esercizi.data_inizio')->orderBy('esercizi.id')->get(['esercizi.id', 'esercizi.nome', 'esercizi.stato', 'esercizi.data_inizio']);
+            ->orderBy('esercizi.data_inizio')->orderBy('esercizi.id')->get(['esercizi.id', 'esercizi.nome', 'esercizi.stato', 'esercizi.data_inizio', 'esercizi.data_fine']);
     }
 
     /** Salva i contributi: una riga per unità, sostituendo quanto già presente. */
@@ -457,7 +654,7 @@ class ContributoVersatoController extends Controller
             ],
             'righe.*.gia_versato'    => ['required', 'integer', 'min:0'],
             // B2, decisione 17: chi ha versato. Nullo = «l'unità» (la riga storica, D8); con la persona il motore
-            // sconta solo il suo lordo. La persona deve essere titolare di diritto reale dell'unità, in corso oggi.
+            // sconta solo il suo lordo. La persona deve essere, o essere stata, titolare di diritto reale dell'unità.
             'righe.*.anagrafica_id'  => ['nullable', 'integer', Rule::exists('anagrafiche', 'id')],
             'descrizione'            => ['nullable', 'string', 'max:255'],
             // "Dove sono questi soldi?" (beta.27, D8-bis). Nessun required_if
@@ -492,7 +689,8 @@ class ContributoVersatoController extends Controller
             $esercizioId = $esistenti->first() === null ? null : (int) $esistenti->first();
         }
 
-        // La persona di ogni riga è un titolare in corso dell'unità, e la coppia (unità, persona) è una sola.
+        // La persona di ogni riga è, o è stata, titolare di diritto reale dell'unità, e la coppia (unità, persona) è una sola. L'unità è del
+        // condominio della rotta (la regola qui sopra): le righe di titolarità di un'altra unità o di un altro condominio non contano.
         $oggi = DateHelper::oggiUtenteImmutable();
         $viste = [];
         foreach ($dati['righe'] as $i => $riga) {
@@ -503,16 +701,16 @@ class ContributoVersatoController extends Controller
             $viste[$chiave] = true;
             // Una riga a zero non si scrive: non c'è niente da controllare (verifica S6, R15).
             if (! empty($riga['anagrafica_id']) && (int) $riga['gia_versato'] > 0) {
-                $titolare = \App\Models\TitolaritaImmobile::where('immobile_id', $riga['immobile_id'])->where('anagrafica_id', $riga['anagrafica_id'])
-                    ->whereIn('tipologia', ['proprietario', 'nuda_proprietario', 'usufruttuario'])->get()
-                    ->first(fn ($t) => $t->inCorsoIl($oggi));
-                // Chi ha venduto resta col suo versato: la riga esiste già a database ed è un fatto storico che si
-                // conserva, non una dichiarazione nuova. Il motore la legge a suo nome (nettingGiaVersato: «il resto è
-                // suo, non di chi gli è subentrato»). 422 solo per una persona mai titolare e mai registrata (R15).
-                $storica = $titolare === null && ContributoVersato::where('target_type', Conto::class)->where('target_id', $conto->id)
+                // Anche chi ha venduto: un versamento senza data l'amministratore lo può dare a lui. Il motore lo legge a suo nome
+                // (nettingGiaVersato: «il resto è suo, non di chi gli è subentrato»).
+                $titolare = TitolaritaImmobile::where('immobile_id', $riga['immobile_id'])->where('anagrafica_id', $riga['anagrafica_id'])
+                    ->whereIn('tipologia', self::RUOLI_DEL_VERSATO)->get()
+                    ->contains(fn (TitolaritaImmobile $t) => $this->cominciata($t, $oggi));
+                // Una riga già registrata su questa voce si conserva anche se la persona non ha più righe sull'unità (verifica S6, R15).
+                $storica = ! $titolare && ContributoVersato::where('target_type', Conto::class)->where('target_id', $conto->id)
                     ->where('immobile_id', $riga['immobile_id'])->where('anagrafica_id', $riga['anagrafica_id'])->exists();
-                if ($titolare === null && ! $storica) {
-                    throw \Illuminate\Validation\ValidationException::withMessages(["righe.{$i}.anagrafica_id" => 'Questa persona non è oggi titolare di diritto reale di questa unità, e non ha un versato già registrato su questa voce.']);
+                if (! $titolare && ! $storica) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(["righe.{$i}.anagrafica_id" => 'Questa persona non è e non è stata titolare di diritto reale di questa unità, e non ha un versato già registrato su questa voce.']);
                 }
             }
         }

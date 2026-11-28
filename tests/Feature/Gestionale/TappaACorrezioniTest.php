@@ -219,7 +219,7 @@ it('SA2: una gestione «non disponibile» e una «ricostruita»: le due frasi di
 
 it('il «non disponibile» dice nella pagina quale piano, rifatto con i dati di oggi, non torna con le quote emesse: nel riepilogo e nella Sintesi, non nella stampa', function () {
     $s = vrmBase($this);
-    $secondo = be52PianoConVoci($this, $s, [$s['pulizie']->id], 'Pulizie straordinarie dell\'ordinaria');
+    $secondo = vrmSecondoPianoSulleVoci($this, $s, [$s['pulizie']->id], 'Pulizie straordinarie dell\'ordinaria');
     tacApprova($this, $s, $secondo);
     DB::table('righe_riparto')->whereIn('piano_rate_id', [$s['piano']->id, $secondo->id])->delete();
     // Tutti e due tornano: il deliberato è ricostruito, e non c'è un piano da nominare.
@@ -260,7 +260,7 @@ it('SA6: la frase della ricostruzione dice «le quote del piano di ogni unità»
 
 it('P10 (M7): due piani senza righe, il primo non torna e il secondo sì: la gestione intera è «non disponibile»', function () {
     $s = vrmBase($this);
-    $secondo = be52PianoConVoci($this, $s, [$s['pulizie']->id], 'Pulizie straordinarie dell\'ordinaria');
+    $secondo = vrmSecondoPianoSulleVoci($this, $s, [$s['pulizie']->id], 'Pulizie straordinarie dell\'ordinaria');
     tacApprova($this, $s, $secondo);
     DB::table('righe_riparto')->whereIn('piano_rate_id', [$s['piano']->id, $secondo->id])->delete();
     tacQuotaStorta($s['piano']);

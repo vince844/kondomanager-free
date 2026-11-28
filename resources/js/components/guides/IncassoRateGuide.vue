@@ -111,9 +111,13 @@ defineEmits(['update:open']);
                             <p>
                                 Non è solo il nome sulla ricevuta: decide quali quote vengono saldate, quale credito è
                                 utilizzabile e, salvo «Versato da», a chi va accreditato l'eventuale anticipo. L'elenco propone
-                                <strong>tutte</strong> le anagrafiche con un'unità nel condominio, non i soli
-                                intestatari dell'unità scelta.
+                                <strong>tutte</strong> le persone del condominio, non i soli intestatari dell'unità scelta:
                             </p>
+                            <ul class="mt-1 list-disc space-y-0.5 pl-5">
+                                <li>chi ha o ha avuto un'unità qui;</li>
+                                <li>chi è fra le persone del condominio in rubrica;</li>
+                                <li>chi ha rate in un piano di questo condominio, anche se è stato tolto dal condominio dopo una vendita o staccato dall'unità con «Dissocia»: il suo debito rimasto si incassa da qui.</li>
+                            </ul>
                             <p class="mt-2 text-xs text-slate-500">
                                 Cambiando persona a compilazione avviata la distribuzione viene buttata via: era
                                 costruita per un altro. Cambiando scheda «Persona»/«Immobile» si azzerano pagante,

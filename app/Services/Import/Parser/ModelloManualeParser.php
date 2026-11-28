@@ -564,9 +564,9 @@ final class ModelloManualeParser
         $titolarita = [];
         $rilievi = [];
         $righe = 0;
-        /** @var array<string, float> $quotePerUnita */
+        /** @var array<string, array<string, float>> $quotePerUnita le quote scritte, per unità e ruolo */
         $quotePerUnita = [];
-        /** @var array<string, true> $senzaQuotaPerUnita le unità con almeno una riga senza quota */
+        /** @var array<string, array<string, true>> $senzaQuotaPerUnita le unità e i ruoli con almeno una riga senza quota */
         $senzaQuotaPerUnita = [];
         $senzaRuolo = 0;
         $diverse = [];
@@ -649,9 +649,9 @@ final class ModelloManualeParser
             $quota = $this->numero($this->cella($riga, $mappa, 'quota pct'));
 
             if ($quota !== null) {
-                $quotePerUnita[$immobileRef] = ($quotePerUnita[$immobileRef] ?? 0) + $quota;
+                $quotePerUnita[$immobileRef][$ruolo->value] = ($quotePerUnita[$immobileRef][$ruolo->value] ?? 0) + $quota;
             } else {
-                $senzaQuotaPerUnita[$immobileRef] = true;
+                $senzaQuotaPerUnita[$immobileRef][$ruolo->value] = true;
             }
 
             $titolarita[] = new CanonicalTitolarita(
@@ -680,23 +680,32 @@ final class ModelloManualeParser
             );
         }
 
-        foreach ($quotePerUnita as $ref => $somma) {
-            // Le quote scritte si controllano ma non si correggono: `LivelloTitolarita` scrive quello
-            // che il file dice, e una somma diversa da 100 può essere legittima (una nuda proprietà
-            // accanto a un usufrutto non fa 100 di proprietà piena). Le righe **senza** quota, dalla
-            // 1.12.0-beta.14 (Coda 599), prendono il resto fino a 100 fra le persone dello stesso
-            // ruolo, o non entrano se il resto non c'è: il rimedio lo dice, invece di «come sono».
-            if (abs($somma - 100) > 0.01) {
+        // Le quote scritte si controllano ma non si correggono: `LivelloTitolarita` scrive quello che il file dice. Si sommano **per ruolo**:
+        // il proprietario al 100 e l'inquilino al 100 sono due diritti diversi, non un'unità al 200. Una somma diversa da 100 dentro un ruolo
+        // può essere legittima (una parte dell'unità in usufrutto e il resto in piena proprietà). Le righe **senza** quota, dalla
+        // 1.12.0-beta.14 (Coda 599), prendono il resto fino a 100 fra le persone dello stesso ruolo, o non entrano se il resto non c'è:
+        // il rimedio lo dice, invece di «come sono».
+        $dei = [
+            RuoloAnagraficaImmobile::PROPRIETARIO->value => 'dei proprietari',
+            RuoloAnagraficaImmobile::INQUILINO->value => 'degli inquilini',
+            RuoloAnagraficaImmobile::USUFRUTTUARIO->value => 'degli usufruttuari',
+            RuoloAnagraficaImmobile::NUDA_PROPRIETA->value => 'dei nudi proprietari',
+        ];
+        foreach ($quotePerUnita as $ref => $perRuolo) {
+            foreach ($perRuolo as $ruoloDellaSomma => $somma) {
+                if (abs($somma - 100) <= 0.01) {
+                    continue;
+                }
                 $rilievi[] = Rilievo::avviso(
                     'modello.quote_non_fanno_cento',
-                    sprintf('Le quote dell\'unità «%s» sommano a %s invece che a 100.', $this->etichettaDi($ref), rtrim(rtrim(number_format($somma, 2, ',', '.'), '0'), ',')),
-                    isset($senzaQuotaPerUnita[$ref])
+                    sprintf('Le quote %s dell\'unità «%s» sommano a %s invece che a 100.', $dei[$ruoloDellaSomma], $this->etichettaDi($ref),
+                        rtrim(rtrim(number_format($somma, 2, ',', '.'), '0'), ',')),
+                    isset($senzaQuotaPerUnita[$ref][$ruoloDellaSomma])
                         ? 'Le righe senza quota prendono il resto fino a 100, in parti uguali fra le persone dello stesso ruolo; se le quote '
                             .'scritte di quel ruolo fanno già 100, le sue righe non entrano. Se le quote vere sono diverse, scrivile nella '
                             .'colonna «quota_pct».'
-                        : 'Le importo come sono: può essere corretto — per esempio un usufrutto accanto '
-                            .'a una nuda proprietà — ma se erano due comproprietari al 50% controlla la '
-                            .'colonna «quota_pct».',
+                        : 'Le importo come sono: può essere corretto — per esempio quando una parte dell\'unità è in usufrutto e il resto '
+                            .'in piena proprietà — ma se erano due comproprietari al 50% controlla la colonna «quota_pct».',
                     colonna: 'quota_pct',
                     foglio: $foglio->nome,
                 );

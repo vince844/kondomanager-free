@@ -38,6 +38,7 @@ import EsitiDellaScheda from '@/components/assemblee/seguito/EsitiDellaScheda.vu
 import { gestisceLeAssemblee } from '@/lib/assemblee/permessi';
 import type { DeliberaDelMenu } from '@/types/assemblee';
 import { usePermission } from '@/composables/permissions';
+import { Permission } from '@/enums/Permission';
 import { useUrlPrecedente } from '@/composables/useUrlPrecedente';
 import { CalendarClock, FileText, Scale } from 'lucide-vue-next';
 import { giorno, personeDelMenu } from '@/lib/gestionale/debiti/rateScadute';
@@ -62,6 +63,8 @@ const permessi = usePermission();
 const { generateRoute, generatePath } = permessi;
 // Con «Gestisce le assemblee» la data viene dalla delibera scelta; senza, si scrive a mano come prima.
 const conLaDelibera = computed(() => gestisceLeAssemblee(permessi));
+// Caricare il verbale chiede «Crea documenti archivio», come «Allega» della fattura: senza, il campo non c'è e la dispensa si registra lo stesso.
+const puoCaricare = computed(() => permessi.hasPermission([Permission.CREATE_ARCHIVE_DOCUMENTS]));
 const delibera = ref<DeliberaDelMenu | null>(null);
 const deliberaDellaRevoca = ref<DeliberaDelMenu | null>(null);
 const page = usePage<{ flash?: { message?: Flash }; errors?: Record<string, string> }>();
@@ -219,7 +222,7 @@ const breadcrumbs = computed(() => [
                             <span class="flex items-center gap-1">Numero del verbale <SpiegazioneDelFiltro :testo="SPIEGAZIONE_VERBALE" /></span>
                             <Input v-model="nuova.numero_verbale" placeholder="per esempio 3/2027" class="h-8 w-[160px] text-xs" data-testid="numero-verbale" />
                         </label>
-                        <div class="text-xs flex flex-col gap-1">
+                        <div v-if="puoCaricare" class="text-xs flex flex-col gap-1">
                             <span class="flex items-center gap-1">Il verbale (PDF o immagine, facoltativo) <SpiegazioneDelFiltro :testo="SPIEGAZIONE_FILE" /></span>
                             <CampoFile v-model="verbale" accept=".pdf,.jpg,.jpeg,.png" testid="file-verbale" class="max-w-[360px]" />
                         </div>

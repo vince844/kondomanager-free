@@ -27,6 +27,8 @@ export const STORNI_DI_SCRITTURA: readonly string[] = [
     'storno_pagamento_f24',
     'storno_giroconto',
     'storno_incasso_diverso',
+    // Coda 743 (1.12.0-beta.14): lo storno del ripianamento del debito ereditato, quando il suo piano si elimina.
+    'storno_ripianamento_debito',
 ];
 
 export interface ScritturaCollegata {

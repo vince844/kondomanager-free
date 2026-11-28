@@ -169,8 +169,8 @@ it('Coda 332 — il piano del 2026 creato quando il 2027 è l\'esercizio aperto:
     expect($voce)->not->toBeNull();
     expect($voce['cifra'])->toBe(39452)
         ->and(collect($voce['eredi'])->mapWithKeys(fn ($e) => [$e['nome'] => $e['cifra']])->all())->toBe(['Anna' => 23671, 'Bruno' => 15781])
-        // Il posto del Wallet è per esercizio: nel 2026 nessuno ha un saldo.
-        ->and($voce['con_un_saldo'])->toBe([])
+        // Coda 286: il posto del Wallet è quello dell'esercizio aperto, il 2027, dove la porta ha scritto le tre righe.
+        ->and($voce['con_un_saldo'])->toBe(['Ugo', 'Anna', 'Bruno'])
         ->and($voce['frase'])->toEndWith('I saldi ci sono già: Ugo, Anna e Bruno hanno un saldo su quella gestione e quell\'unità, e questo piano li assorbe nelle loro quote con questa generazione. Non serve registrare altro.')
         // Il 2027 è l'esercizio aperto: il Wallet li mostra, e la frase non dice altro.
         ->and($voce['frase'])->not->toContain('non compaiono nel Wallet')
@@ -327,10 +327,10 @@ it('Coda 332 — un riporto non legato nel 2027 che non è la parte, e che la ge
     b60dWallet($this, $s, 'ugo', 10000);
 
     $voce = Beta51Scenario::voceDelDefunto($s->cancello($piano));
-    // Decisione 164.3: un saldo non legato di un altro esercizio, che la generazione assorbe, fa «incerto» (V5) e non «manca» (V1). Il posto del
-    // Wallet (`con_un_saldo`, `wallet`) resta per esercizio: nel 2026 Ugo non ha saldi.
-    expect($voce['con_un_saldo'])->toBe([])
-        ->and($voce['wallet'])->toBeTrue()
+    // Decisione 164.3: un saldo non legato di un altro esercizio, che la generazione assorbe, fa «incerto» (V5) e non «manca» (V1). Coda 286: il posto
+    // del Wallet (`con_un_saldo`, `wallet`) è quello dell'esercizio aperto, il 2027, dove Ugo ha il riporto.
+    expect($voce['con_un_saldo'])->toBe(['Ugo'])
+        ->and($voce['wallet'])->toBeFalse()
         ->and($voce['frase'])->toEndWith(' '.B60D_V5_UGO)
         ->and($voce['frase'])->not->toContain('non compare nel Wallet');
 });
@@ -347,7 +347,7 @@ it('Coda 332 — un riporto non legato importato nel 2025 chiuso: il cancello di
         ->and($voce['frase'])->toEndWith(' '.B60D_V5_UGO.' Il saldo dell\'esercizio «Esercizio 2025» non compare nel Wallet, che mostra un solo esercizio aperto: il piano lo assorbe lo stesso, perché prende i saldi della gestione di ogni esercizio.');
 });
 
-it('controprova — il piano che non applica i saldi non assorbe il riporto del 2027: il cancello chiede i saldi legati di tutti, come prima', function () {
+it('controprova — il piano che non applica i saldi non assorbe il riporto del 2027; il riporto occupa il posto del Wallet (l\'esercizio aperto, Coda 286): il cancello chiede i saldi legati di Anna e Bruno e, al condizionale, quello di Ugo', function () {
     [$s, $es] = b60dScenario($this);
     b60dSoloIl2027Aperto($es);
     $piano = b60dPiano($s, $es['2026'], '2026', applicaSaldi: false);
@@ -355,6 +355,6 @@ it('controprova — il piano che non applica i saldi non assorbe il riporto del 
     b60dWallet($this, $s, 'ugo', 10000);
 
     $voce = Beta51Scenario::voceDelDefunto($s->cancello($piano));
-    expect($voce['frase'])->toContain('Questo piano non applica i saldi del Wallet: un saldo registrato adesso non entra qui. Per passare la parte agli eredi registra dal Wallet i saldi legati alla successione ('.B60D_RIGHE.') e crea di nuovo il piano')
-        ->and($voce['frase'])->not->toContain('non sa se');
+    expect($voce['frase'])->toEndWith('Ugo ha su quella gestione e quell\'unità saldi non legati alla successione, e il programma non sa se comprendono la parte. Questo piano non applica i saldi del Wallet: quelli già registrati non entrano nelle sue quote. Per passare la parte agli eredi registra dal Wallet i saldi legati alla successione del 1 maggio 2026 che mancano (€ 236,71 a debito di Anna e € 157,81 a debito di Bruno) e, se quelli non legati non la comprendono, anche € 394,52 a credito di Ugo; poi crea di nuovo il piano. Senza un piano nuovo la parte si regola fra le parti.')
+        ->and($voce['con_un_saldo'])->toBe(['Ugo']);
 });

@@ -8,6 +8,7 @@ namespace App\Http\Controllers\Documenti;
 use App\Http\Controllers\Controller;
 use App\Models\CategoriaDocumento;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Gate;
 
 class FetchCategorieController extends Controller
 {
@@ -16,6 +17,8 @@ class FetchCategorieController extends Controller
      */
     public function __invoke(): JsonResponse
     {
+        // Le categorie per il filtro dell'archivio, a chi vede l'archivio («Visualizza documenti archivio»).
+        Gate::allowIf((bool) request()->user()?->hasPermissionTo(\App\Enums\Permission::VIEW_ARCHIVE_DOCUMENTS->value), __('policies.view_archive_documents'));
         
         $categorie = CategoriaDocumento::select('id', 'name')->orderBy('name')->get();
 

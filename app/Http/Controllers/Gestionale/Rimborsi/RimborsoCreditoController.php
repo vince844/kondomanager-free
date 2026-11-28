@@ -69,18 +69,13 @@ class RimborsoCreditoController extends Controller
     }
 
     /**
-     * La persona è di questo condominio. Lo scoping delle rotte (`scopeBindings()` sul gruppo, coppia
-     * anagrafica → anagrafiche) risolve `{anagrafica}` dentro il pivot `anagrafica_condominio`: chi non è nel
-     * pivot riceve 404 prima di arrivare qui. Questa guardia ripete il controllo per esteso — difesa in profondità,
-     * se un giorno la rotta perdesse lo scoping — e il test di sistema sulle rotte annidate la pretende. Il ramo
-     * sulla riga di titolarità oggi non è raggiungibile (senza pivot il binding ferma prima): resta come seconda
-     * rete. Chi ha venduto resta nel pivot (il passaggio non fa detach), perciò il rimborso lo raggiunge.
+     * La persona ha o ha avuto a che fare con questo condominio, altrimenti 404. La rotta non lega `{anagrafica}` al condominio (`withoutScopedBindings`,
+     * come l'estratto conto da cui parte il rimborso): chi è stato tolto dal condominio dopo una vendita esce dal pivot `anagrafica_condominio`, e il suo
+     * credito si rimborsa lo stesso. La regola è quella del pagante (`Anagrafica::delCondominio`: il pivot, una riga di titolarità anche cessata su una sua
+     * unità, le quote nei suoi piani); la persona di un altro condominio risponde 404.
      */
     private function assicuraAnagraficaDelCondominio(Condominio $condominio, Anagrafica $anagrafica): void
     {
-        $delCondominio = $anagrafica->condomini()->whereKey($condominio->id)->exists()
-            || $anagrafica->immobili()->where('immobili.condominio_id', $condominio->id)->exists();
-
-        abort_unless($delCondominio, 404);
+        abort_unless(Anagrafica::delCondominio((int) $condominio->id)->whereKey($anagrafica->id)->exists(), 404);
     }
 }

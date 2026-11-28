@@ -137,6 +137,10 @@ describe('il limite arriva a tutte e due le schermate del documento', function (
 
         $this->user = \App\Models\User::factory()->create();
         $this->user->assignRole($ruolo);
+        // I documenti dell'unità chiedono «Modifica condomini», che l'amministratore di serie ha.
+        foreach (['Modifica condomini'] as $nomeDelPermesso) {
+            $ruolo->givePermissionTo(\Spatie\Permission\Models\Permission::firstOrCreate(['name' => $nomeDelPermesso, 'guard_name' => 'web']));
+        }
 
         $this->condominio = \App\Models\Condominio::factory()->create();
         \App\Models\Esercizio::factory()->create(['condominio_id' => $this->condominio->id]);

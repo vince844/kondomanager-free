@@ -427,7 +427,12 @@ it('R2: le frasi del calcolo per quota escono dai fatti e vanno in «frasi_del_c
 
 it('R2, controllo: i fatti che valgono con qualunque scelta restano in «frasi», le otto bozze che passano ad Anna comprese', function () {
     // Le bozze passano all'erede di riferimento anche con «Non scriverlo» (P5): la frase è un fatto, non una conseguenza del conguaglio.
-    [$s, $corpo] = spnScenario('fresco');
+    // Le quattro rate emesse dalla rotta vera, con le righe a giornale: la morosità del pannello è lo scaduto della lettura comune dei debiti.
+    $s = ruScenario('prima_rata', 0);
+    $rate = DB::table('rate')->where('piano_rate_id', $s['piano']->id)->where('data_scadenza', '<=', '2026-04-30 23:59:59')->pluck('id')->all();
+    $this->actingAs($this->user)->post(route('admin.gestionale.piani-rate.emetti', [$s['c'], $s['piano']]), ['rate_ids' => $rate, 'data_emissione' => '2026-04-30', 'invia_notifiche' => false])
+        ->assertSessionHasNoErrors();
+    $corpo = spnCorpo($s, spnPersona($s, 'Anna'), spnPersona($s, 'Bruno'), spnPersona($s, 'Carla'));
 
     $fatti = implode(' | ', ruAnteprima($this, $s, $corpo)['rate']['frasi']);
 

@@ -19,6 +19,7 @@ use App\Support\LimiteCaricamento;
 use App\Traits\HandleFlashMessages;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 
 /**
@@ -86,6 +87,8 @@ class RendicontoVersioniController extends Controller
     public function carica(Request $request, Condominio $condominio, Esercizio $esercizio, string $versione): RedirectResponse
     {
         $v = $this->assicuraVersione($condominio, $esercizio, $versione);
+        // Un file nel gestionale: chiede «Crea documenti archivio», come «Allega» della fattura.
+        Gate::authorize('create', Documento::class);
         $request->validate([
             'pdf' => ['required', 'file', 'extensions:pdf', 'max:'.LimiteCaricamento::regolaMax(50.0), FileComeIlNome::regola()],
         ], ['pdf.required' => 'Scegli il PDF che hai mandato ai condòmini.']);
@@ -98,6 +101,10 @@ class RendicontoVersioniController extends Controller
     public function approva(Request $request, Condominio $condominio, Esercizio $esercizio, string $versione): RedirectResponse
     {
         $v = $this->assicuraVersione($condominio, $esercizio, $versione);
+        // Registrare l'approvazione resta di chi entra nel pannello; caricare il verbale chiede anche «Crea documenti archivio».
+        if ($request->hasFile('verbale')) {
+            Gate::authorize('create', Documento::class);
+        }
         $dati = $request->validate([
             'data_delibera' => ['required', 'date_format:Y-m-d', 'before_or_equal:'.DateHelper::oggiUtente()],
             'numero_verbale' => ['nullable', 'string', 'max:50'],

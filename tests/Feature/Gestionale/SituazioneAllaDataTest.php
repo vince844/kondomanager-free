@@ -318,7 +318,7 @@ it('due blocchi, ordinaria e straordinaria, che sommano al totale; la straordina
         ->and($str['cumulato_opera'])->toBe(['dal' => '2025-01-01', 'consuntivo' => 395000])
         ->and($ord['cumulato_opera'])->toBeNull()
         ->and($g['senza_voce'])->toBe(250)
-        ->and($g['totale'])->toBe(['costi' => 533100, 'quote_emesse' => 411000, 'crediti' => 41000, 'debiti' => 460000])
+        ->and($g['totale'])->toBe(['costi' => 533100, 'quote_emesse' => 411000, 'rettifica_esercizi_precedenti' => 0, 'crediti' => 41000, 'debiti' => 460000])
         ->and($g['totale']['costi'])->toBe($p['risultato_gestione']['costi'])
         ->and($g['totale']['crediti'])->toBe($p['sintesi']['crediti_condomini'])
         ->and($g['totale']['debiti'])->toBe($p['sintesi']['debiti_fornitori'])

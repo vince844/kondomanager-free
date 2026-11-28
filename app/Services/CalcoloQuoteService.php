@@ -18,6 +18,7 @@ use App\Services\Riparto\EsitoCompetenza;
 use App\Services\Riparto\GradinoCompetenza;
 use App\Services\Riparto\RisolutoreCompetenza;
 use App\Services\Riparto\RisolutoreTitolari;
+use App\Services\Riparto\RuoloDellaVoce;
 use App\Services\Riparto\UnitaMista;
 use App\Support\InsiemePeriodi;
 use App\Support\PeriodoCompetenza;
@@ -67,6 +68,8 @@ class CalcoloQuoteService
     private const TOLLERANZA_COEFFICIENTI_PUNTI = 0.05;
 
     private ?Gestione $gestioneCorrente = null;
+    /** Il tipo della gestione del piano da fatture che si calcola (`calcolaDaFattureStraordinarie`); nullo fuori di lì. */
+    private ?string $tipoGestioneDelleFatture = null;
     private array $pivotOverrides = [];
     private ?\Carbon\Carbon $pianoRateCreatedAt = null;
 
@@ -326,7 +329,7 @@ class CalcoloQuoteService
      *                          l'anteprima delle stampe del riparto di un piano non generato (`DettaglioRiparto::perPiano`): l'anteprima
      *                          deve dire ciò che la generazione farà, e senza la guardia mostrava un già versato tolto due volte.
      */
-    public function calcolaPerGestione(Gestione $gestione, ?PianoRate $pianoRate = null, bool $soloLettura = false, PeriodoCompetenza|EsitoCompetenza|null $periodo = null, bool $guardiaSenzaFermarsi = false): array
+    public function calcolaPerGestione(Gestione $gestione, ?PianoRate $pianoRate = null, bool $soloLettura = false, PeriodoCompetenza|EsitoCompetenza|null $periodo = null, bool $guardiaSenzaFermarsi = false, bool $diSoliSaldi = false): array
     {
         $this->gestioneCorrente = $gestione;
         $this->nonSiGenera = null;
@@ -387,6 +390,12 @@ class CalcoloQuoteService
                 if (isset($capitolo->pivot->id)) {
                     $this->pivotCapitoloIds[$capitolo->id] = (int) $capitolo->pivot->id;
                 }
+            }
+
+            // Il piano di soli saldi (`PianoRate::eDiSoliSaldi`, letto prima che il ricalcolo cancelli le rate) non prende voci: senza righe chiede i soli
+            // saldi anche se la gestione ha avuto delle voci dopo di lui. Le voci restano libere per un altro piano.
+            if ($diSoliSaldi && $capitoliIds === []) {
+                return [];
             }
 
             if (! $soloLettura) {
@@ -498,9 +507,11 @@ class CalcoloQuoteService
         // Coda 438, AD3: un piano senza voci scelte, e tutte le voci della gestione già in altri piani attivi dello stesso esercizio. La generazione si
         // ferma comunque (`GeneratePianoRateAction`, nessuna quota calcolata): qui si ferma nello stesso punto, con la causa vera al posto delle tre
         // verifiche che non c'entrano. Solo nella generazione: la lettura (`soloLettura`) non si ferma.
-        if (! $soloLettura && $pianoRate !== null && $totali === [] && $contiImpegnatiIds !== []
-            && $conti->every(fn ($conto) => in_array($conto->id, $contiImpegnatiIds))) {
-            $this->fermaPerLeVociGiaNeiPiani($pianiCheImpegnano, $conti->pluck('id')->all());
+        // Coda 491: una radice conta come impegnata anche quando lo sono tutte le sue sottovoci (un capitolo chiesto dagli altri piani voce per voce).
+        $impegnati = array_map('intval', $contiImpegnatiIds);
+        if (! $soloLettura && $pianoRate !== null && $totali === [] && $impegnati !== []
+            && $conti->every(fn ($conto) => $this->tuttaImpegnata($conto, $impegnati))) {
+            $this->fermaPerLeVociGiaNeiPiani($pianiCheImpegnano, $conti->flatMap(fn ($conto) => $this->conLeSottovoci($conto))->all());
         }
 
         return $totali;
@@ -648,6 +659,10 @@ class CalcoloQuoteService
         }
         // Le voci che questo piano chiede, come le prenderà il motore: senza righe, le radici che nessun altro piano attivo dello stesso esercizio ha già.
         $haRighe = DB::table('piano_rate_capitoli')->where('piano_rate_id', $pianoRate->id)->exists();
+        // Il piano di soli saldi (`PianoRate::eDiSoliSaldi`) non chiede nessuna voce: senza righe non prende quelle libere, e la guardia non ha niente da guardare.
+        if (! $haRighe && $pianoRate->tipo !== 'straordinario' && $pianoRate->eDiSoliSaldi()) {
+            return null;
+        }
         $mie = $this->chiestoDalPiano($pianoRate, $voci, $haRighe ? [] : $this->vociImpegnateDagliAltri($pianoRate, $gestione));
         $conGiaVersato = $mie === [] ? [] : ContributoVersato::query()->where('target_type', Conto::class)->whereIn('target_id', array_keys($mie))
             ->distinct()->pluck('target_id')->map(fn ($id) => (int) $id)->all();
@@ -710,6 +725,16 @@ class CalcoloQuoteService
                             number_format(abs((int) $conto->importo) / 100, 2, ',', '.'), self::DOVE_SI_INDICA_L_ESERCIZIO);
                 }
 
+                // Coda 742: la voce vale € 0 e la sua spesa è a rate in un piano delle fatture, che tiene già conto del già versato. Alzare la voce non è la
+                // strada (la voce resta ferma finché il piano la tiene, e alzata la spesa si chiederebbe due volte): il programma non sa dividere qui il già
+                // versato, si ferma e dice la strada che c'è, il preventivo con le voci scelte senza questa.
+                if ((int) $conto->importo === 0 && ($pianiDelleFatture = \App\Services\Gestionale\VoceFuoriDalPreventivo::pianiDelleFattureSullaVoce((int) $contoId)) !== []) {
+                    return "Impossibile generare: la voce di spesa \"{$conto->nome}\" ha un già versato registrato e vale € 0 nel preventivo, e la sua spesa "
+                        ."(€ ".number_format($spesoReale / 100, 2, ',', '.').") è a rate nel piano «{$pianiDelleFatture[0]['piano']}» con la fattura n. "
+                        ."{$pianiDelleFatture[0]['fattura']}, che tiene già conto del già versato. Questo piano non la deve chiedere: scegli le voci del preventivo "
+                        ."una per una, senza \"{$conto->nome}\".";
+                }
+
                 return "Impossibile generare: la voce di spesa \"{$conto->nome}\" ha un già-versato registrato, "
                     ."ma risulta una fattura reale (€ ".number_format($spesoReale / 100, 2, ',', '.').") "
                     ."superiore al suo budget (€ ".number_format(abs((int) $conto->importo) / 100, 2, ',', '.')."). "
@@ -721,8 +746,9 @@ class CalcoloQuoteService
             // Caso 1 — somma che eccede: i piani fra cui il già versato si divide (tutti quelli della voce, o i soli dello stesso esercizio), ognuno con
             // quanto chiede sulla voce (Code 486 e 487: con la riga senza importo, o con un capitolo sopra di lei; Coda 489: con la riga delle voci vuota,
             // le voci che il motore gli farà prendere, `chiestoDaUnAltroPiano`).
+            // Il piano di soli saldi non chiede voci: non è fra quelli che dividono il già versato, anche se non ha righe.
             $altriPiani ??= PianoRate::where('gestione_id', $gestione->id)->where('attivo', true)->where('id', '!=', $pianoRate->id)->delRiparto()
-                ->orderBy('id')->get()->reject(fn (PianoRate $p) => $p->tipo === 'straordinario')->values();
+                ->orderBy('id')->get()->reject(fn (PianoRate $p) => $p->tipo === 'straordinario' || $p->eDiSoliSaldi())->values();
             $altri = [];
             foreach ($altriPiani as $piano) {
                 if (! $perTuttiGliEsercizi && $this->esercizioDi($piano)?->id !== $mio) {
@@ -813,6 +839,60 @@ class CalcoloQuoteService
     }
 
     /**
+     * Quanto chiedono già le voci della gestione gli altri piani attivi dello stesso esercizio di `$questo` (non i piani delle fatture), come li prende il
+     * motore (`chiestoDalPiano`): `conto_id => ['chiesto' => centesimi, 'piani' => [nome => centesimi]]`. Lo legge il tetto di ogni voce
+     * (`TettoSulleVoci::chiestoDagliAltri`): la stessa voce non si chiede due volte per intero.
+     *
+     * @return array<int, array{chiesto: int, piani: array<string, int>}>
+     */
+    public function chiestoSulleVociDagliAltriPiani(PianoRate $questo, Gestione $gestione): array
+    {
+        $voci = $this->vociDellaGestione($gestione);
+        if ($voci === []) {
+            return [];
+        }
+        $esito = [];
+        foreach ($this->altriPianiAttiviDelloStessoEsercizio($questo, $gestione)->reject(fn (PianoRate $p) => $p->tipo === 'straordinario' || $p->eDegliAddebiti() || $p->eDiSoliSaldi()) as $altro) {
+            // Un piano senza righe che non si ricalcola più (rate emesse, incassi, conguaglio) ha chiesto le voci che c'erano quando è stato generato: una voce
+            // nata dopo di lui non la chiede, e non si ricalcola per prenderla.
+            $senzaRighe = ! DB::table('piano_rate_capitoli')->where('piano_rate_id', $altro->id)->exists();
+            $congelato = $senzaRighe && $altro->eImmutabile();
+            // Un piano senza righe chiede le voci che nessun altro piano del suo esercizio aveva quando è stato calcolato: le righe di questo piano, scritte
+            // adesso (il tetto si legge dopo la scrittura), non gliele tolgono. Un piano così che si ricalcola ancora ferma la creazione prima
+            // (`PianoRateController::rifiutoPerIPianiSenzaVoci`).
+            $chiesto = $senzaRighe
+                ? $this->chiestoDalPiano($altro, $voci, DB::table('piano_rate_capitoli')
+                    ->whereIn('piano_rate_id', $this->altriPianiAttiviDelloStessoEsercizio($altro, $gestione)->pluck('id')->reject(fn ($id) => (int) $id === (int) $questo->id)->all())
+                    ->pluck('conto_id')->map(fn ($id) => (int) $id)->unique()->values()->all())
+                : $this->chiestoDalPiano($altro, $voci);
+            foreach ($chiesto as $contoId => [$importo]) {
+                if ($importo <= 0 || ($congelato && isset($voci[$contoId]) && $voci[$contoId]->created_at >= $altro->created_at)) {
+                    continue;
+                }
+                $esito[(int) $contoId]['chiesto'] = ($esito[(int) $contoId]['chiesto'] ?? 0) + (int) $importo;
+                $esito[(int) $contoId]['piani'][(string) $altro->nome] = (int) $importo;
+            }
+        }
+
+        return $esito;
+    }
+
+    /**
+     * Quanto chiede questo piano su ogni voce della gestione, con la discesa del motore (`chiestoDalPiano`): `conto_id => [centesimi, riga]`, dove `riga`
+     * è la voce della riga del piano da cui il motore ci arriva. Senza righe, le radici che nessun altro piano attivo del suo esercizio ha già, come le
+     * prende il motore. Lo legge il tetto sulle voci dopo ogni scrittura che cambia che cosa chiede il piano o di quale esercizio è
+     * (`TettoSulleVoci::primoSforo`).
+     *
+     * @return array<int, array{0: int, 1: int}>
+     */
+    public function chiestoDaQuestoPiano(PianoRate $piano, Gestione $gestione): array
+    {
+        $impegnate = DB::table('piano_rate_capitoli')->where('piano_rate_id', $piano->id)->exists() ? [] : $this->vociImpegnateDagliAltri($piano, $gestione);
+
+        return $this->chiestoDalPiano($piano, $this->vociDellaGestione($gestione), $impegnate);
+    }
+
+    /**
      * La frase che dice perché un piano senza voci associate chiede la voce (`chiestoDaUnAltroPiano`), in coda ai due messaggi della guardia; vuota se
      * nessuno dei piani nominati ha la riga vuota.
      *
@@ -896,6 +976,32 @@ class CalcoloQuoteService
         }
 
         return true;
+    }
+
+    /**
+     * La voce è negli altri piani, lei o tutte le sue sottovoci (fino in fondo): per il fermo delle voci già nei piani (`fermaPerLeVociGiaNeiPiani`).
+     *
+     * @param list<int> $impegnate
+     */
+    private function tuttaImpegnata(Conto $voce, array $impegnate): bool
+    {
+        if (in_array((int) $voce->id, $impegnate, true)) {
+            return true;
+        }
+        $figli = $voce->sottoconti ?? collect();
+
+        return $figli->isNotEmpty() && $figli->every(fn (Conto $figlio) => $this->tuttaImpegnata($figlio, $impegnate));
+    }
+
+    /** L'id della voce e quelli delle sue sottovoci caricate. @return list<int> */
+    private function conLeSottovoci(Conto $voce): array
+    {
+        $ids = [(int) $voce->id];
+        foreach ($voce->sottoconti ?? [] as $figlio) {
+            $ids = [...$ids, ...$this->conLeSottovoci($figlio)];
+        }
+
+        return $ids;
     }
 
     /** @param list<int> $impegnate */
@@ -1076,6 +1182,8 @@ class CalcoloQuoteService
      */
     public function calcolaDaFattureStraordinarie(PianoRate $pianoRate, PeriodoCompetenza|EsitoCompetenza|null $periodo = null, bool $soloLettura = false, bool $conNoteCollegate = true): array
     {
+        // La natura della gestione del piano, per l'addebito diretto di un'unità in usufrutto (`ordinariaAllUsufruttuario`).
+        $this->tipoGestioneDelleFatture = $pianoRate->gestione?->tipo;
         $this->impostaCompetenzaBase($periodo, NaturaGestione::Straordinaria);
         $this->competenzaNonRisolta = false;
         $this->competenzaRisoltaPerFattura = false;
@@ -1183,14 +1291,41 @@ class CalcoloQuoteService
             $componenti = [];
 
             if ($fattura->is_pregresso) {
+                // Una copertura «sopravvenienza» senza voce (un dato delle versioni di prima: oggi la registrazione la rifiuta) non ha tabelle: con le
+                // altre la pagava la tabella della parte con la voce. Ci si ferma e si dice che cosa si può fare: la pregressa non si modifica
+                // (`FatturaPassivaService::motivoBloccoModifica`), e dopo lo storno lo stesso documento non si registra di nuovo (l'indice `unique_ft`).
+                $senzaVoce = (int) DB::table('fattura_coperture')->where('fattura_passiva_id', $fattura->id)->where('tipo_copertura', 'sopravvenienza')
+                    ->whereNull('conto_id')->sum('importo');
+                if ($senzaVoce !== 0) {
+                    throw new \RuntimeException(sprintf('Impossibile generare: la fattura pregressa n. %s ha una copertura «Fuori preventivo» di € %s senza voce, e il '
+                        . 'piano non sa su quali tabelle chiederla. Una pregressa non si modifica, e stornata non si registra di nuovo con lo stesso '
+                        . 'numero e la stessa data dello stesso fornitore: oggi questa fattura non entra in un piano. Crea il piano senza di lei.',
+                        $fattura->numero_documento ?? 'S/N', number_format(abs($senzaVoce) / 100, 2, ',', '.')));
+                }
                 $coperture = DB::table('fattura_coperture')
                     ->where('fattura_passiva_id', $fattura->id)
                     ->where('tipo_copertura', 'sopravvenienza')
                     ->whereNotNull('conto_id')
                     ->get();
+                // Coda 743 (1.12.0-beta.14): la copertura di un ripianamento del debito ereditato è del piano che l'ha scritta (il suo segno). Il piano del
+                // ripianamento riparte la sua, con la sua voce e la sua tabella; gli altri piani non la toccano. Con due ripianamenti sulla stessa pregressa,
+                // uno sulla proprietà e uno sulle scale, il motore mescolava le due voci in ogni piano.
+                $segno = \App\Services\Gestionale\RipianamentoDelDeficit::segno($pianoRate);
+                $diQuesto = $coperture->filter(fn ($c) => $c->nota_amministratore === $segno);
+                $coperture = $diQuesto->isNotEmpty() ? $diQuesto
+                    : $coperture->reject(fn ($c) => \App\Services\Gestionale\RipianamentoDelDeficit::eDiUnRipianamento($c->nota_amministratore));
 
                 foreach ($coperture as $cop) {
-                    $imp = abs((int) $cop->importo);
+                    // La copertura «Fuori preventivo» di una fattura ha il segno positivo; una negativa nasce solo su una nota di credito
+                    // (`FatturaPassivaService`), che non entra in un piano: il carrello offre solo fatture e la richiesta rifiuta il resto. Se
+                    // arriva lo stesso, il piano non la chiede come una spesa: si ferma e dice quale fattura.
+                    $imp = (int) $cop->importo;
+                    if ($imp < 0) {
+                        throw new \RuntimeException(sprintf('Impossibile generare: la fattura pregressa n. %s ha una copertura «Fuori preventivo» negativa (%s): '
+                            . 'è una nota di credito, e una nota non si chiede ai condòmini con un piano. Togli il documento dal piano e collega la nota alla '
+                            . 'fattura che rettifica, dall\'elenco delle fatture.',
+                            $fattura->numero_documento ?? 'S/N', MoneyHelper::format(abs($imp))));
+                    }
                     if ($imp === 0) continue;
 
                     $componenti[] = ['immobile_id' => null, 'conto_id' => (int) $cop->conto_id, 'importo' => $imp];
@@ -1199,9 +1334,12 @@ class CalcoloQuoteService
             } else {
                 $righe = DB::table('righe_fattura')
                     ->where('fattura_passiva_id', $fattura->id)
-                    ->where(function ($q) {
+                    ->where(function ($q) use ($pianoRate) {
                         $q->where('is_sopravvenienza', true)
-                          ->orWhereNotNull('immobile_id');
+                          ->orWhereNotNull('immobile_id')
+                          // Coda 742: la riga su una voce che nel preventivo vale € 0, come la offre il carrello, o quella che questo piano ha già preso
+                          // (resta sua anche se la voce ha preso poi una cifra in un altro piano).
+                          ->orWhere(fn ($z) => \App\Services\Gestionale\VoceFuoriDalPreventivo::righeOPrese($z, 'righe_fattura', (int) $pianoRate->id));
                     })
                     ->get();
 
@@ -1236,6 +1374,8 @@ class CalcoloQuoteService
                         'importo'     => $imp,
                         'riga_id'     => (int) $riga->id,
                         'descrizione' => $riga->descrizione ?? null,
+                        // La voce scelta sulla riga di un'unità (la voce comune resta vuota): l'ordine dell'addebito la segue (`ordineDellAddebito`).
+                        'voce_addebito' => is_null($riga->immobile_id) || empty($riga->conto_addebito_id) ? null : (int) $riga->conto_addebito_id,
                     ];
                     $righeElaborate++;
                 }
@@ -1317,7 +1457,18 @@ class CalcoloQuoteService
                 if ($importoComp === 0) continue;
 
                 if (!is_null($c['immobile_id'])) {
-                    $this->addebitaDiretto($c['immobile_id'], $importoComp, $totali, $c['riga_id'] ?? null, $c['conto_id'], $c['descrizione'] ?? null);
+                    // La spesa di una sola unità senza competenza scritta, su una gestione ordinaria, è di chi era titolare il giorno della
+                    // fattura: lo stesso giorno del consuntivo per persona (`ConsuntivoPerPersona::personali`). Prima si divideva sui giorni del
+                    // piano, e il conguaglio spostava la differenza fra chi vende e chi compra. La spesa vecchia senza periodo si divide ancora sui
+                    // giorni del piano (`giornoDellaSpesaPersonale`), e il consuntivo per persona la divide sui giorni della stessa base.
+                    $giorno = $this->giornoDellaSpesaPersonale($fattura, $esitoFattura);
+                    if ($giorno !== null) {
+                        $this->impostaCompetenzaCorrente($giorno);
+                    }
+                    $this->addebitaDiretto($c['immobile_id'], $importoComp, $totali, $c['riga_id'] ?? null, $c['conto_id'], $c['descrizione'] ?? null, $c['voce_addebito'] ?? null);
+                    if ($giorno !== null) {
+                        $this->impostaCompetenzaCorrente($esitoFattura);
+                    }
                     continue;
                 }
 
@@ -1411,14 +1562,17 @@ class CalcoloQuoteService
      * `lavoriOrdinari`). La risposta dice per ogni unità e conto la spesa con la competenza scritta, sommata, il primo e l'ultimo giorno, quante spese e la
      * parte di ognuno (`competenze_scritte`).
      *
+     * **Le letture di fine anno** (`LettureDiFineAnno`): una voce che le ha per l'esercizio si divide con le loro percentuali al posto dei coefficienti
+     * della voce; `letture` dice per voce i coefficienti del preventivo e le percentuali del consuntivo, tabella per tabella.
+     *
      * @param array<int,int>|list<array{conto_id:int, importo:int, competenza_dal?:mixed, competenza_al?:mixed}> $cifre
      * @param array{data_delibera?:mixed, delibere?:list<string>, righe_per?:list<int>, capitoli?:array<int,int>, per_tabella?:bool, competenze_scritte?:list<array<string,mixed>>} $opzioni
-     * @return array{persone: array<int, array<int, array<int,int>>>, uscite: array<int,int>, diviso_su: array<int, array<int,int>>, non_attribuite: array<int,int>, motivi: array<int, array<string,int>>, righe: list<array<string,mixed>>, non_calcolabile: ?string, per_tabella: ?array, competenze_scritte: array<int, array<int, array<string,mixed>>>, divisioni: array<int,int>}
+     * @return array{persone: array<int, array<int, array<int,int>>>, uscite: array<int,int>, diviso_su: array<int, array<int,int>>, non_attribuite: array<int,int>, motivi: array<int, array<string,int>>, righe: list<array<string,mixed>>, non_calcolabile: ?string, per_tabella: ?array, competenze_scritte: array<int, array<int, array<string,mixed>>>, divisioni: array<int,int>, letture: array<int, array{voce: string, al: string, nomi: array<int,string>, preventivo: array<int,float>, consuntivo: array<int,float>}>}
      */
     public function consuntivoPerGestione(Gestione $gestione, \App\Models\Esercizio $esercizio, array $cifre, array $opzioni = []): array
     {
         $esito = ['persone' => [], 'uscite' => [], 'diviso_su' => [], 'non_attribuite' => [], 'motivi' => [], 'righe' => [], 'non_calcolabile' => null, 'per_tabella' => null,
-            'competenze_scritte' => [], 'divisioni' => []];
+            'competenze_scritte' => [], 'divisioni' => [], 'letture' => []];
         $natura = NaturaGestione::daStringa($gestione->tipo);
 
         $registro = Log::getFacadeRoot();
@@ -1445,6 +1599,19 @@ class CalcoloQuoteService
 
             $conti = Conto::with(['tabelleMillesimali.ripartizioni', 'tabelleMillesimali.tabella'])
                 ->whereIn('id', array_unique(array_column($lavori, 'conto_id')))->get()->keyBy('id');
+            // Le letture di fine anno: dove la voce le ha per l'esercizio, il consuntivo la divide con le loro percentuali al posto dei coefficienti
+            // della voce (solo in memoria: la voce e il preventivo restano come sono).
+            foreach (\App\Services\Gestionale\LettureDiFineAnno::coefficienti($conti->keys()->map(fn ($id) => (int) $id)->all(), (int) $esercizio->id) as $cid => $perTabella) {
+                $esito['letture'][$cid] = ['voce' => (string) $conti[$cid]->nome, 'al' => substr((string) $esercizio->data_fine, 0, 10), 'nomi' => [], 'preventivo' => [], 'consuntivo' => []];
+                foreach ($conti[$cid]->tabelleMillesimali as $ctm) {
+                    if (isset($perTabella[(int) $ctm->tabella_id])) {
+                        $esito['letture'][$cid]['nomi'][(int) $ctm->tabella_id] = (string) ($ctm->tabella->nome ?? '');
+                        $esito['letture'][$cid]['preventivo'][(int) $ctm->tabella_id] = (float) $ctm->coefficiente;
+                        $esito['letture'][$cid]['consuntivo'][(int) $ctm->tabella_id] = $perTabella[(int) $ctm->tabella_id];
+                        $ctm->coefficiente = $perTabella[(int) $ctm->tabella_id];
+                    }
+                }
+            }
 
             // Le voci con le stesse tabelle una dopo l'altra: i pesi si calcolano una volta (`pesiDellaVoceRiusati`).
             foreach ($lavori as $i => $lavoro) {
@@ -2424,13 +2591,34 @@ class CalcoloQuoteService
     // =========================================================================
 
     /**
+     * Il giorno della fattura come competenza della sua spesa per una sola unità, quando la fattura non ne scrive una e la gestione è ordinaria:
+     * `null` se la fattura ha la sua competenza (vale quella), se la gestione è straordinaria (vale la delibera) o se il calcolo è senza periodo.
+     * `null` anche per una spesa vecchia senza periodo, una pregressa o una fattura di un giorno prima del periodo del piano: non si indovina chi era
+     * titolare quando il costo è maturato, e la spesa si divide sui giorni di quest'anno, come la base. Per farla pagare a chi era titolare allora si
+     * scrive il periodo sulla fattura (il carrello lo dice).
+     */
+    private function giornoDellaSpesaPersonale(object $fattura, ?EsitoCompetenza $esitoFattura): ?EsitoCompetenza
+    {
+        if ($esitoFattura === null || $this->competenzaBase === null || $this->competenzaBase->natura === NaturaGestione::Straordinaria
+            || $esitoFattura->gradino === GradinoCompetenza::Dichiarata || empty($fattura->data_documento) || ! empty($fattura->is_pregresso)) {
+            return null;
+        }
+        $giorno = $fattura->data_documento instanceof \DateTimeInterface ? $fattura->data_documento->format('Y-m-d') : substr((string) $fattura->data_documento, 0, 10);
+        if ($this->competenzaBase->periodi !== null && $giorno < $this->competenzaBase->periodi->dal()->format('Y-m-d')) {
+            return null;
+        }
+
+        return (new RisolutoreCompetenza())->perFattura($giorno, $giorno, $this->competenzaBase);
+    }
+
+    /**
      * Esegue un addebito diretto forzato su un singolo immobile (es. addebito personale).
      *
      * @param int $immobileId L'ID dell'immobile
      * @param int $importoCents L'importo in centesimi
      * @param array &$totali Array in cui accumulare la quota
      */
-    private function addebitaDiretto(int $immobileId, int $importoCents, array &$totali, ?int $rigaFatturaId = null, ?int $contoId = null, ?string $descrizione = null): void
+    private function addebitaDiretto(int $immobileId, int $importoCents, array &$totali, ?int $rigaFatturaId = null, ?int $contoId = null, ?string $descrizione = null, ?int $voceDellAddebito = null): void
     {
         $occupanti = $this->titolari->vincolaQuery(
             DB::table('anagrafica_immobile')->where('immobile_id', $immobileId),
@@ -2447,8 +2635,15 @@ class CalcoloQuoteService
         // serve che il proprietario non sia censito; la regola ora è una sola per entrambi.
         // `titolariDiDirittoReale()` è già in ordine di preferenza: proprietario, nudo
         // proprietario, usufruttuario.
+        // L'addebito segue la voce su cui è scritto (`RuoloDellaVoce`): sul solo «Usufruttuario» prima l'usufruttuario, poi il proprietario e il
+        // nudo; sul solo «Proprietario» l'ordine di sempre, anche con un usufrutto nato da un passaggio che ha scelto «l'ordinaria
+        // all'usufruttuario» (la voce tenuta sul «Proprietario» togliendo la spunta). La riga senza voce, o su una voce che non dice un ruolo
+        // solo: su una gestione ordinaria, con un usufrutto nato da un passaggio con «l'ordinaria all'usufruttuario», dal giorno dell'atto la
+        // spesa è dell'usufruttuario, come le voci spostate; altrimenti l'ordine di sempre.
+        // La voce è quella della riga (`conto_id`, sulle righe scritte prima della 1.9.0), altrimenti la voce dell'addebito (`conto_addebito_id`).
+        $ordineDeiTitolari = $this->ordineDellAddebito($occupanti, $immobileId, $contoId ?? $voceDellAddebito);
         $destinatari = collect();
-        foreach (RuoloAnagraficaImmobile::titolariDiDirittoReale() as $ruolo) {
+        foreach ($ordineDeiTitolari as $ruolo) {
             $destinatari = $occupanti->where('tipologia', $ruolo->value)->values();
 
             if ($destinatari->isNotEmpty()) {
@@ -2488,7 +2683,7 @@ class CalcoloQuoteService
         $ruoloDestinatari = (string) $destinatari->first()->tipologia;
         $righeCoppia = $occupantiSenzaPeriodo->where('tipologia', $ruoloDestinatari)->values();
         $destinatariSenzaPeriodo = collect();
-        foreach (RuoloAnagraficaImmobile::titolariDiDirittoReale() as $ruolo) {
+        foreach ($ordineDeiTitolari as $ruolo) {
             $destinatariSenzaPeriodo = $occupantiSenzaPeriodo->where('tipologia', $ruolo->value)->values();
             if ($destinatariSenzaPeriodo->isNotEmpty()) {
                 break;
@@ -2618,6 +2813,43 @@ class CalcoloQuoteService
         foreach ($righeRipiego as $rid => $r) {
             $scrivi($r['riga'], (int) ($quoteRipiego[$rid] ?? 0), $this->congelatoTemporale($r['giorni'], $r['tratto']), (int) $r['riga']->id);
         }
+    }
+
+    /**
+     * L'ordine dei titolari per l'addebito diretto di quest'unità: dalla voce della riga se dice un ruolo solo (`RuoloDellaVoce`), altrimenti
+     * dalla regola dell'unità (`ordinariaAllUsufruttuario`).
+     *
+     * @return list<RuoloAnagraficaImmobile>
+     */
+    private function ordineDellAddebito(Collection $occupanti, int $immobileId, ?int $contoId): array
+    {
+        $allUsufruttuario = [RuoloAnagraficaImmobile::USUFRUTTUARIO, RuoloAnagraficaImmobile::PROPRIETARIO, RuoloAnagraficaImmobile::NUDA_PROPRIETA];
+
+        return match (RuoloDellaVoce::di($contoId)) {
+            RuoloAnagraficaImmobile::USUFRUTTUARIO => $allUsufruttuario,
+            RuoloAnagraficaImmobile::PROPRIETARIO => RuoloAnagraficaImmobile::titolariDiDirittoReale(),
+            default => $this->ordinariaAllUsufruttuario($occupanti, $immobileId) ? $allUsufruttuario : RuoloAnagraficaImmobile::titolariDiDirittoReale(),
+        };
+    }
+
+    /**
+     * L'addebito diretto di quest'unità, su una riga senza una voce che dica un ruolo solo, va prima all'usufruttuario? Sì su una gestione ordinaria (fa fede la natura della gestione del piano),
+     * quando nel periodo l'unità ha delle righe d'usufrutto e ognuna è nata da un passaggio registrato (costituzione o vendita con riserva) che
+     * non ha scelto «come dice ogni voce»: per la legge (art. 1004 c.c.) l'ordinaria è dell'usufruttuario, ed è la scelta proposta. Una riga
+     * d'usufrutto scritta a mano, o un usufrutto «come dice ogni voce», lasciano la regola di sempre (il nudo proprietario).
+     */
+    private function ordinariaAllUsufruttuario(Collection $occupanti, int $immobileId): bool
+    {
+        if (($this->tipoGestioneDelleFatture ?? $this->gestioneCorrente?->tipo) !== 'ordinaria') {
+            return false;
+        }
+        $usufrutti = $occupanti->where('tipologia', RuoloAnagraficaImmobile::USUFRUTTUARIO->value);
+
+        return $usufrutti->isNotEmpty() && $usufrutti->every(function ($riga) use ($immobileId) {
+            $origine = \App\Models\Gestionale\Subentro::origineDellUsufrutto((int) $riga->id, $immobileId);
+
+            return $origine !== null && ! $origine->ordinariaComeLaVoce();
+        });
     }
 
     /**
@@ -3552,7 +3784,8 @@ class CalcoloQuoteService
      * un'eccedenza a suo nome (`getEccedenzeCopertura()`), da restituire o conguagliare, non uno sconto
      * a chi le è subentrato. Le righe senza `anagrafica_id` (quelle storiche, scritte per unità) si
      * comportano come prima: ripartite fra i comproprietari in proporzione alle quote lorde,
-     * penny-perfect.
+     * penny-perfect. L'ordine è quello del conguaglio del passaggio: prima la parte dell'unità sui
+     * lordi, poi quella di ciascuna persona sulla sua riga già ridotta.
      *
      * La quota netta non scende mai sotto zero: l'eventuale eccedenza — l'unità ha
      * versato più di quanto le spetta — non viene inghiottita in silenzio ma
@@ -3569,7 +3802,7 @@ class CalcoloQuoteService
         // Coda 438: il già versato che vale nell'esercizio di questo piano (decisione 183.1).
         $copertureDettagliate = ContributoVersato::perImmobileESoggetto(Conto::class, $conto->id, $this->esercizioDelGiaVersato);
         // La lettura per unità (somma di tutte le righe, con e senza persona) resta la base dei log e
-        // del caso storico; la parte per persona si applica prima, qui sotto.
+        // del caso storico; la parte per persona si applica dopo quella dell'unità, qui sotto.
         $coperture = collect($copertureDettagliate)->map(fn (array $parti) => array_sum($parti));
 
         if ($coperture->isEmpty()) {
@@ -3661,7 +3894,100 @@ class CalcoloQuoteService
                 continue;
             }
 
-            // ── Decisione 17: prima la parte **di ciascuna persona**, sulla sua sola riga ──────────────
+            // ── Prima la parte **dell'unità** (righe senza persona): pro-lordo fra i comproprietari, sui lordi (D8: sottratta dal lordo
+            // aggregato prima della divisione). Poi quella di ciascuna persona, sulla sua riga già ridotta: è la regola del conguaglio
+            // del passaggio (`ConguaglioPassaggio`, «lordo − parte dell'unità», poi la parte della persona), così piano e conguaglio
+            // danno la stessa cifra. Nel caso di Ugo ed Elsa (€ 350,00 a testa, € 200,00 dell'unità, € 300,00 di Ugo): € 250,00 a testa,
+            // poi Ugo € 0,00 con € 50,00 di eccedenza a suo nome.
+            $coperturaStorica = (int) ($parti[''] ?? 0);
+            $lordoImmobile = array_sum($righe);
+            if ($coperturaStorica <= 0) {
+                // Nessuna parte dell'unità: si passa a quella delle persone.
+            } elseif ($lordoImmobile <= 0) {
+                if ($quota >= 1.0 ? $coperturaStorica : (int) floor($coperturaStorica * $quota)) {
+                    $this->eccedenzeCopertura[] = [
+                        'immobile_id' => $immobileId,
+                        'conto_id'    => $conto->id,
+                        'versato'     => $quota >= 1.0 ? $coperturaStorica : (int) floor($coperturaStorica * $quota),
+                        'dovuto'      => 0,
+                        'eccedenza'   => $quota >= 1.0 ? $coperturaStorica : (int) floor($coperturaStorica * $quota),
+                    ];
+                }
+            } else {
+                $copertura = $quota >= 1.0 ? $coperturaStorica : (int) floor($coperturaStorica * $quota);
+                $applicata = min($copertura, $lordoImmobile);
+
+                if ($copertura > $lordoImmobile) {
+                    $this->eccedenzeCopertura[] = [
+                        'immobile_id' => $immobileId,
+                        'conto_id'    => $conto->id,
+                        'versato'     => $copertura,
+                        'dovuto'      => $lordoImmobile,
+                        'eccedenza'   => $copertura - $lordoImmobile,
+                    ];
+                }
+
+                // Ripartisce la copertura tra i comproprietari in proporzione al lordo.
+                //
+                // Scaricare il resto per intero sull'ULTIMA riga (come prima di questa
+                // correzione) può assegnarle più copertura di quanta ne possa assorbire
+                // il suo stesso lordo, se le quote sono molto sbilanciate: es. lordo
+                // immobile 10.000, comproprietari 1%/1%/98% (100/100/9.800), copertura
+                // applicata 9.999 — al comproprietario che finisce per ultimo in
+                // iterazione, col vecchio schema, tocca 9.999 − 9.898 = 101, contro un
+                // suo lordo di soli 100: 1 centesimo di copertura "evapora" nel clamp
+                // max(0, ...) invece di finire su un altro comproprietario che ha
+                // ancora capienza. Qui ogni riga riceve al più il proprio lordo, e il
+                // resto (mai negativo: $applicata ≤ $lordoImmobile per costruzione) va
+                // — un centesimo alla volta — a chi ha ancora capienza, iniziando da
+                // chi ha il resto frazionario più alto (stesso principio di
+                // distribuisciImporto(), qui vincolato dalla capienza di ogni riga).
+                $quote = [];
+                $assegnato = 0;
+                foreach ($righe as $key => $lordoRiga) {
+                    $base = (int) floor($applicata * $lordoRiga / $lordoImmobile);
+                    $quote[$key] = min($base, $lordoRiga);
+                    $assegnato += $quote[$key];
+                }
+
+                $resto = $applicata - $assegnato;
+                if ($resto > 0) {
+                    $chiaviOrdinate = array_keys($righe);
+                    usort($chiaviOrdinate, function ($a, $b) use ($righe, $applicata, $lordoImmobile) {
+                        $fracA = fmod($applicata * $righe[$a] / $lordoImmobile, 1);
+                        $fracB = fmod($applicata * $righe[$b] / $lordoImmobile, 1);
+                        return $fracB <=> $fracA;
+                    });
+
+                    foreach ($chiaviOrdinate as $key) {
+                        if ($resto <= 0) break;
+                        $capienza = $righe[$key] - $quote[$key];
+                        if ($capienza <= 0) continue;
+                        $incremento = min($capienza, $resto);
+                        $quote[$key] += $incremento;
+                        $resto -= $incremento;
+                    }
+                }
+
+                // Il registro per immobile: quanto è stato assorbito da questa unità su questo
+                // capitolo. Si somma invece di assegnare, perché un capitolo può essere finanziato
+                // da più chiamate indipendenti (acconto e saldo) e ciascuna applica la sua quota.
+                $assorbito = 0;
+                foreach ($righe as $key => $lordoRiga) {
+                    $importiDistributi[$key] = max(0, $lordoRiga - $quote[$key]);
+                    // La riga ridotta è il lordo da cui poi si toglie la parte della persona.
+                    $righe[$key] = $importiDistributi[$key];
+                    $assorbito += min($quote[$key], $lordoRiga);
+                    // Per chiave, non solo per immobile: è ciò che il dettaglio del riparto registra.
+                    $this->ultimoNettingPerChiave[$key] = ($this->ultimoNettingPerChiave[$key] ?? 0) + min($quote[$key], $lordoRiga);
+                }
+                if ($assorbito > 0) {
+                    $this->nettingApplicato[$conto->id][$immobileId] =
+                        ($this->nettingApplicato[$conto->id][$immobileId] ?? 0) + $assorbito;
+                }
+            }
+
+            // ── Decisione 17: poi la parte **di ciascuna persona**, sulla sua sola riga ──────────────
             foreach ($parti as $chiavePersona => $versatoPersona) {
                 if ($chiavePersona === '' || $versatoPersona <= 0) {
                     continue;
@@ -3691,96 +4017,6 @@ class CalcoloQuoteService
                         'eccedenza'     => $coperturaPersona - $applicataPersona,
                     ];
                 }
-            }
-
-            // ── Poi la parte **dell'unità** (righe senza persona), come prima: pro-lordo fra i comproprietari ──
-            $coperturaStorica = (int) ($parti[''] ?? 0);
-            if ($coperturaStorica <= 0) {
-                continue;
-            }
-
-            $lordoImmobile = array_sum($righe);
-            if ($lordoImmobile <= 0) {
-                if ($quota >= 1.0 ? $coperturaStorica : (int) floor($coperturaStorica * $quota)) {
-                    $this->eccedenzeCopertura[] = [
-                        'immobile_id' => $immobileId,
-                        'conto_id'    => $conto->id,
-                        'versato'     => $quota >= 1.0 ? $coperturaStorica : (int) floor($coperturaStorica * $quota),
-                        'dovuto'      => 0,
-                        'eccedenza'   => $quota >= 1.0 ? $coperturaStorica : (int) floor($coperturaStorica * $quota),
-                    ];
-                }
-                continue;
-            }
-
-            $copertura = $quota >= 1.0 ? $coperturaStorica : (int) floor($coperturaStorica * $quota);
-            $applicata = min($copertura, $lordoImmobile);
-
-            if ($copertura > $lordoImmobile) {
-                $this->eccedenzeCopertura[] = [
-                    'immobile_id' => $immobileId,
-                    'conto_id'    => $conto->id,
-                    'versato'     => $copertura,
-                    'dovuto'      => $lordoImmobile,
-                    'eccedenza'   => $copertura - $lordoImmobile,
-                ];
-            }
-
-            // Ripartisce la copertura tra i comproprietari in proporzione al lordo.
-            //
-            // Scaricare il resto per intero sull'ULTIMA riga (come prima di questa
-            // correzione) può assegnarle più copertura di quanta ne possa assorbire
-            // il suo stesso lordo, se le quote sono molto sbilanciate: es. lordo
-            // immobile 10.000, comproprietari 1%/1%/98% (100/100/9.800), copertura
-            // applicata 9.999 — al comproprietario che finisce per ultimo in
-            // iterazione, col vecchio schema, tocca 9.999 − 9.898 = 101, contro un
-            // suo lordo di soli 100: 1 centesimo di copertura "evapora" nel clamp
-            // max(0, ...) invece di finire su un altro comproprietario che ha
-            // ancora capienza. Qui ogni riga riceve al più il proprio lordo, e il
-            // resto (mai negativo: $applicata ≤ $lordoImmobile per costruzione) va
-            // — un centesimo alla volta — a chi ha ancora capienza, iniziando da
-            // chi ha il resto frazionario più alto (stesso principio di
-            // distribuisciImporto(), qui vincolato dalla capienza di ogni riga).
-            $quote = [];
-            $assegnato = 0;
-            foreach ($righe as $key => $lordoRiga) {
-                $base = (int) floor($applicata * $lordoRiga / $lordoImmobile);
-                $quote[$key] = min($base, $lordoRiga);
-                $assegnato += $quote[$key];
-            }
-
-            $resto = $applicata - $assegnato;
-            if ($resto > 0) {
-                $chiaviOrdinate = array_keys($righe);
-                usort($chiaviOrdinate, function ($a, $b) use ($righe, $applicata, $lordoImmobile) {
-                    $fracA = fmod($applicata * $righe[$a] / $lordoImmobile, 1);
-                    $fracB = fmod($applicata * $righe[$b] / $lordoImmobile, 1);
-                    return $fracB <=> $fracA;
-                });
-
-                foreach ($chiaviOrdinate as $key) {
-                    if ($resto <= 0) break;
-                    $capienza = $righe[$key] - $quote[$key];
-                    if ($capienza <= 0) continue;
-                    $incremento = min($capienza, $resto);
-                    $quote[$key] += $incremento;
-                    $resto -= $incremento;
-                }
-            }
-
-            // Il registro per immobile: quanto è stato assorbito da questa unità su questo
-            // capitolo. Si somma invece di assegnare, perché un capitolo può essere finanziato
-            // da più chiamate indipendenti (acconto e saldo) e ciascuna applica la sua quota.
-            $assorbito = 0;
-            foreach ($righe as $key => $lordoRiga) {
-                $importiDistributi[$key] = max(0, $lordoRiga - $quote[$key]);
-                $assorbito += min($quote[$key], $lordoRiga);
-                // Per chiave, non solo per immobile: è ciò che il dettaglio del riparto registra.
-                $this->ultimoNettingPerChiave[$key] = ($this->ultimoNettingPerChiave[$key] ?? 0) + min($quote[$key], $lordoRiga);
-            }
-            if ($assorbito > 0) {
-                $this->nettingApplicato[$conto->id][$immobileId] =
-                    ($this->nettingApplicato[$conto->id][$immobileId] ?? 0) + $assorbito;
             }
         }
 

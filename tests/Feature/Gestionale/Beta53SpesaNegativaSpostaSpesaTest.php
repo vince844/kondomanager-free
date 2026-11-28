@@ -30,7 +30,8 @@
  * I test che cominciano con «controprova» sono verdi prima e dopo la correzione.
  *
  * Cosa resta scoperto: la schermata del modale (`ModalSpostaSpesaTipo.test.ts`: sorgenti e destinazioni arrivano già filtrate dal server); i database
- * diversi da sqlite. Le voci di entrata con l'importo negativo cambiano ancora il totale come destinazione: T297.53 fissa il comportamento di oggi.
+ * diversi da sqlite. Le voci di entrata con l'importo negativo seguono la stessa regola, sorgente o destinazione (T297.53); lo storno verso una voce
+ * diventata negativa si rifiuta (T297.48).
  * Dopo «Entrata» un piano che addebita il sottoconto con la copia della sua riga, o di un capitolo di primo livello, lo accredita, e il piano che lo
  * raggiunge da un capitolo di primo livello lo perde con un padre diverso da quel capitolo: la frase non lo dice.
  */
@@ -739,33 +740,56 @@ it('controprova — T297.57 il capitolo di entrate con la copia a zero e un sott
 // ─── L'entrata scritta col meno ─────────────────────────────────────────────────────────────────────────────────
 
 /**
- * È il comportamento di oggi, e c'è dalla 1.9.0: «Sposta spesa» somma lo spostamento alla copia della destinazione, o all'importo della voce se la
- * copia è nulla (32c57e63), e il motore accredita un'entrata per il valore assoluto dell'importo (cfd1255e) e della copia (b3f2caa2); la 1.10.0
- * (f33f2ffd) ha già le due righe. Il controllo della spesa scritta col meno non riguarda le entrate.
+ * La regola delle spese scritte con il meno vale anche per le entrate. Il motore accredita un'entrata per il valore assoluto dell'importo e della copia:
+ * «Sposta spesa» sommava lo spostamento alla copia della destinazione (o all'importo della voce se la copia è nulla) e il totale cambiava del doppio.
  *
  * I conti a mano: «Spese generali» 120000, «Affitto antenna» copia 24000 e «Canone vecchio» −24000 (entrate 24000 + 24000 = 48000, da ripartire
- * 72000). € 100,00 dall'antenna al canone: copie 14000 e −14000, entrate 14000 + 14000 = 28000, da ripartire 92000, cioè 20000 in più, il doppio
- * dello spostamento.
+ * 72000). € 100,00 dall'antenna al canone portava le copie a 14000 e −14000, le entrate a 28000 e il da ripartire a 92000: ora si rifiuta e i totali
+ * restano 120000, 48000 e 72000.
  */
-it('T297.53 comportamento di oggi: «Sposta spesa» verso un\'entrata scritta col meno passa e cambia il totale del piano del doppio dello spostamento', function (bool $copiaNulla) {
-    $s = b53snBase($this);
-    $canone = b52tVoce($this, $s, 'Canone vecchio', 'entrata', '240,00', $s['box']);
-    $s['piano'] = b52tPiano($this, $s, [], 'Ordinario 2026');
-    b53snRiscrivi($canone, -24000, [$s['piano']]);
+function b53sspCanone($test, bool $copiaNulla): array
+{
+    $s = b53snBase($test);
+    $s['canone'] = b52tVoce($test, $s, 'Canone vecchio', 'entrata', '240,00', $s['box']);
+    $s['piano'] = b52tPiano($test, $s, [], 'Ordinario 2026');
+    b53snRiscrivi($s['canone'], -24000, [$s['piano']]);
     if ($copiaNulla) {
-        DB::table('piano_rate_capitoli')->where('piano_rate_id', $s['piano']->id)->where('conto_id', $canone->id)->update(['importo' => null]);
+        DB::table('piano_rate_capitoli')->where('piano_rate_id', $s['piano']->id)->where('conto_id', $s['canone']->id)->update(['importo' => null]);
     }
-    $prima = b53snPaginaPiano($this, $s, $s['piano'])['pianoRate'];
 
-    expect(b53sspDestinazioni($this, $s))->toContain('Canone vecchio');
-    b53sspSposta($this, $s, (int) $s['antenna']->id, (int) $canone->id)->assertSessionHasNoErrors();
+    return $s;
+}
+
+it('T297.53 «Sposta spesa» verso un\'entrata scritta col meno si rifiuta, la pagina non la offre e i totali del piano non cambiano', function (bool $copiaNulla) {
+    $s = b53sspCanone($this, $copiaNulla);
+    $prima = b53snPaginaPiano($this, $s, $s['piano'])['pianoRate'];
+    $copie = b53sspCopie($s);
+
+    expect(b53sspDestinazioni($this, $s))->not->toContain('Canone vecchio');
+    b53sspSposta($this, $s, (int) $s['antenna']->id, (int) $s['canone']->id);
+    $errori = b53snErrori();
 
     $dopo = b53snPaginaPiano($this, $s, $s['piano'])['pianoRate'];
-    expect([$prima['totale_spese'], $prima['totale_entrate'], $prima['totale_da_ripartire']])->toBe([120000, 48000, 72000])
-        ->and(b53sspCopie($s))->toBe([(int) $s['generali']->id => 120000, (int) $s['antenna']->id => 14000, (int) $canone->id => -14000])
-        ->and([$dopo['totale_spese'], $dopo['totale_entrate'], $dopo['totale_da_ripartire']])->toBe([120000, 28000, 92000])
-        ->and(b53snRipartito($s, $s['piano']))->toBe([(int) $s['generali']->id => 120000, (int) $s['antenna']->id => -14000, (int) $canone->id => -14000]);
+    expect($errori['destination_id'] ?? [])->toBe(['La voce di entrata «Canone vecchio» è scritta con il meno (meno € 240,00) e il piano la accredita per € 240,00: '
+            . 'spostare budget su «Canone vecchio» cambierebbe il totale del piano. Correggi prima l\'importo di «Canone vecchio», scrivendolo senza il segno, poi sposta.'])
+        ->and([$prima['totale_spese'], $prima['totale_entrate'], $prima['totale_da_ripartire']])->toBe([120000, 48000, 72000])
+        ->and(b53sspCopie($s))->toBe($copie)
+        ->and([$dopo['totale_spese'], $dopo['totale_entrate'], $dopo['totale_da_ripartire']])->toBe([120000, 48000, 72000])
+        ->and(BudgetMovement::where('piano_rate_id', $s['piano']->id)->count())->toBe(0);
 })->with(['con la copia negativa' => [false], 'con la copia nulla, che legge l\'importo della voce' => [true]]);
+
+it('T297.53 l\'entrata scritta col meno come sorgente si rifiuta, e la pagina non la offre fra le sorgenti', function () {
+    $s = b53sspCanone($this, false);
+    $copie = b53sspCopie($s);
+
+    expect(b53sspSorgenti($this, $s))->not->toContain('Canone vecchio');
+    b53sspSposta($this, $s, (int) $s['canone']->id, (int) $s['antenna']->id);
+
+    expect(b53snErrori()['source_id'] ?? [])->toBe(['La voce di entrata «Canone vecchio» è scritta con il meno (meno € 240,00) e il piano la accredita per € 240,00: '
+            . 'prelevare budget da «Canone vecchio» cambierebbe il totale del piano. Correggi prima l\'importo di «Canone vecchio», scrivendolo senza il segno, poi sposta.'])
+        ->and(b53sspCopie($s))->toBe($copie)
+        ->and(BudgetMovement::where('piano_rate_id', $s['piano']->id)->count())->toBe(0);
+});
 
 // ─── Ciò che resta com'era ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -783,7 +807,7 @@ it('T297.47 controprova: fra due spese positive lo spostamento passa e il totale
         ->and(b53sspDestinazioni($this, $s))->toContain('Pulizia scale', 'Spese generali');
 });
 
-it('T297.48 controprova: lo storno di un movimento già scritto passa anche se la voce che riceve è ora una spesa scritta col meno', function () {
+it('T297.48 lo storno di un movimento verso una voce che ora è una spesa scritta col meno si rifiuta: la copia e i totali non cambiano', function () {
     $s = b53snBase($this);
     $s['rimborso'] = b52tVoce($this, $s, 'Rimborso vecchio', 'spesa', '240,00', $s['tabella']);
     $s['piano'] = b52tPiano($this, $s, [], 'Ordinario 2026');
@@ -792,13 +816,30 @@ it('T297.48 controprova: lo storno di un movimento già scritto passa anche se l
     // Dopo lo spostamento la voce è riscritta col meno, e la sua copia con lei (14000 → −14000).
     DB::table('conti')->where('id', $s['rimborso']->id)->update(['importo' => -24000]);
     DB::table('piano_rate_capitoli')->where('piano_rate_id', $s['piano']->id)->where('conto_id', $s['rimborso']->id)->update(['importo' => -14000]);
+    $prima = b53snPaginaPiano($this, $s, $s['piano'])['pianoRate'];
+
+    $this->actingAs($this->user)->from('/pagina-del-piano')->post(route('admin.gestionale.piani-rate.budget-movements.reverse', [$s['c'], $s['piano'], $movimento]))
+        ->assertRedirect('/pagina-del-piano');
+
+    expect(b53snErrori()['movement'] ?? [])->toBe(['Lo storno rimetterebbe € 100,00 su «Rimborso vecchio», che ora è scritto con il meno: correggi prima l\'importo della voce, poi annulla lo spostamento.'])
+        ->and(BudgetMovement::where('piano_rate_id', $s['piano']->id)->where('reverses_movement_id', $movimento->id)->count())->toBe(0)
+        ->and(b53sspCopie($s)[(int) $s['generali']->id])->toBe(130000)
+        ->and(b53sspCopie($s)[(int) $s['rimborso']->id])->toBe(-14000)
+        ->and(b53snPaginaPiano($this, $s, $s['piano'])['pianoRate']['totale_spese'])->toBe($prima['totale_spese']);
+});
+
+it('controprova: lo storno verso una voce positiva passa e rimette la copia', function () {
+    $s = b53snBase($this);
+    $s['rimborso'] = b52tVoce($this, $s, 'Rimborso vecchio', 'spesa', '240,00', $s['tabella']);
+    $s['piano'] = b52tPiano($this, $s, [], 'Ordinario 2026');
+    b53sspSposta($this, $s, (int) $s['rimborso']->id, (int) $s['generali']->id)->assertSessionHasNoErrors();
+    $movimento = BudgetMovement::where('piano_rate_id', $s['piano']->id)->firstOrFail();
 
     $this->actingAs($this->user)->from('/pagina-del-piano')->post(route('admin.gestionale.piani-rate.budget-movements.reverse', [$s['c'], $s['piano'], $movimento]))
         ->assertSessionHasNoErrors();
 
-    expect(BudgetMovement::where('piano_rate_id', $s['piano']->id)->where('reverses_movement_id', $movimento->id)->count())->toBe(1)
-        ->and(b53sspCopie($s)[(int) $s['generali']->id])->toBe(120000)
-        ->and(b53sspCopie($s)[(int) $s['rimborso']->id])->toBe(-4000);
+    expect(b53sspCopie($s)[(int) $s['generali']->id])->toBe(120000)
+        ->and(b53sspCopie($s)[(int) $s['rimborso']->id])->toBe(24000);
 });
 
 it('T297.58 il capitolo che un altro piano approvato tiene con la copia, come destinazione: la frase dice la strada della bozza e non il provento, che si rifiuterebbe; la strada passa dalle rotte', function () {

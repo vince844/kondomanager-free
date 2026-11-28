@@ -6,7 +6,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 <script setup lang="ts">
 
 import { computed, nextTick, onMounted, ref } from "vue";
-import { Head } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import GestionaleLayout from '@/layouts/GestionaleLayout.vue';
 import StrutturaLayout from '@/layouts/gestionale/StrutturaLayout.vue';
 import { usePermission } from "@/composables/permissions";
@@ -27,7 +27,18 @@ const props = defineProps<{
   gestioni: any[];
   esercizi?: Array<{ id: number; nome: string }>;
   frase_origine?: string;
+  // Per gestione, i saldi non a zero che nessun piano tiene (`SaldoInizialeController::saldiIncassabili`), in centesimi.
+  saldi_incassabili?: Array<{ gestione_id: number; gestione: string; numero: number; totale: number }>;
 }>();
+
+// «Rendi incassabili questi saldi»: un saldo si incassa solo dentro una rata. Il pulsante apre la creazione del piano già compilata.
+const euro = (cents: number) => `€ ${(cents / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const fraseDeiSaldiLiberi = (numero: number, totale: number) => numero === 1
+  ? `1 saldo non è ancora in un piano rate: ${euro(totale)} da incassare.`
+  : `${numero} saldi non sono ancora in un piano rate: ${euro(totale)} da incassare.`;
+const versoIlPiano = (gestioneId: number) => route(generateRoute('gestionale.esercizi.piani-rate.create'), {
+  condominio: props.condominio.id, esercizio: props.esercizio?.id, origine: 'saldi', gestione_id: gestioneId,
+});
 
 // «Dichiara l'origine» del pregresso, per un saldo o in blocco: i saldi a debito dei condòmini, di tutte le unità.
 const origineAperta = ref(false);
@@ -52,7 +63,7 @@ onMounted(() => {
   }
 });
 
-const { generatePath } = usePermission();
+const { generatePath, generateRoute } = usePermission();
 
 // ── State ──────────────────────────────────────────────────────────────────
 const selectedId = ref<number | null>(null);
@@ -137,6 +148,18 @@ const pageGuides = [
                 class="text-xs font-semibold text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 rounded-md px-3 py-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-950/40">
           Dichiara l'origine del pregresso, in blocco
         </button>
+      </div>
+
+      <div v-for="libero in saldi_incassabili ?? []" :key="libero.gestione_id" data-testid="saldi-incassabili"
+           class="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 sm:flex-row sm:items-center sm:justify-between dark:border-amber-900/60 dark:bg-amber-950/30">
+        <div class="space-y-1 text-sm text-amber-900 dark:text-amber-200">
+          <p class="text-xs font-semibold text-amber-700 dark:text-amber-300">Saldi iniziali · {{ libero.gestione }}</p>
+          <p><strong>{{ fraseDeiSaldiLiberi(libero.numero, libero.totale) }}</strong> Un saldo si incassa solo dentro una rata.</p>
+        </div>
+        <Link :href="versoIlPiano(libero.gestione_id)"
+              class="shrink-0 rounded-md bg-amber-600 px-3 py-1.5 text-center text-xs font-semibold text-white hover:bg-amber-700 dark:bg-amber-700 dark:hover:bg-amber-600">
+          Rendi incassabili questi saldi
+        </Link>
       </div>
 
       <StrutturaLayout>

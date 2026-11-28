@@ -38,6 +38,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Arr;
 use Inertia\Response;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\ValidationException;
 
 class ComunicazioneController extends Controller
 {
@@ -401,6 +402,8 @@ class ComunicazioneController extends Controller
          'anagrafiche'   => AnagraficaNomeResource::collection(Anagrafica::get(['id', 'nome'])),
          // «Commenti in moderazione» la cambia solo chi modera: per gli altri resta com'è.
          'puo_scegliere_moderazione' => RegoleCommenti::puoImpostareModerazione(request()->user(), $comunicazione),
+         // Coda 695: chi non può pubblicare questa bozza non ha «Pubblicata» nella tendina, e la pagina dice chi può.
+         'pubblicazione' => $this->pubblicazionePerLaPagina($comunicazione),
          'programmazione' => [
              'puo_programmare'      => PubblicazioneProgrammata::puoProgrammare(Auth::user(), $comunicazione),
              'fuso'                 => PubblicazioneProgrammata::fuso(),
@@ -408,6 +411,18 @@ class ComunicazioneController extends Controller
              'adesso'               => now()->setTimezone(PubblicazioneProgrammata::fuso())->format('Y-m-d\TH:i'),
          ],
         ]);
+    }
+
+    /**
+     * Se chi modifica può togliere la bozza, e altrimenti perché ({@see PubblicazioneProgrammata::puoPubblicare()}).
+     *
+     * @return array{puo_pubblicare: bool, nota: ?string}
+     */
+    private function pubblicazionePerLaPagina(Comunicazione $comunicazione): array
+    {
+        $puo = ! PubblicazioneProgrammata::eBozzaApprovata($comunicazione) || PubblicazioneProgrammata::puoPubblicare(Auth::user(), $comunicazione);
+
+        return ['puo_pubblicare' => $puo, 'nota' => $puo ? null : PubblicazioneProgrammata::SOLO_CHI_PUBBLICA];
     }
 
     /**
@@ -437,6 +452,13 @@ class ComunicazioneController extends Controller
         $haCampoProgrammata = array_key_exists('data_programmata', $request->all());
         if ($haCampoProgrammata && ! empty($request->input('data_programmata'))) {
             $validated['is_published'] = false;
+        }
+
+        // Coda 695: togliere la bozza a una comunicazione approvata chiede il permesso di pubblicare, come la programmazione chiede il suo.
+        if (PubblicazioneProgrammata::eBozzaApprovata($comunicazione)
+            && ! empty($validated['is_published'])
+            && ! PubblicazioneProgrammata::puoPubblicare($request->user(), $comunicazione)) {
+            throw ValidationException::withMessages(['is_published' => PubblicazioneProgrammata::SOLO_CHI_PUBBLICA]);
         }
 
         /*

@@ -11,9 +11,11 @@ import AppLayout from '@/layouts/AppLayout.vue'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import vSelect from 'vue-select'
+import 'vue-select/dist/vue-select.css'
 import { Input } from '@/components/ui/input'
-import { Settings, Globe, Building2, ShieldCheck, Send } from 'lucide-vue-next'
+import { Globe, ShieldCheck, MessagesSquare } from 'lucide-vue-next'
+import ImpostazioniGeneraliGuide from '@/components/guides/ImpostazioniGeneraliGuide.vue'
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue'
 import Alert from '@/components/Alert.vue'
 import InputError from '@/components/InputError.vue'
@@ -42,31 +44,12 @@ const breadcrumbs = computed<BreadcrumbItem[]>(() => [
 ])
 
 const pageGuides = computed(() => [
-  {
-    title: trans('impostazioni.guides.language_title'),
-    description: trans('impostazioni.guides.language_desc'),
-    icon: Globe,
-    colorVariant: 'blue' as const
-  },
-  {
-    title: trans('impostazioni.guides.access_title'),
-    description: trans('impostazioni.guides.access_desc'),
-    icon: Building2,
-    colorVariant: 'emerald' as const
-  },
-  {
-    title: trans('impostazioni.guides.security_title'),
-    description: trans('impostazioni.guides.security_desc'),
-    icon: ShieldCheck,
-    colorVariant: 'amber' as const
-  },
-  {
-    title: trans('impostazioni.guides.errors_notice_title'),
-    description: trans('impostazioni.guides.errors_notice_desc'),
-    icon: Send,
-    colorVariant: 'blue' as const
-  }
+  { title: trans('impostazioni.guides.program_access_title'), description: trans('impostazioni.guides.program_access_desc'), icon: Globe, colorVariant: 'blue' as const },
+  { title: trans('impostazioni.guides.reports_communications_title'), description: trans('impostazioni.guides.reports_communications_desc'), icon: MessagesSquare, colorVariant: 'emerald' as const },
+  { title: trans('impostazioni.guides.security_title'), description: trans('impostazioni.guides.security_desc'), icon: ShieldCheck, colorVariant: 'amber' as const }
 ])
+
+const mostraGuida = ref(false)
 
 /* -------------------------------------------------
  * i18n labels
@@ -145,6 +128,12 @@ const form = useForm({
         ? (page.props as Record<string, unknown>).errori_avviso_dalla_pagina === '1' || (page.props as Record<string, unknown>).errori_avviso_dalla_pagina === 'true'
         : (page.props as Record<string, unknown>).errori_avviso_dalla_pagina
     ),
+  // Spenta di serie: senza il valore resta spenta.
+  due_fattori_obbligatoria_pannello: Boolean(
+    typeof (page.props as Record<string, unknown>).due_fattori_obbligatoria_pannello === 'string'
+      ? (page.props as Record<string, unknown>).due_fattori_obbligatoria_pannello === '1' || (page.props as Record<string, unknown>).due_fattori_obbligatoria_pannello === 'true'
+      : (page.props as Record<string, unknown>).due_fattori_obbligatoria_pannello
+  ),
   default_per_page: Number(default_per_page) || 10,
 })
 
@@ -169,11 +158,11 @@ function eseguiCancellazioneAperture() {
 }
 
 /* -------------------------------------------------
- * Selected language label
+ * Le scelte dei menu
  * ------------------------------------------------- */
-const selectedLanguageLabel = computed(() => {
-  return languageLabels.value[form.language].value
-})
+const opzioniLingua = computed(() => (['it', 'en', 'pt', 'es'] as SupportedLanguage[]).map((valore) => ({ valore, nome: languageLabels.value[valore].value })))
+const opzioniCondominio = computed(() => (condomini ?? []).map((c) => ({ id: String(c.id), nome: c.nome })))
+const opzioniRuolo = computed(() => (roles ?? []).map((r) => ({ nome: r.name })))
 
 /* -------------------------------------------------
  * Lifecycle
@@ -222,7 +211,11 @@ const submit = () => {
         back-url="/impostazioni"
         :back-text="trans('impostazioni.label.settings')"
         :video-url="null"
+        has-text-guide
+        text-guide-title="Guida"
+        @open-text-guide="mostraGuida = true"
       />
+      <ImpostazioniGeneraliGuide v-model:open="mostraGuida" />
 
       <div v-if="flashMessage" class="py-2">
         <Alert :message="flashMessage.message" :type="flashMessage.type" />
@@ -243,20 +236,9 @@ const submit = () => {
               </div>
 
               <div class="w-full sm:w-[240px] shrink-0">
-                <div v-if="translationsLoaded">
-                  <Select v-model="form.language">
-                    <SelectTrigger class="w-full">
-                      <SelectValue>
-                        {{ selectedLanguageLabel }}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="it">{{ languageLabels.it.value }}</SelectItem>
-                      <SelectItem value="en">{{ languageLabels.en.value }}</SelectItem>
-                      <SelectItem value="pt">{{ languageLabels.pt.value }}</SelectItem>
-                      <SelectItem value="es">{{ languageLabels.es.value }}</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div v-if="translationsLoaded" class="menu-campo menu-impostazioni">
+                  <v-select v-model="form.language" :options="opzioniLingua" label="nome" :reduce="(o: { valore: SupportedLanguage }) => o.valore"
+                    :clearable="false" :searchable="false" class="w-full bg-white text-sm dark:bg-slate-950" />
                 </div>
                 <div v-else class="w-full h-10 bg-muted/50 rounded-md animate-pulse" />
               </div>
@@ -306,16 +288,12 @@ const submit = () => {
               </div>
 
               <div class="w-full sm:w-[240px] shrink-0">
-                <Select v-model="form.default_condominio_id">
-                  <SelectTrigger class="w-full" :class="{ 'border-red-500': form.errors.default_condominio_id }">
-                    <SelectValue :placeholder="trans('impostazioni.placeholder.select_building')" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem v-for="c in condomini" :key="c.id" :value="String(c.id)">
-                      {{ c.nome }}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                <div class="menu-campo menu-impostazioni" :class="{ 'menu-errore': form.errors.default_condominio_id }">
+                  <v-select v-model="form.default_condominio_id" :options="opzioniCondominio" label="nome" :reduce="(o: { id: string }) => o.id"
+                    :clearable="false" :placeholder="trans('impostazioni.placeholder.select_building')" class="w-full bg-white text-sm dark:bg-slate-950">
+                    <template #no-options>{{ trans('impostazioni.placeholder.no_building') }}</template>
+                  </v-select>
+                </div>
                 <p v-if="form.errors.default_condominio_id" class="text-sm text-red-500 mt-1">
                   {{ form.errors.default_condominio_id }}
                 </p>
@@ -347,18 +325,14 @@ const submit = () => {
               </div>
 
               <div class="w-full sm:w-[240px] shrink-0">
-                <Select v-model="form.default_user_role" :disabled="ruoloRegistrazioneBloccato">
-                  <SelectTrigger class="w-full" :class="{ 'border-red-500': form.errors.default_user_role }">
-                    <SelectValue :placeholder="trans('impostazioni.placeholder.select_role')" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <!-- Itera sui ruoli passati dal backend -->
-                    <SelectItem v-for="role in roles" :key="role.id" :value="role.name">
-                      <!-- Trasforma la prima lettera in maiuscolo o traduci se preferisci -->
-                      <span class="capitalize">{{ role.name }}</span>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                <div class="menu-campo menu-impostazioni" :class="{ 'menu-errore': form.errors.default_user_role }">
+                  <v-select v-model="form.default_user_role" :options="opzioniRuolo" label="nome" :reduce="(o: { nome: string }) => o.nome"
+                    :disabled="ruoloRegistrazioneBloccato" :clearable="false" :searchable="false"
+                    :placeholder="trans('impostazioni.placeholder.select_role')" class="w-full bg-white text-sm dark:bg-slate-950">
+                    <!-- Nel menu l'iniziale maiuscola; il valore scelto si legge com'è scritto. -->
+                    <template #option="o"><span class="capitalize">{{ o.nome }}</span></template>
+                  </v-select>
+                </div>
                 <p v-if="form.errors.default_user_role" class="text-sm text-red-500 mt-1">
                   {{ form.errors.default_user_role }}
                 </p>
@@ -380,16 +354,10 @@ const submit = () => {
               </div>
 
               <div class="w-full sm:w-[240px] shrink-0">
-                <Select v-model="form.default_per_page">
-                  <SelectTrigger class="w-full" :class="{ 'border-red-500': form.errors.default_per_page }">
-                    <SelectValue :placeholder="`${form.default_per_page}`" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem v-for="n in per_page_disponibili" :key="n" :value="n">
-                      {{ n }}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                <div class="menu-campo menu-impostazioni" :class="{ 'menu-errore': form.errors.default_per_page }">
+                  <v-select v-model="form.default_per_page" :options="per_page_disponibili" :clearable="false" :searchable="false"
+                    :placeholder="`${form.default_per_page}`" class="w-full bg-white text-sm tabular-nums dark:bg-slate-950" />
+                </div>
                 <p v-if="form.errors.default_per_page" class="text-sm text-red-500 mt-1">
                   {{ form.errors.default_per_page }}
                 </p>
@@ -560,6 +528,19 @@ const submit = () => {
               <Switch v-model="form.errori_avviso_dalla_pagina" />
             </div>
 
+            <!-- VERIFICA IN DUE PASSAGGI OBBLIGATORIA PER IL PANNELLO -->
+            <div data-impostazione="due_fattori_obbligatoria_pannello" class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border rounded-lg p-4">
+              <div class="flex-1 space-y-1">
+                <label class="block text-sm font-medium leading-none mb-1">
+                  {{ trans('impostazioni.dialogs.due_fattori_obbligatoria_pannello_title') }}
+                </label>
+                <p class="text-sm text-muted-foreground">
+                  {{ trans('impostazioni.dialogs.due_fattori_obbligatoria_pannello_description') }}
+                </p>
+              </div>
+              <Switch v-model="form.due_fattori_obbligatoria_pannello" />
+            </div>
+
           </CardContent>
 
           <CardFooter class="flex items-center justify-end gap-4 border-t px-6 py-4 bg-slate-50/50 dark:bg-slate-900/20 rounded-b-xl mt-6">
@@ -573,3 +554,13 @@ const submit = () => {
     </div>
   </AppLayout>
 </template>
+
+<style scoped>
+/* I menu alti come i campi accanto (come in quelli della posta), con il bordo rosso se il campo ha un errore. */
+.menu-impostazioni :deep(.vs__dropdown-toggle) {
+  min-height: 2.25rem;
+}
+.menu-errore :deep(.vs__dropdown-toggle) {
+  border-color: rgb(239 68 68);
+}
+</style>

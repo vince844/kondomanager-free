@@ -20,6 +20,7 @@ use App\Models\Condominio;
 use App\Models\Immobile;
 use App\Models\Saldo;
 use App\Models\TitolaritaImmobile;
+use App\Services\Gestionale\PianiCheCambiano;
 use App\Services\Subentro\GuardieTitolarita;
 use App\Services\Subentro\StoricoTitolarita;
 use App\Traits\HandleFlashMessages;
@@ -30,6 +31,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -122,6 +124,8 @@ class ImmobileAnagraficaController extends Controller
             'anagraficheConQuoteEmesse' => $anagraficheConQuoteEmesse,
             'storico' => $storico,
             'oggi' => $oggi->toDateString(),
+            // Dopo un salvataggio sulla titolarità: i piani che chiederebbero cifre diverse, con la strada di ognuno (`PianiCheCambiano`). Una volta sola.
+            'piani_che_cambiano' => session('piani_che_cambiano'),
             // B3a: il prospetto degli oneri accessori si offre solo se l'unità ha o ha avuto un inquilino, con la scelta
             // dell'esercizio (la pagina conosce solo quello corrente).
             'prospettoOneri' => DB::table('anagrafica_immobile')->where('immobile_id', $immobile->id)->where('tipologia', 'inquilino')->exists()
@@ -183,6 +187,12 @@ class ImmobileAnagraficaController extends Controller
         $data = $request->validated();
         $nextRoute = Arr::pull($data, 'next_route');
 
+        // «Nuovo immobile» chiede «Modifica condomini» (`ImmobileController::create`), l'associazione no: chi non ce l'ha
+        // torna all'elenco, come con il pulsante principale, invece di finire in un 403 dopo il salvataggio.
+        if ($nextRoute === 'nuovo_immobile' && ! Gate::allows('update', $condominio)) {
+            $nextRoute = null;
+        }
+
         try {
             DB::beginTransaction();
             $this->ripassaLeGuardie($immobile, $data, null);
@@ -220,11 +230,16 @@ class ImmobileAnagraficaController extends Controller
 
             DB::commit();
 
-            return (match ($nextRoute) {
+            $risposta = (match ($nextRoute) {
                 'associa_anagrafica' => to_route('admin.gestionale.immobili.anagrafiche.create', ['condominio' => $condominio->id, 'immobile' => $immobile->id]),
                 'nuovo_immobile'     => to_route('admin.gestionale.immobili.create', ['condominio' => $condominio->id]),
                 default              => to_route('admin.gestionale.immobili.anagrafiche.index', ['condominio' => $condominio->id, 'immobile' => $immobile->id]),
             })->with($this->flashSuccess(__('gestionale.success_attach_anagrafica')));
+
+            // L'elenco dei piani che cambiano si mostra nella pagina delle anagrafiche dell'unità: solo se si torna lì.
+            return in_array($nextRoute, ['associa_anagrafica', 'nuovo_immobile'], true)
+                ? $risposta
+                : $this->conIPianiCheCambiano($risposta, $immobile, (int) $data['anagrafica_id'], (string) $data['tipologia'], $data['data_inizio'] ?? null, $data['data_fine'] ?? null, null, (float) $data['quota']);
 
         } catch (ValidationException $e) {
             DB::rollBack();
@@ -305,6 +320,7 @@ class ImmobileAnagraficaController extends Controller
         $nuovoAnagraficaId = (int) $data['anagrafica_id'];
         $vecchioAnagraficaId = (int) $titolarita->anagrafica_id;
         $anagraficaCambiata = $nuovoAnagraficaId !== $vecchioAnagraficaId;
+        $quotaPrima = $titolarita->quota;
 
         // Decisione 13: cambiare la persona su una riga con storia è un passaggio travestito da
         // correzione, e il vecchio `detach()` + `attach()` cancellava il periodo. Correggere quota,
@@ -357,10 +373,11 @@ class ImmobileAnagraficaController extends Controller
 
             DB::commit();
 
-            return to_route('admin.gestionale.immobili.anagrafiche.index', [
+            return $this->conIPianiCheCambiano(to_route('admin.gestionale.immobili.anagrafiche.index', [
                 'condominio' => $condominio->id,
                 'immobile'   => $immobile->id,
-            ])->with($this->flashSuccess(__('gestionale.success_update_anagrafica')));
+            ])->with($this->flashSuccess(__('gestionale.success_update_anagrafica'))), $immobile, $nuovoAnagraficaId, (string) $data['tipologia'], $data['data_inizio'] ?? null,
+                $data['data_fine'] ?? null, $anagraficaCambiata ? null : (float) $quotaPrima, (float) $data['quota']);
 
         } catch (ValidationException $e) {
             DB::rollBack();
@@ -410,10 +427,11 @@ class ImmobileAnagraficaController extends Controller
             // di questa persona sull'unità.
             $immobile->anagrafiche()->wherePivot('id', $titolarita->id)->detach($titolarita->anagrafica_id);
 
-            return to_route('admin.gestionale.immobili.anagrafiche.index', [
+            return $this->conIPianiCheCambiano(to_route('admin.gestionale.immobili.anagrafiche.index', [
                 'condominio' => $condominio->id,
                 'immobile'   => $immobile->id,
-            ])->with($this->flashSuccess(__('gestionale.success_detach_anagrafica')));
+            ])->with($this->flashSuccess(__('gestionale.success_detach_anagrafica'))), $immobile, (int) $titolarita->anagrafica_id, (string) $titolarita->tipologia,
+                $titolarita->data_inizio?->toDateString(), $titolarita->data_fine?->toDateString(), (float) $titolarita->quota, null);
 
         } catch (\Throwable $e) {
 
@@ -430,6 +448,38 @@ class ImmobileAnagraficaController extends Controller
                 'immobile'   => $immobile->id,
             ])->with($this->flashError(__('gestionale.error_detach_anagrafica')));
         }
+    }
+
+    /**
+     * Dopo un salvataggio sulla titolarità dell'unità, l'elenco dei piani che chiederebbero cifre diverse con la titolarità di oggi ({@see PianiCheCambiano}),
+     * per la pagina delle anagrafiche dell'unità. Sola lettura, dopo il commit: se la lettura non riesce il salvataggio resta, e l'elenco non c'è.
+     */
+    private function conIPianiCheCambiano(RedirectResponse $risposta, Immobile $immobile, int $anagraficaId, string $tipologia, mixed $dal, mixed $al, ?float $quotaPrima, ?float $quotaDopo): RedirectResponse
+    {
+        try {
+            $piani = app(PianiCheCambiano::class)->perUnita($immobile->fresh());
+        } catch (\Throwable $e) {
+            Log::warning('Piani che cambiano non letti', ['immobile_id' => $immobile->id, 'message' => $e->getMessage()]);
+
+            return $risposta;
+        }
+        if ($piani === []) {
+            return $risposta;
+        }
+        $giorno = fn (mixed $d) => $d === null ? null : \Illuminate\Support\Carbon::parse($d)->toDateString();
+
+        return $risposta->with('piani_che_cambiano', [
+            'riga' => [
+                'unita' => (string) $immobile->etichetta,
+                'persona' => (string) Anagrafica::whereKey($anagraficaId)->value('nome'),
+                'tipologia' => $tipologia,
+                'dal' => $giorno($dal),
+                'al' => $giorno($al),
+                'quota_prima' => $quotaPrima,
+                'quota_dopo' => $quotaDopo,
+            ],
+            'piani' => $piani,
+        ]);
     }
 
     /**

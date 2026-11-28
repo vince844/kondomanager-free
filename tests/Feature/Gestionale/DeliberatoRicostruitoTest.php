@@ -202,7 +202,9 @@ it('un piano approvato senza quote non ha un deliberato con le rate: resta «non
 
 it('due piani nella gestione: se uno solo dei piani senza righe non torna, la gestione intera è «non disponibile»; con le righe dell\'altro, «ricostruito» e la somma', function () {
     $s = vrmBase($this);
-    $secondo = be52PianoConVoci($this, $s, [$s['pulizie']->id], 'Pulizie straordinarie dell\'ordinaria');
+    // Le «Pulizie» sono già chieste per intero dal primo piano, e la creazione di un piano rifiuta una voce già chiesta per intero: il secondo piano si costruisce come lo
+    // lasciavano le installazioni di prima (`vrmSecondoPianoSulleVoci`).
+    $secondo = vrmSecondoPianoSulleVoci($this, $s, [$s['pulizie']->id], 'Pulizie straordinarie dell\'ordinaria');
     drcApprova($this, $s, $secondo);
     $chiestoDalSecondo = (int) DB::table('righe_riparto')->where('piano_rate_id', $secondo->id)->where('conto_id', $s['pulizie']->id)->sum('importo');
 

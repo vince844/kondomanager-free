@@ -79,6 +79,7 @@ describe('la pagina della dispensa, dopo il riordino', () => {
     });
 
     test('il file si sceglie con un pulsante in italiano, il nome si legge accanto, si toglie, e parte con la dispensa', async () => {
+        permessi.dati = ['Crea documenti archivio'];
         const pagina = monta();
         const campo = pagina.get('[data-testid="file-verbale"]');
         const clic = vi.spyOn(campo.element as HTMLInputElement, 'click');
@@ -176,5 +177,15 @@ describe('chi registra la dispensa con la delibera', () => {
         permessi.dati = ['Gestisce le assemblee'];
         w = conLaPagina();
         expect(w.find('[data-testid="dispensa-con-la-delibera"]').exists()).toBe(true);
+    });
+});
+
+describe('chi non può caricare file nel gestionale', () => {
+    test('senza «Crea documenti archivio» il campo del verbale non c\'è: la dispensa si registra lo stesso, senza il file', () => {
+        permessi.dati = [];
+        const pagina = monta();
+
+        expect(pagina.find('[data-testid="file-verbale"]').exists()).toBe(false);
+        expect(pagina.find('[data-testid="numero-verbale"]').exists()).toBe(true);
     });
 });

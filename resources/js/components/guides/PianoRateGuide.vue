@@ -79,12 +79,33 @@ defineEmits(['update:open']);
                             <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">«Spese fuori preventivo» (art. 1135 c.c.)</h3>
                             <p>
                                 Mette a rate le <strong>fatture che a bilancio non ci sono</strong>: quelle con una
-                                riga «Fuori preventivo» (l'imprevisto, il guasto) o addebitata a una sola unità (il
-                                lavoro ad personam). Non scegli le voci — scegli le <strong>fatture</strong>, una per
+                                riga «Fuori preventivo» (l'imprevisto, il guasto), addebitata a una sola unità (il
+                                lavoro ad personam) o su una voce che nel preventivo vale € 0 (se il fondo di riserva non la copre già). Non scegli le voci — scegli le <strong>fatture</strong>, una per
                                 una, e dichiari con quale <strong>autorizzazione</strong> le stai finanziando, citando
                                 gli estremi del verbale. Il carrello mostra le fatture della gestione scelta; se è
                                 vuoto, dice che cosa non vede e dove andare.
                             </p>
+                            <p class="mt-2">
+                                Con una voce a € 0, finché la fattura è nel piano la voce non cambia importo e la fattura non prende né perde righe di un'unità: per correggere l'una o l'altra, togli prima la fattura dal piano (si elimina il piano).
+                                «Sposta spesa» non le dà budget, né al capitolo sopra di lei: la chiederebbe due volte.
+                            </p>
+                        </section>
+
+                        <!-- Coda 743 (decisione 655): il debito ereditato da ripianare, a schema. -->
+                        <section class="rounded-lg border border-slate-200 p-4 dark:border-slate-700" data-testid="guida-ripianamento">
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Il debito ereditato da ripianare</h3>
+                            <ul class="list-disc space-y-1 pl-5">
+                                <li>Si apre da «Prepara il piano di ripianamento», nel compito «Deficit da recuperare» o nel seguito della delibera.</li>
+                                <li>Il riquadro dice il fornitore, lo scoperto di oggi e il massimo. Lo scoperto è il debito meno i pregressi chiesti ai condòmini, anche quelli scritti dopo; con più debiti ereditati è uno per tutti, e quanto su ogni debito lo decide l'assemblea.</li>
+                                <li>Il programma non vede il denaro ereditato in banca: se c'è, lo scoperto vero è minore.</li>
+                                <li>Scrivi quanto mettere a rate (quello che l'assemblea ha deciso) e scegli la tabella del riparto.</li>
+                                <li>Con il piano la cifra diventa una spesa dell'esercizio sulla voce del ripianamento, a carico dei proprietari.</li>
+                                <li>Si prepara nell'esercizio della pregressa: nel suo rendiconto è «da pagare» finché non paghi il fornitore. In un altro esercizio la pagina si ferma e dice dove.</li>
+                                <li>Si scrive solo quando salvi il piano. Il compito del deficit si chiude quando non resta niente; con una parte, resta aperto con il resto.</li>
+                                <li>Un pregresso scritto dopo il piano può renderlo più grande dello scoperto: il Wallet lo dice con i numeri, e il compito torna aperto. Il piano non cambia da solo: decidi tu.</li>
+                                <li>Con più debiti, se lo scoperto che resta lo ricorda il compito di un altro debito, il programma dice quale: prepara il piano da lì.</li>
+                                <li>Se elimini il piano, si toglie con uno storno, e il compito torna da fare (se l'hai chiuso tu, resta chiuso).</li>
+                            </ul>
                         </section>
 
                         <!-- Coda 688: i lavori urgenti su una gestione straordinaria, a schema. -->
@@ -182,10 +203,25 @@ defineEmits(['update:open']);
                             </p>
                         </section>
 
+                        <!-- Il tetto sulle voci (`TettoSulleVoci::primoSforo`, letto da `PianoRateController::store`, `updateEsercizio` e `SyncOrphanChaptersAction`), a schema. -->
+                        <section class="rounded-lg border border-slate-200 p-4 dark:border-slate-700" data-testid="guida-tetto-voce">
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Una voce già chiesta da un altro piano</h3>
+                            <ul class="list-disc space-y-1 pl-5">
+                                <li>Una voce che i piani dell'esercizio chiedono già per intero non si chiede di nuovo: i condòmini la pagherebbero due volte.</li>
+                                <li>Ogni voce ha un tetto: il maggiore fra il preventivo e lo speso, meno quello che ne chiedono gli altri piani.</li>
+                                <li>Con l'importo vuoto, o con la selezione rapida, il piano prende quello che resta.</li>
+                                <li>Una cifra oltre quello che resta ferma la creazione: il messaggio dice quanto resta e quali piani chiedono già la voce.</li>
+                                <li>Vale anche per le sottovoci di un capitolo: il capitolo passa a ognuna la sua parte, e ognuna ha il suo tetto. Un capitolo con un importo suo ha il tetto anche sulla sua parte.</li>
+                                <li>Il tetto vale quando il piano nasce, quando «Ricalcola» gli aggiunge delle voci e quando «Cambia» lo porta in un altro esercizio: se non regge, il piano resta com'era e il messaggio dice perché.</li>
+                                <li>«Sposta spesa» è l'eccezione voluta: sposta quanto il piano finanzia fra le sue voci, non il preventivo, e la parte ceduta si chiede dopo.</li>
+                                <li>Se la spesa è più alta del preventivo, registra prima la fattura: lo speso alza il tetto, e un piano integrativo chiede la differenza.</li>
+                            </ul>
+                        </section>
+
                         <div class="flex items-start gap-3 rounded-lg bg-slate-50 p-4 dark:bg-slate-800/50">
                             <Info class="mt-0.5 h-5 w-5 shrink-0 text-slate-400" />
                             <p class="text-xs text-slate-600 dark:text-slate-400">
-                                Una voce già finanziata da un altro piano attivo non è riselezionabile, e vale per
+                                Una voce già finanziata da un altro piano attivo non è riselezionabile finché non ha un residuo, e vale per
                                 tutto il suo ramo: prendendo un capitolo prendi anche i suoi sottoconti. Serve a non
                                 chiedere due volte gli stessi soldi.
                             </p>
@@ -253,8 +289,9 @@ defineEmits(['update:open']);
                                 sulla stessa unità i saldi non legati di un erede sono gli stessi in tutte e due le voci: se sono già la sua
                                 parte per un defunto, per l'altro la voce chiede il saldo legato e lo dice; se il programma non sa se
                                 comprendono le parti, le voci dopo la prima dicono che le comprendono solo se le comprendono
-                                insieme. Se un defunto è anche erede di un altro defunto, anche con la successione registrata su un'altra unità, e tutte e due le successioni passano l'arretrato agli eredi, il cancello lo dice: la sua parte da erede della cifra
-                                dell'altro non passa ai suoi eredi, la divisione la decide l'amministratore e le righe del Wallet non chiudono la voce.
+                                insieme. Se un defunto è anche erede di un altro defunto e tutte e due le successioni passano l'arretrato agli eredi, con la sua successione registrata sulla stessa unità la sua parte da erede
+                                passa ai suoi eredi per le loro quote: la voce dell'altro defunto li nomina al posto suo, con le cifre e la strada del Wallet, e chiede di togliere un saldo legato rimasto a suo nome.
+                                Con la sua successione su un'altra unità, o con più successioni sull'unità e quote diverse, il cancello lo dice: la divisione la decide l'amministratore e le righe del Wallet non chiudono la voce.
                             </p>
                         </section>
 

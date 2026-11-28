@@ -384,7 +384,7 @@ it('Coda 170 (31.2) — la spesa di una sola unità con il nudo proprietario che
         $persone[$chiave] = Anagrafica::factory()->create()->id;
         DB::table('anagrafica_immobile')->insert(['anagrafica_id' => $persone[$chiave], 'immobile_id' => $mistaUnita->id, 'tipologia' => $ruolo, 'quota' => 50, 'attivo' => true, 'data_inizio' => $inizio, 'data_fine' => $fine]);
     }
-    $fattura = \App\Models\Gestionale\FatturaPassiva::create(['condominio_id' => $condominio->id, 'fornitore_id' => $fornitore->id, 'esercizio_id' => $esercizio->id, 'tipo_documento' => 'fattura', 'numero_documento' => 'FT-MISTA-2', 'data_documento' => now()->format('Y-m-d'), 'data_scadenza' => now()->addDays(30)->format('Y-m-d'), 'is_pregresso' => false, 'importo_imponibile' => 0, 'importo_iva' => 0, 'importo_ritenuta' => 0, 'totale_documento' => 0, 'netto_a_pagare' => 0, 'stato_pagamento' => 'aperta', 'stato_approvazione' => 'approvata', 'modalita_pagamento' => 'bonifico']);
+    $fattura = \App\Models\Gestionale\FatturaPassiva::create(['condominio_id' => $condominio->id, 'fornitore_id' => $fornitore->id, 'esercizio_id' => $esercizio->id, 'tipo_documento' => 'fattura', 'numero_documento' => 'FT-MISTA-2', 'competenza_dal' => '2026-01-01', 'competenza_al' => '2026-12-31', 'data_documento' => now()->format('Y-m-d'), 'data_scadenza' => now()->addDays(30)->format('Y-m-d'), 'is_pregresso' => false, 'importo_imponibile' => 0, 'importo_iva' => 0, 'importo_ritenuta' => 0, 'totale_documento' => 0, 'netto_a_pagare' => 0, 'stato_pagamento' => 'aperta', 'stato_approvazione' => 'approvata', 'modalita_pagamento' => 'bonifico']);
     DB::table('righe_fattura')->insert([
         ['fattura_passiva_id' => $fattura->id, 'conto_id' => $capitolo->id, 'immobile_id' => null, 'descrizione' => 'Facciata', 'aliquota_iva' => 0, 'importo_imponibile' => 100000, 'importo_iva' => 0, 'is_sopravvenienza' => true, 'is_rateizzata' => false, 'created_at' => now(), 'updated_at' => now()],
         ['fattura_passiva_id' => $fattura->id, 'conto_id' => null, 'immobile_id' => $mistaUnita->id, 'descrizione' => 'Balcone interno 9', 'aliquota_iva' => 0, 'importo_imponibile' => 10000, 'importo_iva' => 0, 'is_sopravvenienza' => true, 'is_rateizzata' => false, 'created_at' => now(), 'updated_at' => now()],
@@ -404,7 +404,8 @@ it('Coda 170 (31.2) — la spesa di una sola unità con il nudo proprietario che
     }
     ksort($perChiave);
 
-    // € 100,00: metà a Bice, l'altra metà a Elsa per 181 giorni (€ 24,79) e a Fabio per 184 (€ 25,21).
+    // € 100,00: metà a Bice, l'altra metà a Elsa per 181 giorni (€ 24,79) e a Fabio per 184 (€ 25,21). La competenza dell'anno è scritta sulla fattura:
+    // senza, la spesa di una sola unità è di chi era titolare il giorno della fattura (Coda 610), e la prova dipenderebbe dal giorno in cui gira.
     expect($perChiave)->toBe(['B' => 5000, 'E' => 2479, 'F' => 2521]);
 });
 

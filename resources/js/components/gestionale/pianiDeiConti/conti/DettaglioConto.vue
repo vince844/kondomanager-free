@@ -18,6 +18,7 @@ import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from "@/co
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { ContoHelpers, type Conto } from '@/types/gestionale/conti'
 import { consuntivoDellaVoce } from '@/lib/gestionale/pianiConti/consuntivoDellaVoce'
+import LettureDiFineAnno from './LettureDiFineAnno.vue'
 
 interface TabellaAssociata {
   id: number
@@ -144,6 +145,14 @@ const residuoDisponibile = computed(() =>
  * finanzia, che il server non blocca, e il riquadro direbbe «Ripartizione bloccata» senza la frase.
  */
 const ripartizioneBloccata = computed(() => !!props.conto?.blocco)
+
+/**
+ * Le letture di fine anno si scrivono su una voce di spesa con più tabelle: dicono quanto ha consumato ognuna, e il conguaglio divide con loro.
+ * Non toccano le rate, quindi il riquadro c'è anche con la ripartizione bloccata da un piano approvato.
+ */
+const mostraLetture = computed(() =>
+  !!props.conto && !isCapitolo(props.conto) && props.conto.tipo === 'spesa' && getTabelleAssociate().length >= 2 && !!props.conto.piano_conto_id
+)
 
 const aggiungiDisabilitato = computed(() =>
   residuoDisponibile.value === 0 || ripartizioneBloccata.value
@@ -760,6 +769,10 @@ const statusColorClass = computed(() => {
           </div>
         </CardContent>
       </Card>
+
+      <!-- LE LETTURE DI FINE ANNO -->
+      <LettureDiFineAnno v-if="mostraLetture" :condominio-id="props.condominioId" :esercizio-id="props.esercizioId"
+                         :piano-conto-id="props.conto.piano_conto_id" :conto-id="props.conto.id" />
 
       <!-- SOTTOCONTI -->
       <Card v-if="props.conto.sottoconti && props.conto.sottoconti.length > 0" class="mt-3 overflow-hidden border-indigo-100 dark:border-indigo-900/30">

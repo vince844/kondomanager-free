@@ -263,21 +263,33 @@ final class FattiDellaNota
         return self::fatto('criteri', $frase, 'Gli incassi delle rate dell\'esercizio', 'cassa');
     }
 
-    /** G1: il risultato, con i suoi due termini. */
+    /**
+     * G1: il risultato, con i suoi termini. La rettifica di esercizi precedenti non è una quota chiesta con le rate ma sta nel risultato: quando
+     * c'è, la frase la nomina, e il conto delle cifre torna.
+     */
     public static function g1(array $pr): array
     {
         $risultato = (int) $pr['risultato'];
+        $rettifica = (int) ($pr['rettifica_esercizi_precedenti'] ?? 0);
         // La parola del risultato (disavanzo, avanzo, in pareggio) è quella del riepilogo e del frontespizio: una regola sola.
-        $parola = ' ('.RiepilogoPerCompetenza::comeRisultato($risultato).')';
-        $verso = match (true) {
-            $risultato < 0 => 'le spese superano le quote di '.self::euro($risultato).$parola,
-            $risultato > 0 => 'le quote superano le spese di '.self::euro($risultato).$parola,
-            default => 'spese e quote si equivalgono'.$parola,
-        };
+        $parola = RiepilogoPerCompetenza::comeRisultato($risultato);
+        $spese = 'Le spese dell\'esercizio sono '.self::euro((int) $pr['costi']);
+        $quote = 'le quote chieste ai condòmini con le rate sono '.self::euro((int) $pr['quote_giornale']);
+        if ($rettifica === 0) {
+            $verso = match (true) {
+                $risultato < 0 => 'le spese superano le quote di '.self::euro($risultato),
+                $risultato > 0 => 'le quote superano le spese di '.self::euro($risultato),
+                default => 'spese e quote si equivalgono',
+            };
+            $frase = $spese.' e '.$quote.': '.$verso.' ('.$parola.').';
+        } else {
+            // Con un terzo termine il confronto fra spese e quote non basta: si dice il risultato.
+            $frase = $spese.', '.$quote.' e la rettifica di esercizi precedenti è di '.self::euro($rettifica).($rettifica > 0 ? ' in più' : ' in meno')
+                .': il risultato è '.($risultato === 0 ? $parola : 'un '.$parola.' di '.self::euro($risultato)).'.';
+        }
 
-        return self::fatto('gestione', 'Le spese dell\'esercizio sono '.self::euro((int) $pr['costi']).' e le quote chieste ai condòmini con le rate sono '
-            .self::euro((int) $pr['quote_giornale']).': '.$verso.'.', 'Il prospetto della gestione, nella Sintesi', 'sintesi')
-            + ['cifre' => ['costi' => (int) $pr['costi'], 'quote' => (int) $pr['quote_giornale'], 'risultato' => $risultato]];
+        return self::fatto('gestione', $frase, 'Il prospetto della gestione, nella Sintesi', 'sintesi')
+            + ['cifre' => ['costi' => (int) $pr['costi'], 'quote' => (int) $pr['quote_giornale'], 'rettifica' => $rettifica, 'risultato' => $risultato]];
     }
 
     /** Le voci di spesa delle gestioni ordinarie, una per riga del riepilogo: le voci dei capitoli, o il capitolo senza voci. */

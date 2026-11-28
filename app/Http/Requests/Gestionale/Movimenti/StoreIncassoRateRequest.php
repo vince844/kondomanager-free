@@ -107,8 +107,10 @@ class StoreIncassoRateRequest extends FormRequest
             // `integer` su ogni id che arriva dal browser (Coda 208, chiusa nella 1.11.0-beta.40, decisione 30.17): un elenco
             // passava `exists` elemento per elemento, e poi `(int)` di un elenco vale 1 — la gestione n.1 di un altro
             // palazzo, o una pagina d'errore. Lo stesso schema del reperto R5 su `pagante_id`.
+            // Un incasso tutto a credito («Usa credito», nessun denaro) non passa da una cassa: la risorsa si chiede solo con un importo.
             'cassa_id' => [
-                'required',
+                \Illuminate\Validation\Rule::requiredIf(fn () => is_numeric($this->input('importo_totale')) && (float) $this->input('importo_totale') > 0),
+                'nullable',
                 'integer',
                 // Il tipo è vincolato: un fondo è una partizione contabile del c/c,
                 // non una cassa su cui incassare. Il form espone solo banca/contanti,
@@ -205,23 +207,15 @@ class StoreIncassoRateRequest extends FormRequest
     }
 
     /**
-     * Una persona di questo condominio: nel pivot `anagrafica_condominio`, oppure titolare di un'unità qui (vedi il
-     * commento su `pagante_id` per il perché dei due criteri).
+     * Una persona di questo condominio: nel pivot `anagrafica_condominio`, titolare (anche cessato) di un'unità qui, oppure con quote nelle rate di
+     * un piano di qui, anche se è stata tolta dal condominio o dissociata dall'unità. La regola è `Anagrafica::delCondominio`, la stessa della scelta
+     * del pagante nella pagina e dell'estratto conto.
      */
     private function personaDelCondominio(): \Illuminate\Validation\Rules\Exists
     {
-        return \Illuminate\Validation\Rule::exists('anagrafiche', 'id')->where(
-            fn ($q) => $q
-                ->whereIn('id', fn ($sub) => $sub->select('anagrafica_id')
-                    ->from('anagrafica_condominio')
-                    ->where('condominio_id', $this->route('condominio')?->id))
-                // Senza filtro su `attivo`, di proposito: anche un titolare cessato può
-                // pagare una rata di quando c'era. Censito nell'inventario B1 (§4.3 del
-                // progetto sul subentro) come punto che NON passa dal risolutore.
-                ->orWhereIn('id', fn ($sub) => $sub->select('anagrafica_immobile.anagrafica_id')
-                    ->from('anagrafica_immobile')
-                    ->join('immobili', 'immobili.id', '=', 'anagrafica_immobile.immobile_id')
-                    ->where('immobili.condominio_id', $this->route('condominio')?->id))
-        );
+        $condominioId = (int) $this->route('condominio')?->id;
+
+        return \Illuminate\Validation\Rule::exists('anagrafiche', 'id')
+            ->where(fn ($q) => $q->whereIn('id', \App\Models\Anagrafica::delCondominio($condominioId)->select('anagrafiche.id')));
     }
 }

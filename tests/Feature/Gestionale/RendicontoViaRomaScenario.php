@@ -75,6 +75,23 @@ function vrmBase($test): array
     return $s;
 }
 
+/**
+ * Un secondo piano che chiede le voci date, già chieste per intero dal piano di `vrmBase`: lo stato di due piani sulla stessa voce com'era nelle installazioni di prima (la
+ * creazione di un piano rifiuta una voce già chiesta per intero). Il secondo piano nasce con le voci libere, perché la loro riga si toglie un momento dal primo piano, e la riga si
+ * rimette subito dopo, così com'era. Il primo piano non si ricalcola.
+ *
+ * @param list<int> $contiIds
+ */
+function vrmSecondoPianoSulleVoci($test, array $s, array $contiIds, string $nome): \App\Models\Gestionale\PianoRate
+{
+    $righe = DB::table('piano_rate_capitoli')->where('piano_rate_id', $s['piano']->id)->whereIn('conto_id', $contiIds)->get()->map(fn ($r) => (array) $r)->all();
+    DB::table('piano_rate_capitoli')->whereIn('id', array_column($righe, 'id'))->delete();
+    $secondo = be52PianoConVoci($test, $s, $contiIds, $nome);
+    DB::table('piano_rate_capitoli')->insert($righe);
+
+    return $secondo;
+}
+
 /** Le quote di una persona, per numero di rata: [numero => id della quota]. */
 function vrmQuote(array $s, string $chi): array
 {

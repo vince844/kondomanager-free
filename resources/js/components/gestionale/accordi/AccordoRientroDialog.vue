@@ -21,6 +21,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 import { computed, ref, watch } from 'vue';
 import axios from 'axios';
 import { usePermission } from '@/composables/permissions';
+import { Permission } from '@/enums/Permission';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -62,6 +63,8 @@ const permessi = usePermission();
 const { generateRoute } = permessi;
 // Con «Gestisce le assemblee» l'autorizzazione viene dalla delibera scelta (§1.4 del progetto della tappa 2); senza, la data si scrive a mano come prima.
 const conLaDelibera = computed(() => gestisceLeAssemblee(permessi));
+// Caricare l'accordo firmato chiede «Crea documenti archivio», come «Allega» della fattura: senza, il campo non c'è e l'accordo si registra lo stesso.
+const puoCaricare = computed(() => permessi.hasPermission([Permission.CREATE_ARCHIVE_DOCUMENTS]));
 const rotta = (nome: string, altro: Record<string, unknown> = {}) => route(generateRoute(`gestionale.accordi-rientro.${nome}`), { condominio: props.condominioId, ...altro });
 
 const accordi = ref<AccordoDellaPersona[]>([]);
@@ -536,7 +539,7 @@ const nomeRata = (r: { numero_rata: number; piano: string; unita: string | null;
 
                     <label class="block space-y-1 text-xs"><span class="block text-slate-500">Nota</span>
                         <Textarea v-model="modulo.nota" rows="2" /></label>
-                    <div class="block space-y-1 text-xs"><span class="block text-slate-500">L'accordo firmato (PDF o immagine, fino a 10 MB)</span>
+                    <div v-if="puoCaricare" class="block space-y-1 text-xs"><span class="block text-slate-500">L'accordo firmato (PDF o immagine, fino a 10 MB)</span>
                         <CampoFile v-model="file" accept=".pdf,.jpg,.jpeg,.png" testid="file-accordo" /></div>
 
                     <Button size="sm" :disabled="inCorso || !pronto" data-testid="registra-accordo" @click="registra">Registra l'accordo</Button>

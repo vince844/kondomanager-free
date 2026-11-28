@@ -22,6 +22,7 @@ use App\Traits\HandleFlashMessages;
 use App\Traits\PaginaElenco;
 use App\Traits\ScaricaEApprovaDocumento;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
@@ -183,15 +184,11 @@ class FornitoreDocumentoController extends Controller
                 app(VersioniDeiDocumenti::class)->sostituisci($documento, $request->file('file'));
             }
 
-            $documento->update([
-                'name'         => $validated['name'],
-                'description'  => $validated['description'],
-                'path'         => $documento->path,
-                'mime_type'    => $documento->mime_type,
-                'file_size'    => $documento->file_size,
-                'created_by'   => $validated['created_by'],
-                'is_published' => $validated['is_published'],
-                'is_approved'  => $validated['is_approved'],
+            // L'autore e l'approvazione restano quelli del documento (Coda 396): la modifica scrive solo ciò che il modulo manda.
+            $documento->update(Arr::only($validated, ['name', 'description', 'is_published']) + [
+                'path'      => $documento->path,
+                'mime_type' => $documento->mime_type,
+                'file_size' => $documento->file_size,
             ]);
 
             DB::commit();

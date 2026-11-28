@@ -78,6 +78,10 @@ it('la prova di una lettera: un PNG con `eXIf`, i testi e la data si salva senza
     $ruolo->givePermissionTo(\Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']));
     $this->user = User::factory()->create(['name' => 'Anna Studio', 'email' => 'studio@prova.it']);
     $this->user->assignRole($ruolo);
+    // Caricare un file nel gestionale chiede anche «Crea documenti archivio», che l'amministratore di serie ha.
+    foreach (['Crea documenti archivio'] as $nomeDelPermesso) {
+        $ruolo->givePermissionTo(\Spatie\Permission\Models\Permission::firstOrCreate(['name' => $nomeDelPermesso, 'guard_name' => 'web']));
+    }
     $s = lttScenario($this);
     $lettera = lttRigaScritta($s, 'ugo', 'diffida', 'stampata', 0);
 

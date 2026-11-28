@@ -263,7 +263,7 @@ async function registra() {
                     <p v-if="proposta.regole.avviso" class="text-xs text-amber-800 dark:text-amber-300" data-testid="avviso-fonte">{{ proposta.regole.avviso }}</p>
                     <p v-for="f in proposta.tassi_a_mano ?? []" :key="f" class="text-xs text-slate-600 dark:text-slate-300" data-testid="tasso-a-mano">{{ f }}</p>
                     <div v-for="g in senzaVoce" :key="g.gestione_id" class="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200" data-testid="manca-la-voce">
-                        <p>Per «{{ g.scrive?.nome }}» non c'è una voce di entrata che riceva gli interessi: senza non si possono registrare. Creala nel piano dei conti, come voce di entrata con il preventivo a zero, e poi rifai la proposta.</p>
+                        <p>Per «{{ g.scrive?.nome }}» non c'è una voce di entrata che riceva gli interessi: senza non si possono registrare. Creala nel piano dei conti, come voce di entrata con il preventivo a zero e una tabella millesimale collegata, e poi rifai la proposta.</p>
                         <Link :href="indirizzoPianoDeiConti(g)" class="mt-1 inline-block underline" data-testid="vai-al-piano-dei-conti">Apri il piano dei conti di «{{ g.scrive?.nome }}»</Link>
                     </div>
                     <p v-if="!proposta.persone.length" class="text-xs text-slate-500" data-testid="nessuna-proposta">Alla data non ci sono interessi da proporre per queste persone.</p>

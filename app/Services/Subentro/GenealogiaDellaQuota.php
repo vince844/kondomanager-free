@@ -385,7 +385,10 @@ final class GenealogiaDellaQuota
                 $this->nome((int) $r->anagrafica_id), $this->ruolo((string) $r->ruolo_risolto))];
         }
         $straordinaria = ($piano['natura'] ?? null) === NaturaGestione::Straordinaria->value;
-        $latoP = ($r->ruolo_richiesto ?? null) === 'proprietario' || ($r->tipo ?? null) === RigaRiparto::TIPO_AD_PERSONAM;
+        // Il lato della riga come nel conguaglio: l'addebito diretto segue la voce su cui è scritto (`ConguaglioPassaggio::latoProprietario`).
+        $latoP = ($r->tipo ?? null) === RigaRiparto::TIPO_AD_PERSONAM
+            ? \App\Services\Riparto\RuoloDellaVoce::dellaRigaDiRiparto($r) !== \App\Enums\RuoloAnagraficaImmobile::USUFRUTTUARIO
+            : ($r->ruolo_richiesto ?? null) === 'proprietario';
 
         // I pacchi di partenza. Una riga d'usufrutto nata da passaggi porta le sue parti legate a una nuda: si divide subito.
         $pacchi = [];

@@ -90,6 +90,25 @@ function b52tVoce($test, array $s, string $nome, string $tipo, string $importo, 
 }
 
 /**
+ * Una voce scritta direttamente sul modello, con le stesse righe che la rotta `conti.store` scriveva (la voce, il suo mastro, la tabella al 100 % e
+ * il 100 % al proprietario): è il dato di un database installato, nato prima che la pagina rifiutasse una voce sotto un capitolo dell'altro tipo
+ * (`CreateContoRequest`, `BloccoDellaVoce::rifiutoDelTipoSottoIlCapitolo`). Serve agli scenari che provano come si leggono i capitoli misti che
+ * esistono già; `$centesimi` è già in centesimi.
+ */
+function b52tVoceDiPrima(array $s, string $nome, string $tipo, int $centesimi, Tabella $tabella, ?int $parentId = null): Conto
+{
+    $voce = Conto::create([
+        'piano_conto_id' => $s['pc']->id, 'parent_id' => $parentId, 'is_capitolo' => false, 'richiede_gia_versato' => false,
+        'conto_contabile_id' => \App\Services\Gestionale\CreazioneDellaVoce::contoContabile((int) $s['c']->id, 'standard', $tipo),
+        'codice' => null, 'nome' => $nome, 'descrizione' => null, 'tipo' => $tipo, 'tipo_spesa' => 'standard', 'importo' => $centesimi, 'attivo' => true,
+    ]);
+    $legame = DB::table('conto_tabella_millesimale')->insertGetId(['conto_id' => $voce->id, 'tabella_id' => $tabella->id, 'coefficiente' => 100, 'created_at' => now(), 'updated_at' => now()]);
+    DB::table('conto_tabella_ripartizioni')->insert(['conto_tabella_millesimale_id' => $legame, 'soggetto' => 'proprietario', 'percentuale' => 100, 'created_at' => now(), 'updated_at' => now()]);
+
+    return $voce;
+}
+
+/**
  * Spese `$spese` su «Proprietà» (A di Ugo e C di Bice) e proventi `$entrata` su una voce di entrata sulla tabella «Box» (solo il box D
  * di Bice). Il piano non è ancora creato: lo crea `b52tPiano()`. `$soloEntrata`: niente voce di spesa.
  */
@@ -190,6 +209,9 @@ function b52tScenarioConPadre($test, string $tipoFigli = 'spesa'): array
  * Un capitolo «Antenna» con due sottoconti di tipo diverso: «Manutenzione antenna» (spesa € 100,00, sulla tabella «Proprietà») e «Affitto
  * antenna» (entrata € 500,00, sulla tabella «Box»), accanto alle «Spese generali» da € 1.200,00. Senza la voce di entrata a zero dello
  * scenario di base. Il piano rate non c'è: serve alle pagine e alla stampa del piano dei conti.
+ *
+ * La pagina oggi non lascia creare l'entrata sotto un capitolo di spesa: «Affitto antenna» è scritta sul modello (`b52tVoceDiPrima()`), il dato di un
+ * database installato prima della regola, che i totali e le stampe devono continuare a leggere giusto.
  */
 function b52tScenarioCapitoloMisto($test): array
 {
@@ -197,7 +219,7 @@ function b52tScenarioCapitoloMisto($test): array
     $s['entrata']->delete();
     $padre = b52tVoce($test, $s, 'Antenna', 'spesa', '0,00', $s['tabella'], null, ['isCapitolo' => true, 'tabella_millesimale_id' => null, 'percentuale_proprietario' => null, 'percentuale_inquilino' => null, 'percentuale_usufruttuario' => null]);
     b52tVoce($test, $s, 'Manutenzione antenna', 'spesa', '100,00', $s['tabella'], $padre->id, ['isSottoConto' => true]);
-    b52tVoce($test, $s, 'Affitto antenna', 'entrata', '500,00', $s['box'], $padre->id, ['isSottoConto' => true]);
+    b52tVoceDiPrima($s, 'Affitto antenna', 'entrata', 50000, $s['box'], $padre->id);
 
     return $s + ['padre' => $padre];
 }

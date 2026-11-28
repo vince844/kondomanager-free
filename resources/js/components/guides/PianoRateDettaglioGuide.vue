@@ -204,7 +204,12 @@ defineEmits(['update:open']);
                             <p class="mt-2">
                                 Si sposta fra voci dello stesso tipo: spese con spese, entrate con entrate, come il piano le conta (un capitolo di spesa che passa l'importo ai soli sottoconti di entrata conta come un'entrata). Fra
                                 una spesa e un'entrata il totale del piano cambierebbe, e il programma lo
-                                rifiuta: il menu della destinazione offre solo le voci del tipo della sorgente. Un capitolo che il piano divide fra spese ed entrate non si sposta e non riceve budget, e il menu non offre le voci che si sovrapporrebbero a un capitolo o a dei sottoconti già nel piano, perché di due righe sovrapposte il piano conta solo quella del capitolo. Se nel piano un capitolo ha la sua riga insieme a quelle dei suoi sottoconti e il piano conta solo quella del capitolo, un riquadro in cima alla pagina lo dice e indica come uscirne. Nei piani straordinari «Sposta spesa» non funziona: il menu della sorgente elenca le fatture, ma lo spostamento lavora sulle voci, e il programma lo rifiuta sempre.
+                                rifiuta: il menu della destinazione offre solo le voci del tipo della sorgente. Un capitolo che il piano divide fra spese ed entrate non si sposta e non riceve budget, e il menu non offre le voci che si sovrapporrebbero a un capitolo o a dei sottoconti già nel piano, perché di due righe sovrapposte il piano conta solo quella del capitolo. Se nel piano un capitolo ha la sua riga insieme a quelle dei suoi sottoconti e il piano conta solo quella del capitolo, un riquadro in cima alla pagina lo dice e indica come uscirne. Nei piani straordinari «Sposta spesa» non c'è: le voci del piano sono le fatture.
+                            </p>
+                            <p class="mt-2">
+                                Una voce che nel preventivo vale € 0 e la cui spesa è già a rate con «Spese fuori preventivo» non riceve budget, e nemmeno il capitolo sopra di lei: il
+                                menu della destinazione non li offre, perché con una cifra in questo piano la spesa si chiederebbe due volte. Per darle budget, togli prima la
+                                fattura dal suo piano.
                             </p>
                             <p class="mt-2">
                                 Una voce di spesa che il piano conta con un importo negativo, il suo o quello della copia, non cede e non riceve budget, e nemmeno il capitolo
@@ -212,6 +217,11 @@ defineEmits(['update:open']);
                                 pagina. Non riceve budget neanche una voce di spesa scritta con il meno che il piano non conta così, né un capitolo fuori dal piano che la
                                 ripartirebbe: il piano la addebiterebbe in positivo. I menu non offrono queste voci dove il programma le rifiuterebbe.
                             </p>
+                            <ul class="ml-5 mt-2 list-disc space-y-1.5 text-xs">
+                                <li><strong>Entrata scritta con il meno</strong> — vale la stessa regola: non cede e non riceve budget, né il capitolo del piano che la ripartisce. Correggi l'importo, senza il segno, poi sposta.</li>
+                                <li><strong>Capitolo senza cifra</strong> — vale il suo importo più i sottoconti, come nelle rate. Non cede e non riceve budget finché non ha una cifra nel piano, salvo che ogni sottoconto abbia la sua riga. Il piano non ha un campo per scriverla: togli il capitolo con «Rimuovi voce e ricalcola» e rimettilo con «Sincronizza», che gli scrive la somma dei sottoconti.</li>
+                                <li><strong>Lo storno</strong> — non rimette budget su una voce che nel frattempo è scritta con il meno: correggi prima la voce, poi annulla lo spostamento.</li>
+                            </ul>
                         </section>
 
                         <div class="flex items-start gap-3 rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
@@ -254,7 +264,7 @@ defineEmits(['update:open']);
                                 l'icona dell'orologio accanto all'importo apre lo storico dei movimenti, e
                                 ognuno ha il proprio pulsante per restituire esattamente quella cifra. La voce
                                 rimossa torna disponibile fra le «orfane» e si può reintrodurre in seguito con
-                                «Sincronizza». Sul piano senza il suo esercizio salvato, che «Ricalcola» rifiuta sulla gestione usata in più
+                                «Sincronizza». Nei piani straordinari il cestino non c'è: una fattura non si toglie da qui, si elimina il piano e lo si ricrea con le fatture giuste. Sul piano senza il suo esercizio salvato, che «Ricalcola» rifiuta sulla gestione usata in più
                                 esercizi (vedi sopra), il cestino non è disabilitato ma si rifiuta, con lo stesso fatto e la stessa strada.
                                 L'ultima voce di un piano ordinario non si toglie: un piano senza voci, al ricalcolo, prende tutte le voci della gestione
                                 che nessun altro piano del suo esercizio ha già, quindi anche quella appena tolta se nessun altro piano l'ha. Se il
@@ -288,43 +298,62 @@ defineEmits(['update:open']);
                     <!-- ══════════════════════ EMISSIONE ══════════════════════ -->
                     <TabsContent value="emissione" class="space-y-6 text-sm text-slate-700 dark:text-slate-300">
                         <section>
-                            <h3 class="mb-2 flex items-center gap-2 font-bold text-slate-900 dark:text-slate-100">
+                            <h3 class="mb-3 flex items-center gap-2 font-bold text-slate-900 dark:text-slate-100">
                                 <Wallet class="h-4 w-4 text-emerald-600" /> Selezionare ed emettere
                             </h3>
-                            <p>
-                                Con il piano <strong>Approvato</strong>, spunta le rate da emettere (le
-                                caselle compaiono nell'intestazione di ogni colonna) oppure usa <strong>«Seleziona
-                                tutte»</strong>. Solo le rate non ancora emesse sono selezionabili. Anche una rata di soli crediti va a
-                                giornale: per ogni quota a credito la spesa della rata in dare e il credito riportato che la paga in
-                                avere, a nome del condòmino; una quota a zero, con spesa e credito uguali, porta tutte e due le righe.
-                                Non va a giornale, e l'esito dell'emissione dice perché, solo una rata che non ha niente da portare
-                                (una rata vuota, o il cui credito è già stato usato o rimborsato per intero), una rata fatta solo di
-                                quote a credito, o a zero, senza il dettaglio del calcolo (vedi sotto), o una rata segnata «emessa»
-                                senza scritture che un passaggio registrato con una versione di prima ha preso così.
-                                Il pulsante <strong>«Emetti»</strong> apre un modulo dove scegli la data di registrazione,
-                                una causale personalizzata (opzionale — altrimenti il sistema usa una dicitura
-                                standard) e se rendere subito visibili le rate ai condòmini.
-                            </p>
-                            <p class="mt-2">
-                                Una quota a credito, o a zero, senza il dettaglio del calcolo (piani generati prima della versione
-                                1.8.0) resta fuori da sola, perché il programma non separa la spesa dal credito riportato, e l'esito
-                                nomina la persona e la rata. Una quota a credito lascia al condòmino il suo credito, da usare o
-                                rimborsare. In una quota a zero la spesa della rata e il credito riportato che la paga si pareggiano
-                                e restano fuori tutti e due: non c'è un credito da usare né da rimborsare, anche se l'estratto conto
-                                può mostrare a credito il saldo pregresso. Se le altre quote della rata vanno a giornale, la card
-                                «Crediti da riallineare» degli incassi elenca la quota ferma fra le voci che restano come sono, e la
-                                tiene anche dopo lo storno di un incasso o di un rimborso che ne ha usato il credito. Una rata fatta
-                                solo di quote ferme resta in bozza, e così la mostra la pagina del piano; il perché lo dice l'esito
-                                dell'emissione. Per portare la quota a giornale si ricalcola il piano, dopo aver stornato gli
-                                incassi, le compensazioni e i rimborsi e annullato le emissioni; prima va controllato il saldo
-                                pregresso di quella persona, che le versioni di prima della 1.8.0 sottraevano invece di sommare.
-                            </p>
-                            <p class="mt-2">
-                                Una rata emessa, anche di soli crediti, ferma il ricalcolo del piano (vedi «Ricalcola»): per
-                                ricalcolarlo si annulla l'emissione, dopo aver stornato gli incassi, le compensazioni o i rimborsi
-                                che la toccano.
-                            </p>
+                            <ol class="space-y-2">
+                                <li v-for="(passo, n) in [
+                                        'Il piano dev\'essere «Approvato».',
+                                        'Spunta le rate (le caselle in testa a ogni colonna) o usa «Seleziona tutte»: si scelgono solo quelle non ancora emesse.',
+                                        'Premi «Emetti» e scegli la data di registrazione, la causale (facoltativa: senza, il programma usa una dicitura standard) e se mostrarle subito ai condòmini.',
+                                    ]" :key="n" class="flex gap-3">
+                                    <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-emerald-100 text-xs font-bold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">{{ n + 1 }}</span>
+                                    <span class="pt-0.5">{{ passo }}</span>
+                                </li>
+                            </ol>
                         </section>
+
+                        <section>
+                            <h3 class="mb-3 font-bold text-slate-900 dark:text-slate-100">Che cosa va a giornale</h3>
+                            <div class="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+                                <div v-for="r in [
+                                        { si: true, rata: 'Rata normale', come: 'Come sempre.' },
+                                        { si: true, rata: 'Rata di soli crediti', come: 'Per ogni quota a credito: la spesa della rata in dare e il credito riportato che la paga in avere, a nome del condòmino.' },
+                                        { si: true, rata: 'Quota a zero (spesa e credito uguali)', come: 'Con tutte e due le righe.' },
+                                        { si: false, rata: 'Rata vuota, o con il credito già usato o rimborsato per intero', come: 'Non ha niente da portare.' },
+                                        { si: false, rata: 'Solo quote a credito o a zero senza il dettaglio del calcolo', come: 'Piani di prima della 1.8.0: vedi sotto.' },
+                                        { si: false, rata: 'Rata «emessa» senza scritture', come: 'L\'ha presa così un passaggio registrato con una versione di prima.' },
+                                    ]" :key="r.rata" class="flex gap-3 border-b border-slate-100 p-3 last:border-b-0 dark:border-slate-800">
+                                    <span class="mt-0.5 inline-flex h-5 w-9 shrink-0 items-center justify-center rounded-md text-xs font-bold"
+                                          :class="r.si ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'">{{ r.si ? 'Sì' : 'No' }}</span>
+                                    <div><p class="font-medium text-slate-900 dark:text-slate-100">{{ r.rata }}</p><p class="text-xs text-slate-600 dark:text-slate-400">{{ r.come }}</p></div>
+                                </div>
+                            </div>
+                            <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">Non vanno a giornale solo le rate dei tre casi con «No», e l'esito dell'emissione dice perché.</p>
+                        </section>
+
+                        <div class="flex items-start gap-3 rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
+                            <AlertTriangle class="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+                            <p class="text-sm text-amber-900 dark:text-amber-200"><strong>Una rata emessa, anche di soli crediti, ferma il ricalcolo del piano</strong> (vedi «Ricalcola»). Per ricalcolare: storna gli incassi, le compensazioni o i rimborsi che la toccano, poi annulla l'emissione.</p>
+                        </div>
+
+                        <details class="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
+                            <summary class="cursor-pointer font-bold text-slate-900 dark:text-slate-100">Piani di prima della 1.8.0: quote senza il dettaglio del calcolo</summary>
+                            <ul class="mt-3 list-disc space-y-1.5 pl-5">
+                                <li>Una quota a credito, o a zero, senza il dettaglio resta fuori da sola: il programma non separa la spesa dal credito riportato. L'esito nomina la persona e la rata.</li>
+                                <li><strong>A credito</strong>: il condòmino tiene il credito, da usare o rimborsare.</li>
+                                <li><strong>A zero</strong>: la spesa della rata e il credito riportato che la paga si pareggiano e restano fuori tutti e due; non c'è niente da usare né da rimborsare, anche se l'estratto conto può mostrare a credito il saldo pregresso.</li>
+                                <li>Se le altre quote della rata vanno a giornale, la card «Crediti da riallineare» degli incassi tiene la quota ferma fra le voci che restano come sono, anche dopo lo storno di un incasso o di un rimborso che ne ha usato il credito.</li>
+                                <li>Una rata fatta solo di quote ferme resta in bozza, e così la mostra la pagina del piano; il perché lo dice l'esito dell'emissione.</li>
+                            </ul>
+                            <p class="mt-3 font-medium text-slate-900 dark:text-slate-100">Per portare la quota a giornale:</p>
+                            <ol class="mt-1 list-decimal space-y-1 pl-5">
+                                <li>controlla il saldo pregresso della persona (prima della 1.8.0 si sottraeva invece di sommare);</li>
+                                <li>storna incassi, compensazioni e rimborsi;</li>
+                                <li>annulla le emissioni;</li>
+                                <li>ricalcola il piano.</li>
+                            </ol>
+                        </details>
 
                         <div class="flex items-start gap-3 rounded-lg bg-slate-50 p-4 dark:bg-slate-900/40">
                             <Info class="mt-0.5 h-5 w-5 shrink-0 text-indigo-500" />
@@ -378,6 +407,7 @@ defineEmits(['update:open']);
                                     <strong>Non sottrae i crediti</strong>: un condòmino con un anticipo pesa
                                     comunque per intero finché la sua rata non è formalmente pagata o
                                     compensata.</li>
+                                <li><strong>Scaduto da incassare</strong> — dentro una rata il credito di una persona toglie solo dal suo debito, anche su un'altra sua unità; mai da quello di un'altra persona della stessa unità. La cifra è la stessa nella scheda per persona e in quella per unità.</li>
                                 <li><strong>Incassato</strong> — il denaro davvero entrato in cassa, incluso
                                     quanto versato in eccedenza.</li>
                                 <li><strong>Crediti (Anticipi)</strong> — vedi la scheda «Colori e crediti»:
@@ -528,6 +558,28 @@ defineEmits(['update:open']);
                                 vengono rimossi insieme a lei.</p>
                             </div>
                         </div>
+
+                        <!-- La riga dell'esercizio (`PianoRateController::updateEsercizio`) e la riga dell'usufrutto, a schema. -->
+                        <section data-testid="guida-esercizio-del-piano">
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">L'esercizio del piano</h3>
+                            <ul class="list-disc space-y-1 pl-5">
+                                <li>In alto il riquadro «Esercizio del piano» dice di quale anno è il piano: il suo elenco, lo speso e il già versato sono di quell'anno.</li>
+                                <li>Un piano nato nell'esercizio sbagliato si sposta con «Cambia», fra gli esercizi aperti della sua gestione.</li>
+                                <li>Solo senza rate emesse, incassi o il conguaglio di un passaggio: gli altri si rifanno, e il riquadro lo dice.</li>
+                                <li>Non si sposta in un esercizio dove un altro piano chiede già le stesse voci per intero: il menu lo dice accanto all'esercizio, con la voce e quanto resta.</li>
+                                <li>Dopo lo spostamento ricalcola il piano: il ricalcolo toglie il già versato dell'esercizio nuovo.</li>
+                                <li>Le scadenze delle rate restano quelle del piano: se servono altre date, rifallo.</li>
+                            </ul>
+                        </section>
+
+                        <section data-testid="guida-usufrutto-del-piano">
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">L'unità in usufrutto</h3>
+                            <ul class="list-disc space-y-1 pl-5">
+                                <li>Se un'unità è in usufrutto e delle voci dell'ordinaria sono sul «Proprietario», in alto una riga dice che vanno al nudo proprietario.</li>
+                                <li>Per darle all'usufruttuario, mettile su «Usufruttuario» nella tabella della voce e ricalcola; se il piano non si ricalcola più, vale per i piani che verranno. La riga non blocca niente.</li>
+                                <li>Per una voce che al passaggio hai tenuto sul «Proprietario», la riga dice che è la scelta di allora.</li>
+                            </ul>
+                        </section>
                     </TabsContent>
                 </Tabs>
             </div>

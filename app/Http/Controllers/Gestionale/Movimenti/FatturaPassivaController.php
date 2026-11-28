@@ -364,6 +364,10 @@ class FatturaPassivaController extends Controller
     {
         // 1.12.0-beta.13 (§1.4): la delibera della competenza o della spesa imprevista la collega chi gestisce le assemblee.
         $this->puoCollegareLeDelibere($request, null);
+        // Registrare la fattura resta di chi entra nel pannello; il file allegato nel modulo chiede anche «Crea documenti archivio», come «Allega».
+        if ($request->hasFile('file')) {
+            Gate::authorize('create', Documento::class);
+        }
 
         try {
             // ⚠️ **Prima di registrare, non dopo.** La risposta sulla posizione fiscale del
@@ -442,7 +446,7 @@ class FatturaPassivaController extends Controller
             Log::error('FATAL ERROR NEL SERVICE: '.$e->getMessage());
             Log::error('Traccia: '.$e->getTraceAsString());
 
-            return back()->withErrors(['error' => $e->getMessage()]);
+            return back()->withErrors(['error' => \App\Support\Errori\MessaggioPerLaPagina::di($e, 'FatturaPassivaController@store')]);
         }
     }
 
@@ -1160,7 +1164,7 @@ class FatturaPassivaController extends Controller
         } catch (\Exception $e) {
             Log::error("Errore modifica fattura ID {$fattura->id}: ".$e->getMessage());
 
-            return back()->withErrors(['error' => $e->getMessage()]);
+            return back()->withErrors(['error' => \App\Support\Errori\MessaggioPerLaPagina::di($e, 'FatturaPassivaController@update')]);
         }
     }
 
@@ -1409,7 +1413,7 @@ class FatturaPassivaController extends Controller
         } catch (\Exception $e) {
             Log::error("Errore allegando documento alla fattura ID {$fattura->id}: ".$e->getMessage());
 
-            return back()->with($this->flashError('Errore durante il caricamento del documento: '.$e->getMessage()));
+            return back()->with($this->flashError('Errore durante il caricamento del documento: '.\App\Support\Errori\MessaggioPerLaPagina::di($e, 'FatturaPassivaController@storeDocumento')));
         }
     }
 

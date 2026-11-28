@@ -36,7 +36,10 @@ use Illuminate\Support\Facades\DB;
  * `regole_calcolo.dettagli_saldo`, {@see OriginePregresso}). Con «dovuto con questo piano» i giorni sono quelli della rata; con un
  * esercizio, «prima del primo esercizio» o senza origine non c'è un numero (`giorni_ritardo` nullo), la fascia è «oltre 90 giorni» e il
  * ritardo più vecchio della persona non lo conta: `anzianita_non_nota` lo dice. Una riga ordinaria che porta anche una parte di pregresso
- * (i piani con il pregresso nella prima rata o in tutte) resta una rata, e lo dice `pregresso_nella_rata`.
+ * (i piani con il pregresso nella prima rata o in tutte) resta una rata, e lo dice `pregresso_nella_rata`; `pregresso_in_rata` è quella parte con il
+ * segno (la somma del saldo delle sue quote: positivo un debito di prima, negativo un credito). Di un debito di prima, un versamento parziale paga
+ * **prima il debito più vecchio**: `pregresso_residuo` è la parte del residuo che è ancora debito di prima, max(0, parte − versato) e non oltre il
+ * residuo, con la sua origine in `pregresso_della_rata`. Il resto del residuo è della rata.
  *
  * **La somma nel database.** Le righe si sommano nella query per (mastro, persona, unità, rata) quando la rata c'è, e per gestione solo
  * per le righe senza rata (un incasso con righe di due gestioni sulla stessa rata non divide la chiave); restano le chiavi a saldo
@@ -346,6 +349,9 @@ final class LetturaDebiti
                     $residuo = max(0, $g['dovuto'] - $g['versato']);
                     $scaduta = Scadenza::scaduta($scadenza, $alla);
                     $pregresso = $pregressi['origini'][$k] ?? null;
+                    // La parte di pregresso dentro una rata ordinaria: il versamento paga prima il debito più vecchio.
+                    $inRata = (int) ($pregressi['parte_nella_rata'][$k] ?? 0);
+                    $pregressoResiduo = $inRata > 0 ? min($residuo, max(0, $inRata - $g['versato'])) : 0;
                     // Un pregresso senza un numero di giorni (un esercizio, prima del primo, non dichiarata): la lettura non dice un'età.
                     $giorni = $pregresso !== null && ! OriginePregresso::haGiorni($pregresso['origine']) && $scaduta
                         ? null
@@ -356,6 +362,8 @@ final class LetturaDebiti
                         'dovuto' => $g['dovuto'], 'versato' => $g['versato'], 'residuo' => $residuo, 'credito' => max(0, $g['versato'] - $g['dovuto']),
                         'scaduta' => $scaduta, 'giorni_ritardo' => $giorni,
                         'pregresso' => $pregresso, 'pregresso_nella_rata' => isset($pregressi['nella_rata'][$k]),
+                        'pregresso_in_rata' => $inRata, 'pregresso_residuo' => $pregressoResiduo,
+                        'pregresso_della_rata' => $pregressoResiduo > 0 ? ($pregressi['origini_nella_rata'][$k] ?? ['origine' => OriginePregresso::NON_DICHIARATA, 'esercizio' => null]) : null,
                     ];
                 } else {
                     $l['non_emesse'][] = [
@@ -420,6 +428,11 @@ final class LetturaDebiti
      * - scadute: il residuo delle rate con la scadenza prima di D;
      * - emesse altrove: il DARE delle scritture di emissione scritte in un esercizio diverso da `$esercizioId` (una rata del piano emessa nell'esercizio dopo).
      *
+     * Una chiave ordinaria con un debito di prima dentro la rata (il pregresso nella prima rata o in tutte, `regole_calcolo.importi.saldo_usato` positivo) si
+     * divide: la parte di prima va nel pregresso, il resto nelle quote. Il versato paga prima il debito più vecchio: il non pagato del pregresso è
+     * max(0, parte − avere), non oltre il residuo della chiave; i crediti sulla rata restano alle quote. Un credito di prima dentro la rata non si divide: ha
+     * ridotto le quote dell'esercizio.
+     *
      * @param  list<int>  $pianiIds
      * @param  list<int>|null  $soloRate  se dato, le sole rate di questi piani con questi id (le due parti del piano degli addebiti)
      * @return array<int, array{quote: array<string,int>, pregresso: array<string,int>}>  per gestione
@@ -430,11 +443,12 @@ final class LetturaDebiti
         $dopo = CarbonImmutable::parse($alla, 'UTC')->addDay()->format('Y-m-d');
         $rate = $pianiIds === [] ? collect() : DB::table('rate')->join('piani_rate', 'piani_rate.id', '=', 'rate.piano_rate_id')
             ->whereIn('rate.piano_rate_id', $pianiIds)->when($soloRate !== null, fn ($q) => $q->whereIn('rate.id', $soloRate ?: [0]))
-            ->get(['rate.id', 'rate.data_scadenza', 'piani_rate.gestione_id'])->keyBy('id');
+            ->get(['rate.id', 'rate.data_scadenza', 'piani_rate.gestione_id', 'piani_rate.metodo_distribuzione'])->keyBy('id');
         if ($rate->isEmpty()) {
             return [];
         }
         [$emesse, $tipi] = $this->emesseAllaData($rate->keys()->map(fn ($id) => (int) $id)->all(), $dopo);
+        $parti = $this->partiDiPrimaNelleRate($tipi, $emesse, $rate);
 
         $chiavi = [];
         foreach (DB::table('righe_scritture as rs')
@@ -481,6 +495,27 @@ final class LetturaDebiti
             // l'emissione (una compensazione su un'altra rata), esce dalla chiave e le pagate lo contano dove ha chiuso una quota.
             $riportato = $riga === 'pregresso' ? min($credito, max(0, $c['avere_emissione'] - $c['emesse'])) : 0;
             $pagate = $c['emesse'] - $residuo + $credito - $riportato;
+            $scaduta = Scadenza::scaduta(Scadenza::giorno($rata->data_scadenza), $alla);
+            // La parte di prima dentro una rata ordinaria: al pregresso, con il versato che la paga per prima.
+            $parte = $riga === 'quote' ? min(max(0, $parti[$k] ?? 0), $c['emesse']) : 0;
+            if ($parte > 0) {
+                $nonPagataParte = min($residuo, max(0, $parte - $c['avere']));
+                $altroveParte = min($parte, $c['emesse_altrove']);
+                $p = &$esito[$gestione]['pregresso'];
+                $p['emesse'] += $parte;
+                $p['non_pagate'] += $nonPagataParte;
+                $p['pagate'] += $parte - $nonPagataParte;
+                $p['emesse_altrove'] += $altroveParte;
+                if ($scaduta) {
+                    $p['scadute'] += $nonPagataParte;
+                    $p['emesse_scadute'] += $parte;
+                }
+                unset($p);
+                $c['emesse'] -= $parte;
+                $c['emesse_altrove'] -= $altroveParte;
+                $residuo -= $nonPagataParte;
+                $pagate -= $parte - $nonPagataParte;
+            }
             $e = &$esito[$gestione][$riga];
             $e['emesse'] += $c['emesse'];
             $e['non_pagate'] += $residuo;
@@ -488,7 +523,7 @@ final class LetturaDebiti
             $e['pagate'] += $pagate;
             $e['credito_riportato'] += $riportato;
             $e['emesse_altrove'] += $c['emesse_altrove'];
-            if (Scadenza::scaduta(Scadenza::giorno($rata->data_scadenza), $alla)) {
+            if ($scaduta) {
                 $e['scadute'] += $residuo;
                 // Le quote emesse delle rate scadute: la base della parte non versata delle rate già scadute.
                 $e['emesse_scadute'] += $c['emesse'];
@@ -497,6 +532,41 @@ final class LetturaDebiti
         }
 
         return $esito;
+    }
+
+    /**
+     * La parte di prima dentro le rate ordinarie dei piani con il pregresso nella prima rata o in tutte, per chiave emessa: la somma del saldo delle sue quote
+     * (`regole_calcolo.importi.saldo_usato`, con il segno). Le regole si leggono a blocchi, solo per quelle chiavi.
+     *
+     * @param  array<string, array<int,string>>  $tipi
+     * @param  array<string, true>  $emesse
+     * @return array<string, int>
+     */
+    private function partiDiPrimaNelleRate(array $tipi, array $emesse, \Illuminate\Support\Collection $rate): array
+    {
+        $chiaveDi = [];
+        foreach ($tipi as $k => $quote) {
+            $rata = $rate->get((int) explode('|', $k)[2]);
+            if (! isset($emesse[$k]) || $rata === null || ! in_array($rata->metodo_distribuzione, ['prima_rata', 'tutte_rate'], true)
+                || count(array_filter($quote, fn ($t) => $t !== 'saldo_iniziale')) === 0) {
+                continue;
+            }
+            foreach (array_keys($quote) as $id) {
+                $chiaveDi[$id] = $k;
+            }
+        }
+        $parti = [];
+        foreach (array_chunk(array_keys($chiaveDi), max(1, self::$bloccoRegole)) as $blocco) {
+            foreach (DB::table('rate_quote')->whereIn('id', $blocco)->pluck('regole_calcolo', 'id') as $id => $r) {
+                $r = is_string($r) ? (json_decode($r, true) ?: []) : (array) $r;
+                $usato = (int) ($r['importi']['saldo_usato'] ?? 0);
+                if ($usato !== 0) {
+                    $parti[$chiaveDi[$id]] = ($parti[$chiaveDi[$id]] ?? 0) + $usato;
+                }
+            }
+        }
+
+        return $parti;
     }
 
     /**
@@ -537,12 +607,14 @@ final class LetturaDebiti
     /**
      * Le chiavi emesse di pregresso (tutte le loro quote sono quote di saldi) con la loro origine, letta dai saldi della quota; e le chiavi
      * ordinarie che portano anche una parte di pregresso (la rata dei piani con il pregresso nella prima rata o in tutte). Si leggono solo
-     * le chiavi con un residuo: il pregresso a credito non ha un'età da dire.
+     * le chiavi con un residuo: il pregresso a credito non ha un'età da dire. Delle chiavi ordinarie, anche la parte di pregresso con il segno (la somma del
+     * saldo delle quote) e, per un debito di prima, la sua origine, letta come per le chiavi di soli saldi.
      *
      * @param array<int, array<string, array<string,mixed>>> $gruppi
      * @param array<string, true> $emesse
      * @param array<string, array<int,string>> $tipi
-     * @return array{origini: array<string, array{origine:string, esercizio:?array{id:int, nome:string, data_inizio:?string, data_fine:?string}}>, nella_rata: array<string, true>}
+     * @return array{origini: array<string, array{origine:string, esercizio:?array{id:int, nome:string, data_inizio:?string, data_fine:?string}}>, nella_rata: array<string, true>,
+     *     parte_nella_rata: array<string, int>, origini_nella_rata: array<string, array{origine:string, esercizio:?array<string,mixed>}>}
      */
     private function pregressi(array $gruppi, array $emesse, array $tipi): array
     {
@@ -562,7 +634,7 @@ final class LetturaDebiti
             }
         }
         if ($diSaldi === [] && $miste === []) {
-            return ['origini' => [], 'nella_rata' => []];
+            return ['origini' => [], 'nella_rata' => [], 'parte_nella_rata' => [], 'origini_nella_rata' => []];
         }
 
         // Le regole di calcolo si leggono a blocchi, e di ogni quota si tiene solo ciò che serve: con il pregresso nella prima rata (il metodo di
@@ -581,31 +653,51 @@ final class LetturaDebiti
             }
         }
         $nellaRata = [];
+        $parteNellaRata = [];
+        $saldiMisti = [];
+        // L'origine si legge dai saldi a debito della quota: un saldo a credito (dell'unità, ripartito sulla persona) non ha un'età che faccia sottostimare
+        // il ritardo, e la pagina dei saldi non lo fa dichiarare.
+        $saldiADebito = function (array $r): array {
+            $dettagli = $r['dettagli_saldo'] ?? [];
+            $dettagli = isset($dettagli['saldo_origine_id']) ? [$dettagli] : (array) $dettagli;
+            $ids = [];
+            foreach ($dettagli as $d) {
+                if (is_array($d) && isset($d['saldo_origine_id']) && (! isset($d['importo_originale']) || (int) $d['importo_originale'] > 0)) {
+                    $ids[] = (int) $d['saldo_origine_id'];
+                }
+            }
+
+            return $ids;
+        };
         foreach (array_chunk([...array_keys($saldiPerQuota), ...array_keys($chiaveMista)], max(1, self::$bloccoRegole)) as $blocco) {
             foreach (DB::table('rate_quote')->whereIn('id', $blocco)->pluck('regole_calcolo', 'id') as $id => $r) {
                 $r = is_string($r) ? (json_decode($r, true) ?: []) : (array) $r;
                 if (isset($chiaveMista[$id])) {
-                    if ((int) ($r['importi']['saldo_usato'] ?? 0) !== 0) {
-                        $nellaRata[$chiaveMista[$id]] = true;
+                    $usato = (int) ($r['importi']['saldo_usato'] ?? 0);
+                    if ($usato !== 0) {
+                        $k = $chiaveMista[$id];
+                        $nellaRata[$k] = true;
+                        $parteNellaRata[$k] = ($parteNellaRata[$k] ?? 0) + $usato;
+                        if ($usato > 0) {
+                            $saldiMisti[$k] = [...($saldiMisti[$k] ?? []), ...$saldiADebito($r)];
+                        }
                     }
 
                     continue;
                 }
-                $dettagli = $r['dettagli_saldo'] ?? [];
-                $dettagli = isset($dettagli['saldo_origine_id']) ? [$dettagli] : (array) $dettagli;
-                foreach ($dettagli as $d) {
-                    // L'origine si legge dai saldi a debito della quota: un saldo a credito (dell'unità, ripartito sulla persona) non ha
-                    // un'età che faccia sottostimare il ritardo, e la pagina dei saldi non lo fa dichiarare.
-                    if (is_array($d) && isset($d['saldo_origine_id']) && (! isset($d['importo_originale']) || (int) $d['importo_originale'] > 0)) {
-                        $saldiPerQuota[$id][] = (int) $d['saldo_origine_id'];
-                    }
-                }
+                array_push($saldiPerQuota[$id], ...$saldiADebito($r));
             }
         }
 
         $saldiDi = [];
         foreach ($diSaldi as $k => $ids) {
             $saldiDi[$k] = array_merge([], ...array_map(fn ($id) => $saldiPerQuota[$id], $ids));
+        }
+        // Le chiavi ordinarie con un debito di prima: la sua origine, come quella delle chiavi di soli saldi.
+        foreach ($parteNellaRata as $k => $parte) {
+            if ($parte > 0) {
+                $saldiDi['misto:' . $k] = $saldiMisti[$k] ?? [];
+            }
         }
         $tuttiSaldi = array_values(array_unique(array_merge([], ...array_values($saldiDi))));
         $saldi = $tuttiSaldi === [] ? collect() : DB::table('saldi as s')->leftJoin('esercizi as e', 'e.id', '=', 's.esercizio_origine_id')
@@ -614,6 +706,7 @@ final class LetturaDebiti
             ->keyBy('id');
 
         $origini = [];
+        $originiNellaRata = [];
         foreach ($saldiDi as $k => $ids) {
             $voci = [];
             foreach (array_unique($ids) as $id) {
@@ -623,10 +716,14 @@ final class LetturaDebiti
                     'data_inizio' => $s->data_inizio === null ? null : Scadenza::giorno($s->data_inizio), 'data_fine' => $s->data_fine === null ? null : Scadenza::giorno($s->data_fine),
                 ]];
             }
-            $origini[$k] = OriginePregresso::piuVecchia($voci);
+            if (str_starts_with($k, 'misto:')) {
+                $originiNellaRata[substr($k, 6)] = OriginePregresso::piuVecchia($voci);
+            } else {
+                $origini[$k] = OriginePregresso::piuVecchia($voci);
+            }
         }
 
-        return ['origini' => $origini, 'nella_rata' => $nellaRata];
+        return ['origini' => $origini, 'nella_rata' => $nellaRata, 'parte_nella_rata' => $parteNellaRata, 'origini_nella_rata' => $originiNellaRata];
     }
 
     /**
@@ -644,6 +741,18 @@ final class LetturaDebiti
         foreach ($l['rate'] as $r) {
             if ($r['residuo'] > 0 && $r['scaduta']) {
                 $scaduto += $r['residuo'];
+                // La rata mista: la parte di un debito di prima ancora da pagare (pagata per prima) ha l'età della sua origine, come nel § 10 dei crediti
+                // per anzianità (`PosizioniDeiCondomini::crediti`); il resto ha quella della rata. Il residuo può essere sceso dopo la lettura (il debito
+                // ereditato): la parte di prima non va oltre.
+                $diPrima = min((int) $r['residuo'], (int) ($r['pregresso_residuo'] ?? 0));
+                if ($diPrima > 0 && ! OriginePregresso::haGiorni((string) ($r['pregresso_della_rata']['origine'] ?? OriginePregresso::NON_DICHIARATA))) {
+                    $fasce['oltre_90'] += $diPrima;
+                    $nonNota = true;
+                    if ($r['residuo'] === $diPrima) {
+                        continue;
+                    }
+                    $r['residuo'] -= $diPrima;
+                }
                 if ($r['giorni_ritardo'] === null) {
                     // Il pregresso senza un numero di giorni: «oltre 90 giorni», la cifra che non sottostima; il ritardo più vecchio non lo conta.
                     $fasce['oltre_90'] += $r['residuo'];

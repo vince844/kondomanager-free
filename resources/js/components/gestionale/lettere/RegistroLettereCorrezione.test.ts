@@ -12,7 +12,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 
 const axiosPost = vi.fn();
 vi.mock('axios', () => ({ default: { get: vi.fn(), post: (...a: unknown[]) => axiosPost(...a) } }));
-vi.mock('@/composables/permissions', () => ({ usePermission: () => ({ generateRoute: (nome: string) => nome }) }));
+vi.mock('@/composables/permissions', () => ({ usePermission: () => ({ generateRoute: (nome: string) => nome, hasPermission: () => true }) }));
 vi.mock('@inertiajs/vue3', () => ({ router: { reload: vi.fn(), post: vi.fn(), delete: vi.fn() }, usePage: () => ({ props: {} }) }));
 (globalThis as unknown as { route: unknown }).route = (nome: string, parametri: Record<string, unknown> = {}) =>
     `/${nome}?${new URLSearchParams(Object.entries(parametri).map(([k, v]) => [k, String(v)])).toString()}`;

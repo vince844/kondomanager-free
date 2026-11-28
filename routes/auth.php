@@ -78,9 +78,11 @@ Route::middleware('auth')->group(function () {
         ->name('password.confirm.stato');
 
     // Conta fra le prove della password attuale: un conto per utente con il cambio della password, il
-    // profilo e l'avvio del ripristino (`password-attuale`, Coda 261).
+    // profilo e l'avvio del ripristino (`password-attuale`, Coda 261). Ha un nome suo perché la verifica in
+    // due passaggi obbligatoria la lascia passare per nome (`DueFattoriPerIlPannello::ROTTE_APERTE`).
     Route::post('confirm-password', [ConfirmablePasswordController::class, 'store'])
-        ->middleware('throttle:password-attuale');
+        ->middleware('throttle:password-attuale')
+        ->name('password.confirm.store');
 
     Route::post('logout', [AuthenticatedSessionController::class, 'destroy'])
         ->name('logout');

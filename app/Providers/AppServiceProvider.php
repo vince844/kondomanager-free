@@ -226,6 +226,10 @@ class AppServiceProvider extends ServiceProvider
         // modulo, doppia autenticazione e cookie *remember me* — perché passano tutte da
         // `SessionGuard`, che emette questo evento.
         Event::listen(\Illuminate\Auth\Events\Login::class, \App\Listeners\AggiornaUltimoAccesso::class);
+        // L'avviso dell'accesso da un dispositivo nuovo (`App\Listeners\AvvisaDispositivoNuovo`, Coda 385) ascolta lo
+        // stesso evento e non si iscrive qui: lo trova la scoperta degli ascoltatori di Laravel in `app/Listeners`, e una
+        // seconda iscrizione lo farebbe girare due volte (due avvisi per un accesso). `AvvisoDispositivoNuovoTest`
+        // conta un avviso solo.
 
         // Sincronizza la versione dopo ogni migrazione
         Event::listen(MigrationsEnded::class, function () {

@@ -138,7 +138,7 @@ it('M, la voce che perde la tabella dopo l\'addebito (la forma del sito): versat
     $dopo = lnaLeggi($s, $voce);
     expect($dopo['non_attribuite'])->toBe([$voce->id => -2066])->and($dopo['motivi'])->toBe([$voce->id => ['conto_senza_tabella' => 2066]])
         ->and($dopo['cg'])->toBe('quadra')->and($dopo['voce'])->toBe([0, 0, 0])
-        ->and($dopo['riquadro'])->toBe('€ -20,66 di spese non attribuite a nessuno: le dice la scheda Conguaglio, con il perché.');
+        ->and($dopo['riquadro'])->toBe('€ 20,66 di entrate non attribuite a nessuno: le dice la scheda Conguaglio, con il perché.');
 });
 
 it('una voce senza tabella millesimale non riceve il denaro: la finestra non la offre e l\'addebito si rifiuta con il perché', function () {

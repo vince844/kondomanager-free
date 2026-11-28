@@ -67,9 +67,13 @@ class FascicoloLegaleController extends Controller
         return $archivio->apri($d->path, $d->nomeDiScaricamento(), (string) $d->mime_type);
     }
 
-    /** La persona è di questo condominio, altrimenti 404. */
+    /**
+     * La persona ha o ha avuto a che fare con questo condominio (`Anagrafica::delCondominio`: le sue persone, chi ha o ha avuto una riga su una sua unità, chi
+     * ha quote nei suoi piani), altrimenti 404. La rotta non lega la persona al condominio: chi è stato tolto dopo una vendita, con rate ancora sue, ha il suo
+     * fascicolo come ha il suo estratto conto.
+     */
     private function assicuraPersonaDelCondominio(Condominio $condominio, Anagrafica $anagrafica): void
     {
-        abort_unless($anagrafica->condomini()->where('condomini.id', $condominio->id)->exists(), 404);
+        abort_unless(Anagrafica::delCondominio((int) $condominio->id)->whereKey($anagrafica->id)->exists(), 404);
     }
 }

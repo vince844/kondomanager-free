@@ -253,3 +253,19 @@ describe('la spesa ad personam senza titolare', () => {
         expect(w.text()).not.toContain('Conto #');
     });
 });
+
+describe('i giorni senza titolare', () => {
+    test('dice di registrare il passaggio e, se il nuovo proprietario lo è dalla vendita, di correggere la sua data di inizio', () => {
+        // Un buco fra due titolari scritti a mano: chi entra conta dalla sua data, i giorni in mezzo restano da assegnare.
+        // Registrare il passaggio con una data diversa da quella della vendita non li assegna: la data di inizio sì.
+        const w = monta([{
+            immobile_id: 4, immobile_nome: 'Int. U2', conto_id: 3, conto_nome: 'Pulizie', tabella_id: null, tabella_nome: null,
+            importo: 1151, ruolo_richiesto: 'proprietario', motivo: 'giorni_senza_titolare', giorni: 14,
+        }]);
+
+        expect(w.text()).toContain('Int. U2: per 14 giorni del periodo di competenza nessun titolare è in vigore');
+        expect(w.text()).toContain('Registra il passaggio a chi è entrato');
+        expect(w.text()).toContain('se il nuovo proprietario lo è dalla vendita, correggi la sua data di inizio');
+        expect(w.text()).toContain('procedi con una nota: la parte resta scoperta');
+    });
+});

@@ -371,7 +371,7 @@ class PagamentoFornitoreController extends Controller
             Log::error('Errore registrazione pagamento fornitore: '.$e->getMessage());
             Log::error('Traccia: '.$e->getTraceAsString());
 
-            return back()->withErrors(['error' => $e->getMessage()]);
+            return back()->withErrors(['error' => \App\Support\Errori\MessaggioPerLaPagina::di($e, 'PagamentoFornitoreController@store')]);
         }
     }
 
@@ -710,7 +710,7 @@ class PagamentoFornitoreController extends Controller
             Log::error("Errore modifica pagamento ID {$pagamento->id}: ".$e->getMessage());
             Log::error('Traccia: '.$e->getTraceAsString());
 
-            return back()->withErrors(['error' => $e->getMessage()]);
+            return back()->withErrors(['error' => \App\Support\Errori\MessaggioPerLaPagina::di($e, 'PagamentoFornitoreController@update')]);
         }
     }
 

@@ -184,6 +184,27 @@ describe('la situazione patrimoniale alla data', () => {
         expect(testo(monta().text())).not.toContain('quote emesse € ');
     });
 
+    test('la rettifica di un anno chiuso scritta in questo esercizio: la riga «rettifica di esercizi precedenti» nel riquadro e una colonna per gestione; senza, niente', () => {
+        // Il 2027: nessuna rata emessa, la rettifica delle rate del 2026 −€ 1.220,00, il risultato −€ 1.220,00.
+        const con = monta({
+            risultato_gestione: { quote_emesse: 0, rettifica_esercizi_precedenti: -122000, costi: 0, risultato: -122000, cumulato: 0 },
+            per_gestione: { ...pagina().per_gestione,
+                righe: [{ gestione: { id: 1, nome: 'Balconi', tipo: 'straordinaria' }, costi: 0, quote_emesse: 0, rettifica_esercizi_precedenti: -122000, crediti: 122000, debiti: 0, cumulato_opera: null }],
+                totale: { costi: 0, quote_emesse: 0, rettifica_esercizi_precedenti: -122000, crediti: 122000, debiti: 0 } },
+        });
+        // Il segno davanti alla voce, mai dentro la cifra.
+        expect(testo(con.find('[data-test="risultato-gestione-termini"]').text())).toBe('quote registrate in questo esercizio € 0,00 − rettifica di esercizi precedenti € 1.220,00 − costi € 0,00');
+        const positiva = monta({ risultato_gestione: { quote_emesse: 0, rettifica_esercizi_precedenti: 5000, costi: 0, risultato: 5000, cumulato: 0 } });
+        expect(testo(positiva.find('[data-test="risultato-gestione-termini"]').text())).toBe('quote registrate in questo esercizio € 0,00 + rettifica di esercizi precedenti € 50,00 − costi € 0,00');
+        expect(con.find('[data-test="rettifica-esercizi-precedenti"]').text()).toContain('esercizio chiuso');
+        expect(con.find('[data-test="colonna-rettifica"]').exists()).toBe(true);
+        expect(testo(con.find('[data-gestione="1"]').text())).toContain('€ -1.220,00');
+
+        const senza = monta();
+        expect(senza.find('[data-test="rettifica-esercizi-precedenti"]').exists()).toBe(false);
+        expect(senza.find('[data-test="colonna-rettifica"]').exists()).toBe(false);
+    });
+
     test('Coda 560, SA9 — a zero il risultato di gestione dice «in pareggio»; sopra zero e sotto zero il riquadro dice «Avanzo» e «Disavanzo», senza la parentesi', () => {
         const con = (risultato: number) => {
             const riquadro = monta({ risultato_gestione: { quote_emesse: 411000, costi: 411000 - risultato, risultato, cumulato: risultato } });

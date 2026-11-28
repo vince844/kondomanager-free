@@ -48,14 +48,19 @@ function b53rcSecondoPiano($test, array $s, array $config, string $nome = 'Integ
 
 /**
  * «Ordinario 2026» con le voci orfane (la copia di «Rimborso vecchio» scritta, 24000) e «Integrativo 2026» con la sola voce e la copia nulla. Con
- * `$negativa` la voce e la copia di «Ordinario 2026» sono poi riscritte a −24000.
+ * `$negativa` la voce e la copia di «Ordinario 2026» sono poi riscritte a −24000. La creazione rifiuta una voce già chiesta per intero: il «Rimborso vecchio»
+ * si scrive nell'«Ordinario 2026» dopo la creazione dell'«Integrativo 2026», come lo lasciavano le installazioni di prima (`b53snScriviLeRighe`).
  */
 function b53rcScrittaENulla($test, bool $negativa): array
 {
     $s = b53snBase($test);
     $s['rimborso'] = b52tVoce($test, $s, 'Rimborso vecchio', 'spesa', '240,00', $s['tabella']);
-    $s['piano'] = b52tPiano($test, $s, [], 'Ordinario 2026');
+    $s['piano'] = b52tPiano($test, $s, [
+        'capitoli_ids' => [$s['generali']->id, $s['antenna']->id],
+        'capitoli_config' => [['id' => $s['generali']->id, 'importo' => '1.200,00', 'note' => ''], ['id' => $s['antenna']->id, 'importo' => '240,00', 'note' => '']],
+    ], 'Ordinario 2026');
     $s['secondo'] = b53rcSecondoPiano($test, $s, [['id' => $s['rimborso']->id, 'importo' => '', 'note' => '']]);
+    b53snScriviLeRighe($test, $s, $s['piano'], [(int) $s['rimborso']->id => 24000]);
     if ($negativa) {
         b53snRiscrivi($s['rimborso'], -24000, [$s['piano']]);
     }
@@ -254,10 +259,13 @@ it('il capitolo con la copia nulla e uno speso di € 800,00 su «Ascensore»: i
     b53rcNessunPianoInventato($ascensore);
 });
 
-it('il sottoconto con la copia scritta su «Ordinario 2026» (dal capitolo scelto) e la copia nulla su «Integrativo 2026»: due righe da € 600,00', function () {
+it('il sottoconto con la copia scritta su «Ordinario 2026» (come dal capitolo scelto) e la copia nulla su «Integrativo 2026»: due righe da € 600,00', function () {
     $s = b53rcCapitolo($this);
-    $primo = b52tPiano($this, $s, ['capitoli_ids' => [$s['capitolo']->id], 'capitoli_config' => []], 'Ordinario 2026');
+    // La creazione rifiuta una voce già chiesta per intero: «Ordinario 2026» nasce con la «Pulizia scale», l'«Integrativo 2026» con l'«Ascensore», e la riga
+    // dell'«Ascensore» si scrive poi nell'«Ordinario 2026», con la copia che la scelta del capitolo le dava (€ 600,00), come nelle installazioni di prima.
+    $primo = b52tPiano($this, $s, ['capitoli_ids' => [$s['pulizia']->id], 'capitoli_config' => []], 'Ordinario 2026');
     $secondo = b53rcSecondoPiano($this, $s, [['id' => $s['ascensore']->id, 'importo' => '', 'note' => '']]);
+    b53snScriviLeRighe($this, $s, $primo, [(int) $s['ascensore']->id => 60000]);
 
     $ascensore = b53snRiga($this, $s, 'Ascensore');
     $pulizia = b53snRiga($this, $s, 'Pulizia scale');
@@ -276,8 +284,11 @@ it('il sottoconto con la copia scritta su «Ordinario 2026» (dal capitolo scelt
 
 it('il sottoconto con la copia nulla su «Integrativo 2026» e il capitolo su «Ordinario 2026» per € 700,00: la riga diretta e quella dal capitolo, € 600,00 ciascuna', function () {
     $s = b53rcCapitolo($this);
-    $primo = b52tPiano($this, $s, ['capitoli_ids' => [$s['capitolo']->id], 'capitoli_config' => [['id' => $s['capitolo']->id, 'importo' => '700,00', 'note' => '']]], 'Ordinario 2026');
+    // La creazione rifiuta una voce già chiesta per intero: «Ordinario 2026» nasce con la sola «Pulizia scale», l'«Integrativo 2026» con l'«Ascensore», e poi
+    // l'«Ordinario 2026» passa al capitolo per € 700,00 (la riga del capitolo al posto di quella della «Pulizia scale»), come nelle installazioni di prima.
+    $primo = b52tPiano($this, $s, ['capitoli_ids' => [$s['pulizia']->id], 'capitoli_config' => [['id' => $s['pulizia']->id, 'importo' => '100,00', 'note' => '']]], 'Ordinario 2026');
     $secondo = b53rcSecondoPiano($this, $s, [['id' => $s['ascensore']->id, 'importo' => '', 'note' => '']]);
+    b53snScriviLeRighe($this, $s, $primo, [(int) $s['capitolo']->id => 70000], [(int) $s['pulizia']->id]);
 
     $ascensore = b53snRiga($this, $s, 'Ascensore');
     $perFonte = collect($ascensore['dettaglio_copertura'])->map(fn ($d) => [$d['piano'], $d['fonte'], (int) $d['importo']])->sortBy(1)->values()->all();

@@ -29,7 +29,7 @@ use Illuminate\Support\Facades\DB;
  * T − tutte le note))`, dove S è la parte che il piano finanzia e T il documento. Una nota non attribuibile riduce il
  * netto solo quando la parte a preventivo non basta ad assorbirla.
  *
- * S è la somma dei componenti che il motore ripartisce: righe ad personam e fuori preventivo con la loro voce, coperture
+ * S è la somma dei componenti che il motore ripartisce: righe ad personam e fuori preventivo con la loro voce (e, Coda 742, le righe su una voce a € 0), coperture
  * «sopravvenienza» con una voce. Una riga o una copertura senza voce il motore la scarta, e qui non conta.
  *
  * Importi **lordi** (imponibile più IVA), la base del carrello e del motore; centesimi; il segno delle righe si tiene
@@ -77,8 +77,11 @@ final class NettoNoteCollegate
         $fatture = DB::table('fatture_passive')->whereIn('id', $conNote)->get(['id', 'is_pregresso', 'importo_imponibile', 'importo_iva'])->keyBy('id');
         $righeFatture = DB::table('righe_fattura')->whereIn('fattura_passiva_id', $conNote)
             ->orderBy('id')
-            ->get(['fattura_passiva_id', 'conto_id', 'immobile_id', 'is_sopravvenienza', 'importo_imponibile', 'importo_iva'])
+            ->get(['id', 'fattura_passiva_id', 'conto_id', 'immobile_id', 'is_sopravvenienza', 'importo_imponibile', 'importo_iva'])
             ->groupBy('fattura_passiva_id');
+        // Coda 742: le righe su una voce che nel preventivo vale € 0 sono nella parte che il piano finanzia, come le «Fuori preventivo» (`VoceFuoriDalPreventivo`).
+        // Senza, con una nota collegata la fattura risultava «annullata per intero» mentre restava da pagare.
+        $aZero = array_flip(VoceFuoriDalPreventivo::idDelleFatture($conNote));
         $coperture = DB::table('fattura_coperture')->whereIn('fattura_passiva_id', $conNote)
             ->where('tipo_copertura', 'sopravvenienza')
             ->get(['fattura_passiva_id', 'conto_id', 'importo'])
@@ -117,7 +120,7 @@ final class NettoNoteCollegate
                     if ($r->immobile_id !== null) {
                         $partePiano += $lordo;
                         $capImmobile[(int) $r->immobile_id] = ($capImmobile[(int) $r->immobile_id] ?? 0) + max(0, $lordo);
-                    } elseif ($r->is_sopravvenienza && $r->conto_id !== null) {
+                    } elseif (($r->is_sopravvenienza || isset($aZero[(int) $r->id])) && $r->conto_id !== null) {
                         $partePiano += $lordo;
                         $capConto[(int) $r->conto_id] = ($capConto[(int) $r->conto_id] ?? 0) + max(0, $lordo);
                     } elseif (! $r->is_sopravvenienza && $r->conto_id !== null) {
@@ -272,7 +275,7 @@ final class NettoNoteCollegate
             }
         } else {
             $righe = DB::table('righe_fattura')->where('fattura_passiva_id', $idFattura)
-                ->where(fn ($q) => $q->where('is_sopravvenienza', true)->orWhereNotNull('immobile_id'))
+                ->where(fn ($q) => $q->where('is_sopravvenienza', true)->orWhereNotNull('immobile_id')->orWhere(fn ($z) => VoceFuoriDalPreventivo::righeOPrese($z)))
                 ->orderBy('id')->get();
             foreach ($righe as $r) {
                 $imp = (int) $r->importo_imponibile + (int) $r->importo_iva;

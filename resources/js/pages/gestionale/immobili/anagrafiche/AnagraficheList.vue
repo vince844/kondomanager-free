@@ -26,6 +26,8 @@ import ImmobileLayout from '@/layouts/gestionale/ImmobileLayout.vue';
 import DataTable from '@/components/gestionale/immobili/anagrafiche/DataTable.vue';
 import { createColumns } from '@/components/gestionale/immobili/anagrafiche/columns'
 import TitolaritaSheet from '@/components/gestionale/immobili/TitolaritaSheet.vue';
+import NuovoAddebitoDialog, { type OrigineAddebito } from '@/components/gestionale/addebiti/NuovoAddebitoDialog.vue';
+import { euroTesto, giorno } from '@/lib/gestionale/debiti/rateScadute';
 import Alert from "@/components/Alert.vue";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -45,7 +47,50 @@ const props = defineProps<{
   oggi: string;
   /** B3a: il prospetto degli oneri accessori, solo se l'unità ha o ha avuto un inquilino; `null` altrimenti. */
   prospettoOneri?: { url: string; esercizi: { id: number; nome: string }[]; corrente: number | null } | null;
+  /** Dopo un salvataggio sulla titolarità: i piani che chiederebbero cifre diverse con la titolarità di oggi (`PianiCheCambiano`); `null` altrimenti. */
+  piani_che_cambiano?: PianiCheCambianoDati | null;
 }>();
+
+// --- I piani che cambiano dopo una quota corretta: un elenco in sola lettura, con la strada per ogni piano ---------------------------------------------
+
+interface PianoCheCambia {
+  piano_rate_id: number; nome: string; esercizio_id: number; stato: 'bozza' | 'emesso' | 'con_incassi';
+  righe: { anagrafica_id: number; nome: string; prima: number; dopo: number; differenza: number }[];
+  totale: { prima: number; dopo: number; differenza: number };
+  addebiti: { anagrafica_id: number; nome: string; importo: number }[];
+}
+interface PianiCheCambianoDati {
+  riga: { unita: string; persona: string; tipologia: string; dal: string | null; al: string | null; quota_prima: number | null; quota_dopo: number | null };
+  piani: PianoCheCambia[];
+}
+const STATO_DEL_PIANO: Record<PianoCheCambia['stato'], { etichetta: string; classe: string }> = {
+  bozza: { etichetta: 'In bozza', classe: 'bg-slate-100 border-slate-300 text-slate-700 dark:bg-slate-800 dark:border-slate-600 dark:text-slate-300' },
+  emesso: { etichetta: 'Emesso, senza incassi', classe: 'bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-300' },
+  con_incassi: { etichetta: 'Con incassi', classe: 'bg-amber-50 border-amber-200 text-amber-800 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-300' },
+};
+const RUOLO_DELLA_RIGA: Record<string, string> = { proprietario: 'proprietà', nuda_proprietario: 'nuda proprietà', usufruttuario: 'usufrutto', inquilino: 'locazione' };
+const pianiCheCambiano = computed(() => (props.piani_che_cambiano?.piani?.length ? props.piani_che_cambiano : null));
+const quota = (q: number | null) => (q === null ? null : `${new Intl.NumberFormat('it-IT', { maximumFractionDigits: 2 }).format(q)} %`);
+/** «Rossi Costruzioni, proprietà fino al 15/09/2026: da 0 % a 100 %». */
+const fraseDellaRiga = computed(() => {
+  const r = pianiCheCambiano.value?.riga;
+  if (!r) return '';
+  const periodo = r.al ? ` fino al ${giorno(r.al)}` : r.dal ? ` dal ${giorno(r.dal)}` : '';
+  const prima = quota(r.quota_prima);
+  const dopo = quota(r.quota_dopo);
+  const quote = prima !== null && dopo !== null ? `da ${prima} a ${dopo}` : dopo !== null ? `quota ${dopo}` : prima !== null ? `tolta, era ${prima}` : '';
+  return `${r.persona}, ${RUOLO_DELLA_RIGA[r.tipologia] ?? r.tipologia}${periodo}${quote ? `: ${quote}` : ''}`;
+});
+const differenza = (c: number) => (c === 0 ? euroTesto(0) : `${c > 0 ? '+' : '−'} ${euroTesto(Math.abs(c))}`);
+const strada = (p: PianoCheCambia) => {
+  if (p.stato === 'bozza') return 'Strada: «Ricalcola» dalla pagina del piano.';
+  if (p.stato === 'emesso') return 'Strada: annulla l\'emissione delle rate, poi «Ricalcola», poi emetti di nuovo.';
+  const a = p.addebiti.map((x) => `di ${euroTesto(x.importo)} a ${x.nome}`).join(', ');
+  return `Gli incassi registrati non si toccano. Strada: ${a ? `un addebito individuale ${a}` : 'nessun addebito, nessuno paga di più'}.`;
+};
+const urlDelPiano = (p: PianoCheCambia) => route(generateRoute('gestionale.esercizi.piani-rate.show'), { condominio: props.condominio.id, esercizio: p.esercizio_id, pianoRate: p.piano_rate_id });
+const guidaQuotaAperta = ref(false);
+const addebito = ref<OrigineAddebito | null>(null);
 
 // Il prospetto si apre in una scheda nuova, come le altre stampe; l'esercizio va in query.
 const apriProspetto = (esercizioId: number) => {
@@ -86,7 +131,8 @@ const conguagliDellInsieme = computed(() => (insiemeRegistrato.value ?? []).map(
 const promemoriaAParole = computed(() => passaggioRegistrato.value?.promemoria
   ? new Date(passaggioRegistrato.value.promemoria + 'T00:00:00').toLocaleDateString('it-IT', { day: 'numeric', month: 'long', year: 'numeric' })
   : null);
-const storicoAperto = ref(false);
+// «Apri lo storico» da un'altra pagina (il riquadro delle righe chiuse a quota zero) arriva con `?storico=1`: il pannello si apre da solo.
+const storicoAperto = ref(typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('storico'));
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
@@ -310,6 +356,72 @@ function urlPassaggio(tipo: TipoPassaggio) {
           </div>
         </div>
 
+        <!-- Dopo «Salva» sulla titolarità: i piani che, ricalcolati con i dati di oggi, chiederebbero cifre diverse. Il programma non cambia niente da solo. -->
+        <div v-if="pianiCheCambiano" data-testid="piani-che-cambiano" class="py-3 space-y-3">
+          <div class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 space-y-3">
+            <div>
+              <p class="text-base font-semibold text-slate-900 dark:text-slate-100">Quota salvata: {{ pianiCheCambiano.riga.unita }}</p>
+              <p class="text-[13px] text-slate-500 dark:text-slate-400">{{ fraseDellaRiga }}</p>
+            </div>
+            <div class="rounded-md border border-sky-200 bg-sky-50 dark:border-sky-800/60 dark:bg-sky-900/10 px-3 py-2 text-[13px] text-sky-900 dark:text-sky-200">
+              <strong>{{ pianiCheCambiano.piani.length }} {{ pianiCheCambiano.piani.length === 1 ? 'piano chiederebbe cifre diverse se si ricalcolasse oggi.' : 'piani chiederebbero cifre diverse se si ricalcolassero oggi.' }}</strong>
+              Il confronto rifà il calcolo con i dati di oggi: oltre alla quota salvata conta ogni altra cosa cambiata dopo la generazione del piano, come le voci, i millesimi o i saldi.
+              Il programma non cambia niente da solo: per ogni piano c'è la strada.
+            </div>
+          </div>
+          <div v-for="p in pianiCheCambiano.piani" :key="p.piano_rate_id" data-testid="piano-che-cambia" class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 space-y-3">
+            <p class="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900 dark:text-slate-100">
+              {{ p.nome }}
+              <span class="inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium" :class="STATO_DEL_PIANO[p.stato].classe">{{ STATO_DEL_PIANO[p.stato].etichetta }}</span>
+            </p>
+            <div class="overflow-x-auto">
+              <table class="w-full text-[13px]">
+                <thead>
+                  <tr class="text-left text-slate-500 dark:text-slate-400">
+                    <th class="py-1.5 pr-3 font-medium">Chi</th>
+                    <th class="py-1.5 pr-3 font-medium text-right">Oggi nel piano</th>
+                    <th class="py-1.5 pr-3 font-medium text-right">Ricalcolato oggi</th>
+                    <th class="py-1.5 font-medium text-right">Differenza</th>
+                  </tr>
+                </thead>
+                <tbody class="tabular-nums">
+                  <tr v-for="r in p.righe" :key="r.anagrafica_id" class="border-t border-slate-100 dark:border-slate-800">
+                    <td class="py-1.5 pr-3 text-slate-800 dark:text-slate-200">{{ r.nome }}</td>
+                    <td class="py-1.5 pr-3 text-right">{{ euroTesto(r.prima) }}</td>
+                    <td class="py-1.5 pr-3 text-right">{{ euroTesto(r.dopo) }}</td>
+                    <td class="py-1.5 text-right">{{ differenza(r.differenza) }}</td>
+                  </tr>
+                  <tr class="border-t border-slate-200 dark:border-slate-700 font-semibold">
+                    <td class="py-1.5 pr-3">Totale del piano</td>
+                    <td class="py-1.5 pr-3 text-right">{{ euroTesto(p.totale.prima) }}</td>
+                    <td class="py-1.5 pr-3 text-right">{{ euroTesto(p.totale.dopo) }}</td>
+                    <td class="py-1.5 text-right">{{ differenza(p.totale.differenza) }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="rounded-md border border-sky-200 bg-sky-50 dark:border-sky-800/60 dark:bg-sky-900/10 px-3 py-2 text-[13px] text-sky-900 dark:text-sky-200">{{ strada(p) }}</p>
+            <div class="flex flex-wrap gap-2">
+              <a :href="urlDelPiano(p)" class="inline-flex h-8 items-center gap-2 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-3 text-sm font-medium text-slate-700 dark:text-slate-300 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800">Apri il piano</a>
+              <button v-for="a in p.addebiti" :key="a.anagrafica_id" type="button" data-testid="crea-addebito" @click="addebito = { tipo: 'persona', anagraficaId: a.anagrafica_id }"
+                class="inline-flex h-8 items-center gap-2 rounded-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-3 text-sm font-medium text-slate-700 dark:text-slate-300 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800">
+                Crea l'addebito{{ p.addebiti.length > 1 ? ` a ${a.nome}` : '' }}
+              </button>
+            </div>
+          </div>
+          <div class="rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+            <button type="button" class="w-full px-4 py-2 text-left text-sm font-medium text-slate-700 dark:text-slate-300" :aria-expanded="guidaQuotaAperta" @click="guidaQuotaAperta = !guidaQuotaAperta">
+              Guida · Una quota corretta
+            </button>
+            <ul v-if="guidaQuotaAperta" data-testid="guida-quota-corretta" class="px-4 pb-3 space-y-1 text-[13px] text-slate-600 dark:text-slate-400">
+              <li><strong>Che cosa confronta</strong>: le quote scritte nel piano e il ricalcolo con i dati di oggi, la quota salvata e tutto il resto.</li>
+              <li><strong>In bozza</strong>: «Ricalcola».</li>
+              <li><strong>Emesso senza incassi</strong>: annulla l'emissione, ricalcola, emetti.</li>
+              <li><strong>Con incassi</strong>: un addebito individuale per la differenza.</li>
+            </ul>
+          </div>
+        </div>
+
         <div class="container mx-auto p-0 space-y-3 mt-2">
 
           <!-- La data a cui la tabella si riferisce, e lo storico -->
@@ -345,6 +457,8 @@ function urlPassaggio(tipo: TipoPassaggio) {
 
     </div>
   </GestionaleLayout>
+
+  <NuovoAddebitoDialog :open="addebito !== null" :condominio-id="props.condominio.id" :origine="addebito" @update:open="(v: boolean) => { if (!v) addebito = null; }" />
 
   <TitolaritaSheet v-model:open="storicoAperto" :storico="storico" :unita="`${immobile.nome}${immobile.interno ? ` (Int. ${immobile.interno})` : ''}`" :condominio-id="props.condominio.id" :immobile-id="props.immobile.id" />
 </template>

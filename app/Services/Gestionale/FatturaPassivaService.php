@@ -97,6 +97,7 @@ class FatturaPassivaService
 
                     // SMISTAMENTO INTELLIGENTE IMPREVISTI (Millesimale vs Ad Personam)
                     $contoIdRiga = $rigaInput['conto_id'] ?? null;
+                    $voceDellAddebito = null;
 
                     if ($isSopravvenienza) {
                         if (! empty($rigaInput['immobile_id'])) {
@@ -115,8 +116,10 @@ class FatturaPassivaService
                         }
                     } else {
                         // Se l'utente seleziona un capitolo (es. Manutenzione Idraulica) MA assegna l'immobile,
-                        // forziamo a null per evitare che sporchi il preventivo comune.
+                        // forziamo a null per evitare che sporchi il preventivo comune. La voce scelta resta sulla
+                        // riga come voce dell'addebito: l'addebito diretto la segue (`RuoloDellaVoce`).
                         if (! empty($rigaInput['immobile_id'])) {
+                            $voceDellAddebito = self::voceDellAddebito($contoIdRiga, $condominioId, $data['gestione_id'] ?? null);
                             $contoIdRiga = null;
                         }
                     }
@@ -128,6 +131,7 @@ class FatturaPassivaService
                         'importo_iva' => $ivaRiga * $moltiplicatore,
                         'conto_id' => $contoIdRiga, // Null se spesa privata
                         'immobile_id' => $rigaInput['immobile_id'] ?? null,
+                        'conto_addebito_id' => $voceDellAddebito,
                         'is_sopravvenienza' => $isSopravvenienza,
                         'concorre_base_ritenuta' => filter_var($rigaInput['concorre_base_ritenuta'] ?? true, FILTER_VALIDATE_BOOLEAN),
                         'natura_riga_ritenuta' => $rigaInput['natura_riga_ritenuta'] ?? null,
@@ -980,6 +984,91 @@ class FatturaPassivaService
     }
 
     /**
+     * Coda 742 (1.12.0-beta.14): perché la modifica non cambia la composizione di una fattura che sta in un piano delle fatture (in bozza: approvato, la
+     * modifica è già ferma, `motivoBloccoModifica`) — o null. Il piano mette a rate la riga su una voce a € 0 solo se la fattura non ha righe di un'unità né
+     * «Fuori preventivo» (`VoceFuoriDalPreventivo`), e la sua cifra (`importo_collegato`) non dice quali righe chiede: una riga di un'unità aggiunta farebbe
+     * uscire la riga sulla voce dal piano, e il «Ricalcola» darebbe tutta la cifra alla riga dell'unità (€ 1.400,00 del tetto chiesti a un condòmino solo,
+     * nella revisione); tolta, la riga sulla voce entrerebbe nel piano. Il programma non sa quali righe il piano chiedeva: si ferma e dice di togliere prima
+     * la fattura dal piano. Le altre correzioni (gli importi, le descrizioni, le date) passano come prima.
+     *
+     * @param  list<array<string, mixed>>  $righeNuove  le righe del modulo
+     */
+    public static function motivoComposizioneNelPiano(FatturaPassiva $fattura, array $righeNuove): ?string
+    {
+        $piano = $fattura->pianiRate()->orderBy('piani_rate.id')->first();
+        if ($piano === null) {
+            return null;
+        }
+        $righePrima = $fattura->righe()->get(['id', 'conto_id', 'immobile_id', 'is_sopravvenienza']);
+        $prese = VoceFuoriDalPreventivo::idDellaFattura((int) $fattura->id);
+        $segnatePrima = [];
+        foreach ($righePrima as $r) {
+            if ($r->is_sopravvenienza) {
+                $segnatePrima[self::chiaveRigaFuoriPreventivo($r->conto_id, $r->immobile_id)] = true;
+            }
+        }
+        // Le righe nuove come le scriverà la modifica: il segno «Fuori preventivo» resta solo dove c'era.
+        $mistaDopo = false;
+        $sulleVociDopo = [];
+        foreach ($righeNuove as $r) {
+            $immobile = $r['immobile_id'] ?? null;
+            $conto = empty($immobile) ? ($r['conto_id'] ?? null) : null;
+            if (! empty($immobile) || isset($segnatePrima[self::chiaveRigaFuoriPreventivo($conto, $immobile)])) {
+                $mistaDopo = true;
+            } elseif (! empty($conto)) {
+                $sulleVociDopo[] = (int) $conto;
+            }
+        }
+        // Una voce della riga presa resta «a € 0» per il piano anche se ha preso una cifra in un altro piano: la riga resta presa finché il piano c'è.
+        $vociPrese = $righePrima->whereIn('id', $prese)->pluck('conto_id')->map(fn ($id) => (int) $id)->all();
+        $aZeroDopo = $mistaDopo ? [] : array_values(array_unique(array_merge(VoceFuoriDalPreventivo::vociAZero($sulleVociDopo),
+            array_intersect($sulleVociDopo, $vociPrese))));
+        if (($prese !== []) === ($aZeroDopo !== [])) {
+            return null;
+        }
+        $nomeDellaVoce = fn (array $ids) => (string) DB::table('conti')->whereIn('id', $ids)->orderBy('nome')->value('nome');
+        $dove = "La fattura è nel piano rate «{$piano->nome}»" . ((is_object($piano->stato) ? $piano->stato->value : $piano->stato) === 'bozza' ? ', in bozza' : '');
+        $cosa = $prese !== []
+            ? ', che ne mette a rate la riga su «' . $nomeDellaVoce($righePrima->whereIn('id', $prese)->pluck('conto_id')->all()) . '», a € 0 nel preventivo: '
+                . ($mistaDopo ? 'con una riga di un\'unità o «Fuori preventivo» quella riga uscirebbe dal piano (resterebbe al conguaglio del rendiconto)'
+                    : 'con questa modifica nessuna riga resterebbe su una voce a € 0') . ', e il piano dividerebbe la sua cifra su altre righe'
+            : ': con questa modifica la sua riga su «' . $nomeDellaVoce($aZeroDopo) . '», a € 0 nel preventivo e oggi al conguaglio del rendiconto, entrerebbe nel '
+                . 'piano, e il piano dividerebbe la sua cifra anche su di lei';
+
+        // Con una riga di un'unità o «Fuori preventivo» la riga sulla voce a € 0 non torna nel piano delle fatture (il carrello offre le sole righe che la
+        // fattura mista mette a rate): la frase dice dove va, invece di promettere «mettila di nuovo a rate».
+        $dopo = $prese !== [] && $mistaDopo
+            ? 'poi modifica la fattura. Con la fattura mista la riga su «' . $nomeDellaVoce($righePrima->whereIn('id', $prese)->pluck('conto_id')->all()) . '» non '
+                . 'torna nel piano delle fatture (il carrello offre solo le righe dell\'unità o «Fuori preventivo»): resta al conguaglio del rendiconto, o la chiedi '
+                . '«Dalle voci» con la voce e la sua cifra'
+            : 'poi modifica la fattura e mettila di nuovo a rate';
+
+        return $dove . $cosa . '. Il programma non sa quali righe il piano chiedeva: togli prima la fattura dal piano (in un piano delle fatture una fattura sola '
+            . 'non si stacca: elimina il piano dalla sua pagina), ' . $dopo . '; le altre fatture del piano, se ce ne sono, tornano disponibili per un piano nuovo.';
+    }
+
+    /**
+     * La voce dell'addebito di una riga assegnata a una sola unità (`righe_fattura.conto_addebito_id`): la voce scelta sulla riga, se è una voce di spesa
+     * del piano dei conti di questo condominio e della gestione della fattura (o di un piano senza gestione). Altrimenti nessuna, e l'addebito va come
+     * una riga senza voce: decide il passaggio. La Request controlla già il condominio; qui si ricontrolla perché storno e importazione chiamano il
+     * servizio senza passare da lei, e la voce viene dal browser.
+     */
+    private static function voceDellAddebito(mixed $contoId, int $condominioId, mixed $gestioneId): ?int
+    {
+        $id = filter_var($contoId, FILTER_VALIDATE_INT);
+        if ($id === false || $id <= 0) {
+            return null;
+        }
+        $gestione = filter_var($gestioneId, FILTER_VALIDATE_INT);
+        $voce = DB::table('conti as c')->join('piani_conti as pc', 'pc.id', '=', 'c.piano_conto_id')
+            ->where('c.id', $id)->where('pc.condominio_id', $condominioId)->whereIn('c.tipo', Conto::TIPI_DI_SPESA)
+            ->when($gestione !== false, fn ($q) => $q->where(fn ($w) => $w->whereNull('pc.gestione_id')->orWhere('pc.gestione_id', $gestione)))
+            ->value('c.id');
+
+        return $voce === null ? null : (int) $voce;
+    }
+
+    /**
      * Il periodo di una pregressa si chiude prima dell'esercizio in cui la fattura si registra? (decisione 26). Un
      * confronto solo per la regola della richiesta e per l'avviso del carrello. Le date passano da Carbon: la regola
      * `date` accetta anche formati non ISO («15-06-2026»), e il confronto fra stringhe li sbagliava in tutti e due i
@@ -1106,6 +1195,9 @@ class FatturaPassivaService
         if ($motivo = $this->motivoBloccoModifica($fattura)) {
             throw new FatturaModificaVietataException($motivo);
         }
+        if ($motivo = self::motivoComposizioneNelPiano($fattura, (array) ($data['righe'] ?? []))) {
+            throw new FatturaModificaVietataException($motivo);
+        }
 
         // ── Snapshot before (per audit trail e aggiornamento Inbox) ─────────
         $dataScadenzaBefore = $fattura->data_scadenza?->format('Y-m-d');
@@ -1140,6 +1232,10 @@ class FatturaPassivaService
                     $segnatePrima[self::chiaveRigaFuoriPreventivo($rigaPrima->conto_id, $rigaPrima->immobile_id)] = true;
                 }
             }
+            // Coda 742: le voci delle righe che un piano delle fatture ha preso. Le righe si riscrivono, e il segno della riga presa si rimette sulle righe
+            // nuove delle stesse voci: senza, una modifica che non cambia la composizione faceva uscire la riga dal piano appena la voce aveva una cifra.
+            $vociPresePrima = DB::table('righe_fattura')->where('fattura_passiva_id', $fattura->id)
+                ->where(fn ($q) => VoceFuoriDalPreventivo::prese($q))->pluck('conto_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
 
             $fattura->scritture()->detach();
 
@@ -1199,7 +1295,10 @@ class FatturaPassivaService
                 $ivaTotale += $ivaRiga;
 
                 $contoIdRiga = $rigaInput['conto_id'] ?? null;
+                // La riga di un'unità non sta sulla voce comune; la voce scelta resta come voce dell'addebito, come alla registrazione.
+                $voceDellAddebito = null;
                 if (! empty($rigaInput['immobile_id'])) {
+                    $voceDellAddebito = self::voceDellAddebito($contoIdRiga, (int) $fattura->condominio_id, $data['gestione_id'] ?? $gestionePrima);
                     $contoIdRiga = null;
                 }
 
@@ -1215,6 +1314,7 @@ class FatturaPassivaService
                     'importo_iva' => $ivaRiga * $moltiplicatore,
                     'conto_id' => $contoIdRiga,
                     'immobile_id' => $rigaInput['immobile_id'] ?? null,
+                    'conto_addebito_id' => $restaFuoriPreventivo ? null : $voceDellAddebito,
                     'is_sopravvenienza' => $restaFuoriPreventivo,
                     'concorre_base_ritenuta' => filter_var($rigaInput['concorre_base_ritenuta'] ?? true, FILTER_VALIDATE_BOOLEAN),
                     'natura_riga_ritenuta' => $rigaInput['natura_riga_ritenuta'] ?? null,
@@ -1339,6 +1439,10 @@ class FatturaPassivaService
 
             // 6. Ricrea righe
             $fattura->righe()->createMany($righeProcessate);
+            if ($vociPresePrima !== []) {
+                DB::table('righe_fattura')->where('fattura_passiva_id', $fattura->id)->whereIn('conto_id', $vociPresePrima)->whereNull('immobile_id')
+                    ->where(fn ($q) => $q->where('is_sopravvenienza', false)->orWhereNull('is_sopravvenienza'))->update(['is_rateizzata' => true]);
+            }
 
             // Coda 165 (1.11.0-beta.36): una nota collegata che, modificata, riduce di più la fattura che rettifica
             // segue la scala della registrazione. Il confronto è fra il netto letto all'inizio della transazione e
@@ -1668,9 +1772,10 @@ class FatturaPassivaService
     }
 
     /**
-     * Metodo Helper: Crea un Capitolo (Conto) al volo per gestire le Sopravvenienze COMUNI.
+     * Metodo Helper: Crea un Capitolo (Conto) al volo per gestire le Sopravvenienze COMUNI. Pubblico dalla Coda 743: il ripianamento del debito ereditato
+     * (`RipianamentoDelDeficit`) crea la sua voce come l'eccedenza di una pregressa.
      */
-    private function creaContoDinamicoSopravvenienza(int $condominioId, int $gestioneId, int $fornitoreId, array $logLegale, int $importoCent = 0): int
+    public function creaContoDinamicoSopravvenienza(int $condominioId, int $gestioneId, int $fornitoreId, array $logLegale, int $importoCent = 0): int
     {
         $pianoConto = PianoConto::where('gestione_id', $gestioneId)->first();
         if (! $pianoConto) {

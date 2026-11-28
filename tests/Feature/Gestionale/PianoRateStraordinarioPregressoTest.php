@@ -989,7 +989,7 @@ test('R1 [beta.35] — con la fattura in due piani conta il più avanzato: appro
     expect($modifica)->toContain('«Tetto — prima parte»')->toContain('poi storna la fattura');
 });
 
-test('R4 [beta.35] — una pregressa che nel piano non ripartisce niente (copertura senza conto) non ferma il cancello con una frase falsa', function () {
+test('R4 [beta.35] — una pregressa che nel piano non ripartisce niente (copertura senza conto) non ferma il cancello con una frase falsa: la generazione si ferma e dice di darle una voce', function () {
     $base = baseStraordinario();
     $pregressa = registraPregresso($base);
     // La copertura «sopravvenienza» senza conto: il motore la scarta (whereNotNull), e la fattura contribuisce € 0,00.
@@ -1000,9 +1000,10 @@ test('R4 [beta.35] — una pregressa che nel piano non ripartisce niente (copert
     $piano = pianoStraordinario($base, $corrente, 50000);
     $piano->fatture()->attach($pregressa->id, ['importo_collegato' => 100000]);
 
-    // Il cancello diceva «il piano la ripartisce sui giorni di …» per una fattura che nel piano non c'è.
-    $stats = app(GeneratePianoRateAction::class)->execute($piano, accettaScoperti: false);
-    expect($stats)->toHaveKey('piano_rate_id');
+    // Il cancello diceva «il piano la ripartisce sui giorni di …» per una fattura che nel piano non c'è. Poi il motore la scartava in silenzio e il piano
+    // chiedeva € 0,00 di una copertura messa a rate per € 1.000,00: ora la generazione si ferma, nomina la fattura e dice di darle una voce.
+    expect(fn () => app(GeneratePianoRateAction::class)->execute($piano, accettaScoperti: false))
+        ->toThrow(\RuntimeException::class, 'la fattura pregressa n. ' . $pregressa->numero_documento . ' ha una copertura «Fuori preventivo» di € 1.000,00 senza voce');
 });
 
 test('R9 [beta.35] — sul flusso vero: aprire in modifica una fattura in un piano con rate emesse rimanda indietro e dice di annullare le emissioni', function () {

@@ -254,10 +254,15 @@ class Conto extends Model
      * «passaggio» se uno di quei passaggi è di prima della 1.11.0-beta.37, che dal programma non si annulla (`AnnullaPassaggioAction::motivoBlocco`). Le
      * frasi lo leggono per dire che cosa annullare prima delle emissioni (`BloccoDellaVoce`).
      *
+     * Coda 742 (1.12.0-beta.14): la voce che nel preventivo vale € 0 e che un piano delle fatture mette a rate (`VoceFuoriDalPreventivo`) la tiene anche il
+     * piano **in bozza**: con un importo la voce uscirebbe dalla regola, il piano non la vedrebbe più e il preventivo la chiederebbe una seconda volta.
+     * Riportare il piano in bozza non è la strada: `fattura` (solo nelle righe di quei piani) dice la fattura del piano sulla voce, e le frasi dicono di
+     * togliere la fattura dal piano (`BloccoDellaVoce::frase`); `bozza` dice se il piano è in bozza.
+     *
      * @param  list<int>  $contiIds
-     * @return array<int, list<array{id: int, nome: string, capitolo: ?string, movimenti: list<string>}>> voce => piani in ordine di id, una riga per voce
-     *         o capitolo che il piano tiene; `capitolo` è il nome del capitolo sopra la voce se la riga è sua, nullo se è della voce. Una voce che nessun
-     *         piano blocca non c'è.
+     * @return array<int, list<array{id: int, nome: string, capitolo: ?string, movimenti: list<string>, fattura?: string, bozza?: bool}>> voce => piani in ordine
+     *         di id, una riga per voce o capitolo che il piano tiene; `capitolo` è il nome del capitolo sopra la voce se la riga è sua, nullo se è della voce.
+     *         Una voce che nessun piano blocca non c'è.
      */
     public static function pianiCheBloccanoLaVoce(array $contiIds): array
     {
@@ -276,9 +281,19 @@ class Conto extends Model
             ->orderBy('piani_rate.id')
             ->orderBy('piano_rate_capitoli.id')
             ->get(['piano_rate_capitoli.conto_id', 'piani_rate.id', 'piani_rate.nome'])
-            ->concat(self::righeDeiPianiStraordinari($tutti))
-            ->sortBy('id')
-            ->values();
+            ->concat(self::righeDeiPianiStraordinari($tutti));
+        // Coda 742: la voce a € 0 nel piano delle fatture, anche in bozza, con la fattura (per la frase «togli la fattura dal piano»).
+        $fattureAZero = [];
+        $inBozza = [];
+        foreach (\App\Services\Gestionale\VoceFuoriDalPreventivo::pianiDelleFattureSulleVoci($tutti) as $f) {
+            $voce = $f['voce_id'];
+            $fattureAZero[$f['piano_id']][$voce] ??= $f['fattura'];
+            if ($f['stato'] === 'bozza') {
+                $inBozza[$f['piano_id']] = true;
+                $righe->push((object) ['conto_id' => $voce, 'id' => $f['piano_id'], 'nome' => $f['piano']]);
+            }
+        }
+        $righe = $righe->unique(fn ($r) => (int) $r->conto_id . '-' . (int) $r->id)->sortBy('id')->values();
 
         // I movimenti sulle quote dei piani trovati: un incasso su una quota da pagare, un credito usato o rimborsato su una quota a credito.
         $movimenti = [];
@@ -329,7 +344,9 @@ class Conto extends Model
                 $conto = (int) $riga->conto_id;
                 if (in_array($conto, $catene[$id], true)) {
                     $piani[$id][] = ['id' => (int) $riga->id, 'nome' => (string) $riga->nome, 'capitolo' => $conto === $id ? null : (string) ($nomi[$conto] ?? ''),
-                        'movimenti' => $diCheTipo((int) $riga->id)];
+                        'movimenti' => $diCheTipo((int) $riga->id)]
+                        // Coda 742: solo per il piano delle fatture sulla voce a € 0, la fattura e lo stato (le altre righe restano come erano).
+                        + (isset($fattureAZero[(int) $riga->id][$conto]) ? ['fattura' => $fattureAZero[(int) $riga->id][$conto], 'bozza' => isset($inBozza[(int) $riga->id])] : []);
                 }
             }
         }
@@ -338,8 +355,9 @@ class Conto extends Model
     }
 
     /**
-     * Le voci su cui un piano straordinario in uno stato che blocca ha le fatture che finanzia: una riga per voce e per piano, con la riga di sopravvenienza o con
-     * la copertura di sopravvenienza della fattura pregressa, che sono le sole su cui il motore straordinario legge la voce (`CalcoloQuoteService::calcolaDaFattureStraordinarie`).
+     * Le voci su cui un piano straordinario in uno stato che blocca ha le fatture che finanzia: una riga per voce e per piano, con la riga di sopravvenienza, la
+     * riga su una voce a € 0 (`VoceFuoriDalPreventivo`) o la copertura di sopravvenienza della fattura pregressa, che sono le sole su cui il motore straordinario
+     * legge la voce (`CalcoloQuoteService::calcolaDaFattureStraordinarie`).
      * Una riga ordinaria della stessa fattura, a preventivo, il piano straordinario non la addebita; una riga ad personam va all'unità senza le tabelle della voce.
      * La leggono anche le voci che un passaggio d'usufrutto sposta (`VociDaSpostare`): il blocco è uno solo.
      *
@@ -349,6 +367,10 @@ class Conto extends Model
     public static function righeDeiPianiStraordinari(array $contiIds): \Illuminate\Support\Collection
     {
         $suiConti = DB::table('righe_fattura')->whereIn('conto_id', $contiIds)->where('is_sopravvenienza', true)->whereNull('immobile_id')->select('conto_id', 'fattura_passiva_id')
+            // Coda 742 (1.12.0-beta.14): anche la riga su una voce che nel preventivo vale € 0, che il motore ripartisce sulle tabelle della voce. Senza, il
+            // piano delle fatture approvato non la teneva: la voce prendeva un importo, il piano non si ricalcolava, e il preventivo la chiedeva di nuovo.
+            ->union(DB::table('righe_fattura')->whereIn('conto_id', $contiIds)->where(fn ($q) => \App\Services\Gestionale\VoceFuoriDalPreventivo::righeOPrese($q))
+                ->select('conto_id', 'fattura_passiva_id'))
             ->union(DB::table('fattura_coperture')->where('tipo_copertura', 'sopravvenienza')->whereIn('conto_id', $contiIds)->select('conto_id', 'fattura_passiva_id'));
 
         return DB::query()->fromSub($suiConti, 'sui_conti')

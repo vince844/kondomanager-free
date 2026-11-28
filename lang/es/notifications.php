@@ -348,6 +348,15 @@ return [
             'line_1'    => 'El :data a las :ora se generaron nuevos códigos de recuperación de la autenticación de dos factores de tu cuenta en :appName: los anteriores ya no valen.',
             'consiglio' => 'Si no has hecho tú este cambio, cambia ya la contraseña y avisa al administrador.',
         ],
+        'accesso_da_dispositivo_nuovo' => [
+            'subject'   => "Nuevo acceso a tu cuenta",
+            'line_1'    => "El :data a las :ora alguien entró en tu cuenta de :appName desde un dispositivo que no conocíamos: :dispositivo.",
+            'consiglio' => "Si fuiste tú, no tienes que hacer nada. Si no, cambia ya la contraseña y avisa al administrador.",
+            'cookie'    => "Si usas la navegación privada, o si el navegador borra las cookies, este aviso llega en cada acceso.",
+        ],
+        'indirizzo' => "La dirección de red era :indirizzo.",
+        'dispositivo' => ":browser en :sistema",
+        'dispositivo_sconosciuto' => "un navegador que no reconocemos",
     ],
 
     'errore_avvisato' => [

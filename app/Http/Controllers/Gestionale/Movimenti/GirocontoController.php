@@ -317,9 +317,10 @@ class GirocontoController extends Controller
                 return $scrittura;
             });
 
+            // La causale resta nella scrittura; nel registro solo la sua lunghezza.
             Log::info(
                 "Giroconto {$scrittura->numero_protocollo} registrato da utente #".Auth::id()
-                ." — condominio #{$condominio->id}, importo {$validated['importo']}, causale: {$validated['causale']}"
+                ." — condominio #{$condominio->id}, importo {$validated['importo']}, causale di ".mb_strlen((string) $validated['causale']).' caratteri'
             );
 
             // "Registra e nuovo": chi ha più operazioni da fare torna al modulo
@@ -369,9 +370,10 @@ class GirocontoController extends Controller
         try {
             $storno = $action->execute($scrittura, $condominio, $validated['motivo']);
 
+            // Nel registro la lunghezza del motivo, non il testo: lo scrive l'amministratore e può portare nomi e fatti delle persone.
             Log::info(
                 "Storno giroconto {$scrittura->numero_protocollo} → {$storno->numero_protocollo} "
-                .'da utente #'.Auth::id()." — motivo: {$validated['motivo']}"
+                .'da utente #'.Auth::id().' — motivo di '.mb_strlen($validated['motivo']).' caratteri'
             );
 
             return redirect()

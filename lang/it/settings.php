@@ -73,6 +73,8 @@ return [
     'two_factor' => [
         // Coda 261: `enable` con la 2FA già confermata.
         'already_enabled' => "L'autenticazione a due fattori è già attiva: per cambiarla, prima disattivala.",
+        'obbligatoria_per_il_pannello' => 'Lo studio chiede la verifica in due passaggi a chi entra nel pannello: attivala per continuare.',
+        'disattivazione_bloccata' => 'Lo studio chiede la verifica in due passaggi a chi entra nel pannello: non si può disattivare.',
         'title'                 => 'Autenticazione a due fattori',
         'heading'               => 'Autenticazione a due fattori',
         'description'           => 'Gestione delle impostazioni per l\'autenticazione a due fattori (2FA)',

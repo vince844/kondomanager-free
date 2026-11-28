@@ -152,7 +152,7 @@ defineEmits(['update:open']);
                 per le lettere.
               </div>
               <div class="px-4 py-3">
-                <!-- prova: resources/js/components/gestionale/lettere/RegistroLettere.vue:300 «Trascina qui la ricevuta di consegna (.eml)» -->
+                <!-- prova: resources/js/components/gestionale/lettere/RegistroLettere.vue:303 «Trascina qui la ricevuta di consegna (.eml)» -->
                 <b class="block text-slate-900 dark:text-white mb-0.5">Le ricevute</b>
                 Restano nella casella PEC: il programma non la legge. Per ogni convocazione e per ogni lettera salvi la ricevuta di consegna e la trascini sulla sua riga
                 (della convocazione, o della lettera nella corrispondenza della persona); il programma ne legge il giorno e l'ora, e la archivia sulla riga, da dove si

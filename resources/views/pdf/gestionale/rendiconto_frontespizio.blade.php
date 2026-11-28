@@ -144,12 +144,15 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
     <tr><td>Quote dei piani pagate</td><td class="n">{{ $fmt($pr['quote_pagate']) }}</td></tr>
     <tr><td>Quote dei piani non pagate</td><td class="n">{{ $fmt($pr['quote_non_pagate']) }}</td></tr>
     <tr><td>Costi dell'esercizio</td><td class="n">{{ $fmt($pr['costi']) }}</td></tr>
-    <tr><td><b>Risultato</b>: quote registrate in questo esercizio {{ $fmt($pr['quote_giornale']) }} − costi {{ $fmt($pr['costi']) }}</td><td class="n"><b>{{ $fmt($pr['risultato']) }}</b> ({{ \App\Services\Gestionale\RiepilogoPerCompetenza::comeRisultato($pr['risultato']) }})</td></tr>
+    @if(! empty($pr['rettifica_esercizi_precedenti']))
+    <tr><td>Rettifica di esercizi precedenti</td><td class="n">{{ $fmt($pr['rettifica_esercizi_precedenti']) }}</td></tr>
+    @endif
+    <tr><td><b>Risultato</b>: quote registrate in questo esercizio {{ $fmt($pr['quote_giornale']) }}@if(! empty($pr['rettifica_esercizi_precedenti'])) {{ $pr['rettifica_esercizi_precedenti'] < 0 ? '−' : '+' }} rettifica di esercizi precedenti {{ $fmt(abs($pr['rettifica_esercizi_precedenti'])) }}@endif − costi {{ $fmt($pr['costi']) }}</td><td class="n"><b>{{ $fmt($pr['risultato']) }}</b> ({{ \App\Services\Gestionale\RiepilogoPerCompetenza::comeRisultato($pr['risultato']) }})</td></tr>
     <tr><td>Liquidità secondo la contabilità, al {{ $dataIt($sintesi['riquadri']['liquidita']['alla']) }}</td><td class="n">{{ $fmt($sintesi['riquadri']['liquidita']['liquidita']) }}</td></tr>
     <tr><td>di cui nei fondi</td><td class="n">{{ $fmt($pr['in_fondi']) }}</td></tr>
 </table>
 <p class="d">Preventivo: le spese previste, meno le entrate da terzi. Deliberato con le rate: quanto chiedono i piani delle rate approvati. Quote dei piani dell'esercizio: le rate
-    di quei piani già emesse.@if(! empty($pr['contributi_addebitati'])) Contributi addebitati a singole persone: somme chieste a una persona sola, fuori dal riparto; sono fra le quote registrate.@endif</p>
+    di quei piani già emesse.@if(! empty($pr['contributi_addebitati'])) Contributi addebitati a singole persone: somme chieste a una persona sola, fuori dal riparto; sono fra le quote registrate.@endif @if(! empty($pr['rettifica_esercizi_precedenti'])) Rettifica di esercizi precedenti: la spesa di una sola unità contata due volte nelle rate emesse in un esercizio chiuso, tolta in questo; non è una quota chiesta in questo esercizio.@endif</p>
 {{-- Le frasi del deliberato non disponibile o ricostruito, sotto il prospetto, al corpo del testo. --}}
 @if($pr['avvertenza_deliberato'] || ! empty($pr['avvertenza_deliberato_ricostruito']))
 <p style="font-size: 8pt; margin: 4px 0 0;">@if($pr['avvertenza_deliberato']){{ \App\Services\Gestionale\ParoleDellaStampa::frase($pr['avvertenza_deliberato']) }}@endif @if(! empty($pr['avvertenza_deliberato_ricostruito'])) {{ \App\Services\Gestionale\ParoleDellaStampa::frase($pr['avvertenza_deliberato_ricostruito']) }}@endif</p>

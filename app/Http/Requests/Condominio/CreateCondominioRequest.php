@@ -6,16 +6,19 @@
 namespace App\Http\Requests\Condominio;
 
 use App\Models\Condominio;
+use Illuminate\Auth\Access\Response;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Foundation\Http\FormRequest;
 
 class CreateCondominioRequest extends FormRequest
 {
     /**
-     * Determine if the user is authorized to make this request.
+     * Il permesso prima dei campi: chi non può creare condomini riceve il rifiuto, non l'errore sul nome o sul codice fiscale
+     * già usati. La stessa abilità che il controller ripete (`CondominioPolicy::create`).
      */
-    public function authorize(): bool
+    public function authorize(): Response
     {
-        return true;
+        return Gate::forUser($this->user())->inspect('create', Condominio::class);
     }
 
     /**

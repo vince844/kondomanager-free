@@ -428,7 +428,8 @@ class StoreIncassoRateAction
             // Con un accordo di rientro in corso, dentro una rata il denaro va prima alle quote del perimetro dell'ordine: quelle con una parte fuori
             // dall'accordo, o con «Versamento dell'accordo» quelle con una parte dentro. Lo stesso perimetro di `OrdineImputazione`, per unità.
             $nelPerimetro = self::perimetroDelPagante($condominio->id, $paganteId, filter_var($validated['versamento_accordo'] ?? false, FILTER_VALIDATE_BOOLEAN));
-            $cassa        = Cassa::with('contoContabile')->findOrFail($validated['cassa_id']);
+            // Senza denaro (tutto a credito) la cassa non serve, e la richiesta può non averla: nessuna riga di cassa la legge.
+            $cassa        = $importoTotaleCents > 0 ? Cassa::with('contoContabile')->findOrFail($validated['cassa_id']) : null;
             $contoCrediti = ContoContabile::where('condominio_id', $condominio->id)
                                 ->where('ruolo', 'crediti_condomini')
                                 ->firstOrFail();

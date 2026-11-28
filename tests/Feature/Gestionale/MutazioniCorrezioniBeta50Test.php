@@ -732,18 +732,11 @@ it('Decisione 81.1 — l\'estinzione dell\'usufrutto di Ugo con l\'accrescimento
         ->and(collect($a['rate']['fermate_dopo_scrivi'])->pluck('verso')->flatten()->all())->toBe(['Carlo']);
 });
 
-it('Decisione 81.3 (dato anomalo) — sul box Ugo ha anche una riga a quota zero, prima di quella vera: la registrazione della vendita chiude la riga a zero e lascia Ugo al 100 %, e il pannello non annuncia la fermata del box, come la registrazione', function () {
-    // Trovato con la mutazione M83. `FermataDopoScrivi::conIlPassaggio` cercava la riga da chiudere sulla pertinenza «come
-    // `RegistraSubentroAction::applicaAllaPertinenza`», ma con la quota (`inCorso` vuole `quota > 0`); la registrazione prende la prima
-    // riga in corso il giorno prima, anche a quota zero (`TitolaritaImmobile::inCorsoIl`, codice di prima della .50). Il modulo accetta
-    // quota 0 (`CreateImmobileAnagraficaRequest`: `min:0`). Così il pannello diceva che dal 1/10 la parte del box toccava a Elsa, e
-    // dopo la registrazione al posto dell'inquilino sul box c'era ancora Ugo al 100 % ed Elsa aveva una riga a zero: la fermata
-    // annunciata non era successa. Decisione 81.3: il pannello segue la registrazione, non il contrario. La fermata della pertinenza si
-    // annuncia sulla riga che la registrazione chiude davvero: qui la riga a zero, che non abbassa il peso di Ugo sul box, quindi sul
-    // box nessuna fermata. Che la registrazione scelga la riga a zero è un difetto di prima della .50 che non sposta soldi (Coda 246,
-    // fuori dalla beta): la registrazione resta com'è, con la riga di Ugo al 100 % aperta. L'Interno 1 si ferma come sempre: la coppia
-    // 16333 (900 millesimi) sui 184 giorni, Ugo 92 ed Elsa 92, 8166,5 a testa, il centesimo a pari resto a chi esce → la parte di Elsa
-    // 8166 (€ 81,66).
+it('Decisione 81.3 (dato anomalo) — sul box Ugo ha anche una riga a quota zero, prima di quella vera: la registrazione della vendita chiude la riga al 100 %, e il pannello annuncia la fermata del box, come la registrazione', function () {
+    // Trovato con la mutazione M83: il pannello e la registrazione leggono la stessa riga della pertinenza. Fino alla 1.12.0-beta.14 la
+    // registrazione chiudeva la prima riga in corso, anche a quota zero, e Ugo restava al 100 % sul box; ora tutti e due leggono
+    // `TitolaritaImmobile::rigaCheEsceDallaPertinenza` (la riga con una quota), e la fermata del box c'è. La storia intera, con il
+    // registro, è in `PassaggioPertinenzaQuotaZeroTest`. L'Interno 1 si ferma come sempre: la parte di Elsa 8166 (€ 81,66).
     $s = fclScenario([['Ugo', 'proprietario', 100]], ['box' => [['Ugo', 'proprietario', 0], ['Ugo', 'proprietario', 100], ['Ines', 'inquilino', 100]]]);
     fclGenera($s);
     fclEmetti($this, $s, '2026-06-30');
@@ -756,11 +749,9 @@ it('Decisione 81.3 (dato anomalo) — sul box Ugo ha anche una riga a quota zero
     fclRegistra($this, $s, $modulo);
     $ugoAlCento = DB::table('anagrafica_immobile')->where('immobile_id', $s['box']->id)->where('anagrafica_id', $s['persone']['Ugo']->id)->where('quota', 100)->value('data_fine');
 
-    // Controlli: la fermata dell'Interno 1 c'è, € 81,66 verso Elsa; la registrazione lascia aperta la riga di Ugo al 100 %.
     expect($fermate->firstWhere('immobile_id', (int) $s['unita']->id)['cifra'] ?? null)->toBe(8166)
-        ->and($ugoAlCento)->toBeNull();
-
-    expect($fermate->firstWhere('immobile_id', (int) $s['box']->id))->toBeNull();
+        ->and(substr((string) $ugoAlCento, 0, 10))->toBe('2026-09-30')
+        ->and($fermate->firstWhere('immobile_id', (int) $s['box']->id))->not->toBeNull();
 });
 
 // ---------------------------------------------------------------------------------------------------------------------

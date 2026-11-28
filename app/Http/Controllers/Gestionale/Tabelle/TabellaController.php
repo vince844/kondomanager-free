@@ -18,6 +18,7 @@ use App\Traits\PaginaElenco;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Facades\Log;
@@ -89,6 +90,9 @@ class TabellaController extends Controller
      */
     public function create(Condominio $condominio): Response
     {
+        // Creare, modificare ed eliminare la tabella millesimale chiede «Modifica condomini», come l'unità e le impostazioni del condominio.
+        Gate::authorize('update', $condominio);
+
         // ⚠️ **`palazzine` e `scale` non si caricano più, dalla beta.63.** Servivano alla scheda
         // «Assegnazione strutturale», che prometteva di delimitare la tabella a una scala o a una
         // palazzina — e nessun filtro leggeva quei due campi. Tolta la scheda, restavano due
@@ -114,6 +118,9 @@ class TabellaController extends Controller
      */
     public function store(CreateTabellaRequest $request, Condominio $condominio): RedirectResponse
     {
+        // Creare, modificare ed eliminare la tabella millesimale chiede «Modifica condomini», come l'unità e le impostazioni del condominio.
+        Gate::authorize('update', $condominio);
+
         try {
 
             $data = $request->validated();
@@ -190,6 +197,9 @@ class TabellaController extends Controller
      */
     public function edit(Condominio $condominio, Tabella $tabella): Response
     {
+        // Creare, modificare ed eliminare la tabella millesimale chiede «Modifica condomini», come l'unità e le impostazioni del condominio.
+        Gate::authorize('update', $condominio);
+
         $tabella->loadMissing(['palazzina', 'scala']);
 
         // Get the current active and open esercizio this is important to navigate gestioni menu
@@ -221,6 +231,9 @@ class TabellaController extends Controller
      */
     public function update(UpdateTabellaRequest $request, Condominio $condominio, Tabella $tabella): RedirectResponse
     {
+        // Creare, modificare ed eliminare la tabella millesimale chiede «Modifica condomini», come l'unità e le impostazioni del condominio.
+        Gate::authorize('update', $condominio);
+
         try {
 
             $data = $request->validated();
@@ -251,6 +264,9 @@ class TabellaController extends Controller
      */
     public function destroy(Condominio $condominio, Tabella $tabella): RedirectResponse
     {
+        // Creare, modificare ed eliminare la tabella millesimale chiede «Modifica condomini», come l'unità e le impostazioni del condominio.
+        Gate::authorize('update', $condominio);
+
         // ⚠️ La tabella dell'indirizzo deve essere di **questo** condominio: il binding implicito
         // risolve i due modelli per id, ciascuno per conto suo. Senza questa riga, cancellare la
         // tabella di un altro condominio riusciva — e portava via in cascata tutte le sue quote

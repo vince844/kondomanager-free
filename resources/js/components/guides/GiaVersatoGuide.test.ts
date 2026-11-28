@@ -34,11 +34,27 @@ describe('GiaVersatoGuide — «Versato da» (decisione 17)', () => {
         expect(guida).not.toContain('questa non è la strada');
     });
 
-    test('il fatto su cui poggia: la pagina offre «Versato da», con la riga «l\'unità (senza persona)», e dice la stessa cosa dello sconto', () => {
+    test('il fatto su cui poggia: la pagina offre «Versato da», con la riga «L\'unità (senza persona)», e dice la stessa cosa dello sconto', () => {
         expect(pagina).toContain('<th class="text-left px-3 py-3 font-bold">Versato da</th>');
-        expect(pagina).toContain('<option value="">l\'unità (senza persona)</option>');
-        expect(pagina).toContain('Una riga registrata come «l\'unità» viene sottratta dal totale dell\'immobile <strong>prima</strong> di dividerlo fra proprietario e inquilino, quindi sconta entrambi.');
+        expect(pagina).toContain('{ valore: SENZA_PERSONA, etichetta: \'L\\\'unità (senza persona)\' }');
+        // La guida cita la voce come si legge nel menu.
+        expect(guida).toContain('la pagina propone «L\'unità», non chi ha comprato');
+        expect(pagina).toContain('Una riga registrata come «L\'unità» viene sottratta dal totale dell\'immobile <strong>prima</strong> di dividerlo fra proprietario e inquilino, quindi sconta entrambi.');
         expect(pagina).toContain('scegli chi in «Versato da»: lo sconto va solo alla sua quota, e l\'eventuale avanzo resta a suo nome.');
+    });
+});
+
+describe('GiaVersatoGuide — chi si può scegliere in «Versato da»', () => {
+    test('anche chi ha venduto, con il periodo; il versamento senza persona si divide come il piano divide la spesa', () => {
+        expect(guida).toContain('Chi si può scegliere in «Versato da»');
+        expect(guida).toContain('Chi lo è stato, per esempio chi ha venduto: accanto al nome c\'è il periodo. L\'inquilino non c\'è.');
+        expect(guida).toContain('La pagina non ha la data del versamento: a chi va lo decidi tu.');
+        expect(guida).toContain('Senza persona è dell\'unità: dopo una vendita si divide in proporzione a quello che il piano chiede a ciascuno.');
+        expect(guida).toContain('Quello che una persona ha versato oltre la sua parte resta suo, anche se ha venduto.');
+    });
+
+    test('il fatto su cui poggia: la pagina scrive il periodo accanto a chi non è più titolare', () => {
+        expect(pagina).toContain('+ (t.periodi?.length ? ` · ${periodiInParole(t.periodi)}` : \'\');');
     });
 });
 
@@ -53,9 +69,9 @@ describe('GiaVersatoGuide — «Vale per» (Coda 438)', () => {
     });
 
     test('il fatto su cui poggia: la pagina parte da «Scegli l\'esercizio…» e rifiuta il salvataggio senza una scelta', () => {
-        expect(pagina).toContain('<option value="" disabled>Scegli l\'esercizio…</option>');
+        expect(pagina).toContain('placeholder="Scegli l\'esercizio…"');
         expect(pagina).toContain('if (valePer.value === null) { toast({ title: \'Scegli l\\\'esercizio\'');
-        expect(pagina).toContain('<option value="tutti">Tutti gli esercizi</option>');
+        expect(pagina).toContain('{ valore: \'tutti\', etichetta: \'Tutti gli esercizi\' }');
     });
 });
 
@@ -83,5 +99,13 @@ describe('GiaVersatoGuide — la somma sulla voce (Code 483, 486, 487)', () => {
 describe('GiaVersatoGuide — il piano senza voci associate (rilievo 11 dello scettico della tappa 1)', () => {
     test('dice che conta anche il piano senza voci associate, con le voci che prende', () => {
         expect(guida).toContain('Conta anche il piano senza voci associate, nato con le versioni di prima: con le voci che prende, quelle che nessun altro piano del suo esercizio ha già.');
+    });
+});
+
+describe('GiaVersatoGuide — i giorni senza titolare', () => {
+    test('la guida dice che i giorni senza nessun titolare non si chiedono a nessuno, e la pagina ha la riga che lo mostra', () => {
+        expect(guida).toContain('I giorni in cui nessuno è titolare, fra chi esce e chi entra, non si chiedono a nessuno: la riga «Giorni senza titolare» dice quanto.');
+        expect(pagina).toContain('data-testid="senza-titolare-dell-unita"');
+        expect(pagina).toContain('Giorni senza titolare: non si chiedono a nessuno, il piano li mette fra le quote non assegnate');
     });
 });

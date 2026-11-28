@@ -56,9 +56,15 @@ use Illuminate\Support\Facades\DB;
  * Una compensazione è DC1 solo per la parte riportata del credito (rilievo K2): la spesa negativa delle entrate dell'anno sta fra
  * i crediti verso condomini, e prelevata da lì era giusta anche con la 1.10.
  *
- * Che cosa elenca soltanto (Coda 313, decisione 153.1: il rilevamento nella 1.11, la scrittura con la 1.12): le emissioni già scritte
- * con la spesa ad personam addebitata due volte (`ad_personam`), per rata e unità, e i piani senza il registro del riparto per i quali
- * la cifra non si può calcolare (`ad_personam_non_calcolabili`). `esegui` non scrive niente per loro.
+ * - **la chiusura dell'anticipazione ad personam** delle emissioni già scritte con la spesa di una sola unità addebitata due volte
+ *   (Coda 313, `ad_personam`, per rata e unità): DARE «Gestione rate», AVERE «Crediti verso condomini» con l'unità e la rata, senza
+ *   persona, figlia dell'emissione (l'annullamento dell'emissione la porta via). Nell'esercizio dell'emissione, alla sua data, se è
+ *   aperto; se è chiuso, nell'esercizio aperto che contiene la data di oggi, con la data di oggi e la nota che dice da quale esercizio
+ *   viene (decisioni 734 (2) e 736: l'esercizio chiuso non si riscrive). Senza un esercizio aperto alla data di oggi la voce resta
+ *   elencata, con il perché. Il debito di nessun condòmino cambia: la rettifica non ha persona.
+ *
+ * Che cosa elenca soltanto: i piani senza il registro del riparto per i quali la cifra della spesa ad personam addebitata due volte
+ * non si può calcolare (`ad_personam_non_calcolabili`).
  */
 class RiallineaCreditiService
 {
@@ -77,7 +83,7 @@ class RiallineaCreditiService
      *     rate: list<array<string, mixed>>,
      *     da_emettere: list<array{rata_id: int, numero_rata: int, piano: string, url: string}>,
      *     restano: list<array{rata_id?: int, scrittura_id?: int, motivo: string}>,
-     *     ad_personam: list<array{rata_id: int, numero_rata: int, piano_id: int, piano: string, immobile_id: int, unita: string, data: ?string, esercizio: ?string, esercizio_aperto: bool, importo: int, importo_formattato: string}>,
+     *     ad_personam: list<array{rata_id: int, numero_rata: int, piano_id: int, piano: string, immobile_id: int, unita: string, data: ?string, esercizio: ?string, esercizio_aperto: bool, importo: int, importo_formattato: string, azione: 'scrivi'|'resta', nell_esercizio: ?string, data_rettifica: ?string, motivo: ?string}>,
      *     ad_personam_non_calcolabili: list<array{piano_id: int, piano: string, motivo: string}>
      * }
      */
@@ -111,17 +117,19 @@ class RiallineaCreditiService
     /** Quante scritture il comando scriverebbe adesso. */
     public function daScrivere(array $rilevato): int
     {
-        return count($rilevato['compensazioni']) + collect($rilevato['rate'])->where('azione', 'scrivi')->count();
+        return count($rilevato['compensazioni']) + collect($rilevato['rate'])->where('azione', 'scrivi')->count()
+            + collect($rilevato['ad_personam'] ?? [])->where('azione', 'scrivi')->count();
     }
 
     /**
      * Scrive, ogni voce nella sua transazione, rileggendo lo stato sotto blocco: prima le rettifiche di DC1, poi le quote delle rate
      * miste (il credito già uscito si legge dopo le rettifiche). Senza il conto «Passate gestioni» non scrive niente.
      *
-     * Le emissioni con la spesa ad personam addebitata due volte non le scrive (Coda 313, decisione 153.1): tornano nell'esito come
-     * le ha trovate il rilevamento, perché la conferma lo dica.
+     * Per ultime le chiusure dell'anticipazione ad personam (Coda 313), ognuna riletta sotto blocco: le chiusure già scritte, anche
+     * quelle delle quote rimaste fuori appena portate a giornale, si sottraggono, così una seconda conferma non scrive niente. In
+     * `ad_personam` tornano le voci che restano come sono (`azione` «resta»), perché la conferma lo dica.
      *
-     * @return array{rettifiche: list<string>, emissioni: list<string>, restano: list<array<string, mixed>>, ad_personam: list<array<string, mixed>>, ad_personam_non_calcolabili: list<array<string, mixed>>}
+     * @return array{rettifiche: list<string>, emissioni: list<string>, chiusure: list<string>, restano: list<array<string, mixed>>, ad_personam: list<array<string, mixed>>, ad_personam_non_calcolabili: list<array<string, mixed>>}
      *
      * @throws ContoPassateGestioniMancanteException
      */
@@ -135,15 +143,19 @@ class RiallineaCreditiService
     private function riallinea(Condominio $condominio, ?int $utenteId): array
     {
         $rilevato = $this->rileva($condominio);
-        $fatto = ['rettifiche' => [], 'emissioni' => [], 'restano' => $rilevato['restano'],
-            'ad_personam' => $rilevato['ad_personam'], 'ad_personam_non_calcolabili' => $rilevato['ad_personam_non_calcolabili']];
+        $fatto = ['rettifiche' => [], 'emissioni' => [], 'chiusure' => [], 'restano' => $rilevato['restano'],
+            'ad_personam' => array_values(array_filter($rilevato['ad_personam'], fn (array $v) => $v['azione'] !== 'scrivi')),
+            'ad_personam_non_calcolabili' => $rilevato['ad_personam_non_calcolabili']];
         if ($this->daScrivere($rilevato) === 0) {
             return $fatto;
         }
 
         $crediti = ContoContabile::where('condominio_id', $condominio->id)->where('ruolo', 'crediti_condomini')->firstOrFail();
-        $passate = ContoContabile::where('condominio_id', $condominio->id)->where('ruolo', 'passate_gestioni')->whereNull('deleted_at')->first()
-            ?? throw new ContoPassateGestioniMancanteException();
+        $passate = ContoContabile::where('condominio_id', $condominio->id)->where('ruolo', 'passate_gestioni')->whereNull('deleted_at')->first();
+        // «Passate gestioni» serve alle rettifiche delle compensazioni e alle quote rimaste fuori; le chiusure ad personam non la toccano.
+        if ($passate === null && ($rilevato['compensazioni'] !== [] || collect($rilevato['rate'])->where('azione', 'scrivi')->isNotEmpty())) {
+            throw new ContoPassateGestioniMancanteException();
+        }
         $gestioneRate = ContoContabile::where('condominio_id', $condominio->id)->where('ruolo', 'gestione_rate')->first();
 
         // L'incasso padre di ogni compensazione, letto fuori dalle transazioni: dentro, la prima lettura deve essere il blocco.
@@ -213,7 +225,7 @@ class RiallineaCreditiService
                 }
                 $quote = $quote->reject(fn (RataQuote $q) => isset($tolte[(int) $q->id]))->values();
                 // Ricalcolate qui, dopo le rettifiche: il credito già uscito da «Passate gestioni» è cambiato.
-                $perQuota = array_filter(RataQuote::scritturaDiEmissione($quote, (int) $passate->id), fn (array $x) => $x['righe'] !== []);
+                $perQuota = array_filter(RataQuote::scritturaDiEmissione($quote, (int) $passate->id), fn (array $x) => self::daPortare($x));
                 if ($perQuota === []) {
                     return;
                 }
@@ -267,7 +279,69 @@ class RiallineaCreditiService
             });
         }
 
+        foreach ($rilevato['ad_personam'] as $voce) {
+            if ($voce['azione'] !== 'scrivi') {
+                continue;
+            }
+            DB::transaction(function () use ($voce, $condominio, $crediti, $gestioneRate, $utenteId, &$fatto) {
+                // Come per le quote rimaste fuori: prima il blocco sulle quote della rata, poi la cifra riletta (le chiusure scritte nel
+                // frattempo, anche dal passo di sopra, si sottraggono).
+                DB::table('rate_quote')->where('rata_id', $voce['rata_id'])->lockForUpdate()->pluck('id');
+                [$ancora] = $this->adPersonam($condominio, (int) $voce['piano_id']);
+                $ancora = collect($ancora)->first(fn (array $x) => $x['rata_id'] === $voce['rata_id'] && $x['immobile_id'] === $voce['immobile_id'] && $x['azione'] === 'scrivi');
+                if ($ancora === null) {
+                    return;
+                }
+                if ($gestioneRate === null) {
+                    $fatto['restano'][] = ['rata_id' => (int) $voce['rata_id'], 'motivo' => 'manca il conto «Gestione rate» del condominio: la spesa ad personam addebitata due volte sulla rata '
+                        . $voce['numero_rata'] . ' non si può chiudere'];
+
+                    return;
+                }
+                $rettifica = ScritturaContabile::create([
+                    'condominio_id'      => $condominio->id,
+                    'esercizio_id'       => $ancora['esercizio_id_rettifica'],
+                    'gestione_id'        => $ancora['gestione_id_rettifica'],
+                    'scrittura_padre_id' => $ancora['emissione_id'],
+                    'data_registrazione' => DateHelper::oggiUtente(),
+                    'data_competenza'    => $ancora['data_competenza_rettifica'],
+                    'causale'            => self::MARCATORE . " — chiusura anticipazione ad personam, rata {$ancora['numero_rata']} ({$ancora['piano']})",
+                    // Figlia dell'emissione e dello stesso tipo: l'annullamento dell'emissione la porta via con sé, e la nuova emissione
+                    // scrive la chiusura una volta sola.
+                    'tipo_movimento'     => 'emissione_rata',
+                    'stato'              => 'registrata',
+                    'created_by'         => $utenteId,
+                    'note'               => self::notaDellaChiusura($ancora),
+                ]);
+                $descrizione = (string) Rata::whereKey($ancora['rata_id'])->value('descrizione');
+                $rettifica->righe()->create(['conto_contabile_id' => $gestioneRate->id, 'tipo_riga' => 'dare', 'importo' => $ancora['importo'],
+                    'note' => 'Spesa ad personam tolta dalle entrate — ' . $descrizione]);
+                $rettifica->righe()->create(['conto_contabile_id' => $crediti->id, 'immobile_id' => $ancora['immobile_id'], 'rata_id' => $ancora['rata_id'],
+                    'tipo_riga' => 'avere', 'importo' => $ancora['importo'], 'note' => RataQuote::NOTA_CHIUSURA_ANTICIPAZIONE . $descrizione]);
+                DoubleEntryValidator::validateOrFail($rettifica->id);
+                $fatto['chiusure'][] = (string) $rettifica->numero_protocollo;
+            });
+        }
+
         return $fatto;
+    }
+
+    /**
+     * La nota della chiusura dell'anticipazione ad personam: la cifra, l'unità, la rata e il piano, e, se l'emissione è in un esercizio
+     * chiuso, da quale esercizio viene e perché si scrive in quello aperto (decisione 734 (2)). Resta nel libro giornale per sempre.
+     *
+     * @param array<string, mixed> $voce
+     */
+    private static function notaDellaChiusura(array $voce): string
+    {
+        $nota = sprintf('La spesa ad personam di %s su %s era stata chiesta due volte dall\'emissione della rata %d del piano «%s» (la fattura l\'aveva già scritta '
+            . 'su «Crediti verso condomini» con l\'unità): si chiude l\'anticipazione e si toglie dalle entrate di «Gestione rate». Il debito dei condòmini non cambia.',
+            $voce['importo_formattato'], $voce['unita'], $voce['numero_rata'], $voce['piano']);
+        if (! $voce['esercizio_aperto']) {
+            $nota .= sprintf(' Viene dall\'esercizio «%s», chiuso: la correzione si scrive in questo esercizio, con la data di oggi, e l\'esercizio chiuso resta com\'è.', $voce['esercizio'] ?? '—');
+        }
+
+        return $nota;
     }
 
     /**
@@ -388,7 +462,7 @@ class RiallineaCreditiService
             }
             $conDettaglio = $fuori->filter(fn (RataQuote $q) => $q->componenti()['dettaglio'])->values();
             $calcolo = $this->conIlCreditoInArrivo($conDettaglio, $passate === null ? null : (int) $passate, $inArrivo);
-            $daScrivere = $conDettaglio->filter(fn (RataQuote $q) => ($calcolo[(int) $q->id]['righe'] ?? []) !== [])->values();
+            $daScrivere = $conDettaglio->filter(fn (RataQuote $q) => isset($calcolo[(int) $q->id]) && self::daPortare($calcolo[(int) $q->id]))->values();
 
             if ($aGiornale->isNotEmpty()) {
                 if ($daScrivere->isEmpty()) {
@@ -417,11 +491,15 @@ class RiallineaCreditiService
                         $righe = collect($calcolo[(int) $q->id]['righe']);
                         $entrate = max(0, -$q->componenti()['spesa']);
 
+                        $adPersonam = (int) ($calcolo[(int) $q->id]['anticipazione'] ?? 0);
+
                         return [
                             'nome'    => (string) $q->anagrafica?->nome,
                             'spesa'   => (int) $righe->where(0, 'dare')->sum(1) - $entrate,
                             'credito' => (int) $righe->where(0, 'avere')->sum(1) - $entrate,
-                        ];
+                        ] + ($adPersonam > 0 && $righe->isEmpty()
+                            // La parte ad personam che la scrittura chiude sull'unità: l'unica cifra di una quota a zero (Coda 426).
+                            ? ['ad_personam' => $adPersonam] : []);
                     })->all(),
                 ];
                 if (($sorella?->esercizio?->stato) !== 'aperto') {
@@ -515,13 +593,13 @@ class RiallineaCreditiService
      *
      * @return array{0: list<array<string, mixed>>, 1: list<array{piano_id: int, piano: string, motivo: string}>} [voci, piani che non si possono calcolare]
      */
-    private function adPersonam(Condominio $condominio): array
+    private function adPersonam(Condominio $condominio, ?int $soloPiano = null): array
     {
         $crediti = ContoContabile::where('condominio_id', $condominio->id)->where('ruolo', 'crediti_condomini')->value('id');
         if (! $crediti) {
             return [[], []];
         }
-        $piani = PianoRate::where('condominio_id', $condominio->id)
+        $piani = PianoRate::where('condominio_id', $condominio->id)->when($soloPiano !== null, fn ($q) => $q->whereKey($soloPiano))
             ->whereExists(fn ($q) => $q->selectRaw('1')->from('rate')->join('rate_quote', 'rate_quote.rata_id', '=', 'rate.id')
                 ->whereColumn('rate.piano_rate_id', 'piani_rate.id')->whereNotNull('rate_quote.scrittura_contabile_id'))
             ->orderBy('id')->get();
@@ -533,6 +611,7 @@ class RiallineaCreditiService
 
         $voci = [];
         $nonCalcolabili = [];
+        $apertoOggi = self::esercizioApertoDiOggi((int) $condominio->id);
         foreach ($piani as $piano) {
             $prefisso = $piano->id . '|';
             if (isset($conRegistro[(int) $piano->id])) {
@@ -556,19 +635,22 @@ class RiallineaCreditiService
             if ($suo === []) {
                 continue;
             }
-            array_push($voci, ...$this->doppiDelPiano($piano, $suo, (int) $crediti));
+            array_push($voci, ...$this->doppiDelPiano($piano, $suo, (int) $crediti, $apertoOggi));
         }
 
-        return [$voci, $nonCalcolabili];
+        return [self::conIlPavimentoDellUnita($voci, (int) $crediti), $nonCalcolabili];
     }
 
     /**
      * Le voci di un piano: per ogni rata con quote a giornale e unità, la parte ad personam a giornale meno le chiusure già scritte.
      *
+     * Ogni voce dice anche dove si scrive la chiusura (`azione`, `nell_esercizio`, `data_rettifica`): nell'esercizio dell'emissione, alla
+     * sua data, se è aperto; altrimenti nell'esercizio aperto alla data di oggi (`$apertoOggi`), con la data di oggi; senza, resta.
+     *
      * @param array<string, int> $registro piano|persona|unità => centesimi
      * @return list<array<string, mixed>>
      */
-    private function doppiDelPiano(PianoRate $piano, array $registro, int $crediti): array
+    private function doppiDelPiano(PianoRate $piano, array $registro, int $crediti, ?\App\Models\Esercizio $apertoOggi): array
     {
         $rate = Rata::where('piano_rate_id', $piano->id)->whereHas('rateQuote', fn ($q) => $q->whereNotNull('scrittura_contabile_id'))
             ->with(['rateQuote' => fn ($q) => $q->whereNotNull('scrittura_contabile_id')])->orderBy('numero_rata')->get();
@@ -611,11 +693,104 @@ class RiallineaCreditiService
                     'esercizio_aperto'   => ($emissione?->esercizio?->stato) === 'aperto',
                     'importo'            => $doppio,
                     'importo_formattato' => MoneyHelper::format($doppio),
-                ];
+                ] + self::doveSiScrive($emissione, $apertoOggi);
             }
         }
 
         return $voci;
+    }
+
+    /**
+     * Dove si scrive la chiusura di una voce della spesa ad personam addebitata due volte (decisioni 734 (2) e 736): nell'esercizio
+     * dell'emissione, alla data dell'emissione, se è aperto; se è chiuso, nell'esercizio aperto che contiene la data di oggi, con la
+     * data di oggi, e la gestione dell'emissione solo se è collegata a quell'esercizio. Senza un esercizio aperto alla data di oggi la
+     * voce resta, con il perché: in un esercizio chiuso non si scrive.
+     *
+     * @return array{azione: 'scrivi'|'resta', emissione_id: ?int, esercizio_id_rettifica: ?int, gestione_id_rettifica: ?int, data_competenza_rettifica: ?string, nell_esercizio: ?string, data_rettifica: ?string, motivo: ?string}
+     */
+    private static function doveSiScrive(?ScritturaContabile $emissione, ?\App\Models\Esercizio $apertoOggi): array
+    {
+        $resta = fn (string $motivo) => ['azione' => 'resta', 'emissione_id' => $emissione?->id, 'esercizio_id_rettifica' => null, 'gestione_id_rettifica' => null,
+            'data_competenza_rettifica' => null, 'nell_esercizio' => null, 'data_rettifica' => null, 'motivo' => $motivo];
+        if ($emissione === null) {
+            return $resta('l\'emissione della rata non si trova');
+        }
+        if (($emissione->esercizio?->stato) === 'aperto') {
+            return ['azione' => 'scrivi', 'emissione_id' => (int) $emissione->id, 'esercizio_id_rettifica' => (int) $emissione->esercizio_id,
+                'gestione_id_rettifica' => $emissione->gestione_id === null ? null : (int) $emissione->gestione_id,
+                'data_competenza_rettifica' => $emissione->data_competenza?->toDateString(), 'nell_esercizio' => $emissione->esercizio?->nome,
+                'data_rettifica' => $emissione->data_competenza?->format('d/m/Y'), 'motivo' => null];
+        }
+        if ($apertoOggi === null) {
+            return $resta(sprintf('l\'esercizio «%s» dell\'emissione è chiuso e nessun esercizio aperto contiene la data di oggi: la correzione si scrive '
+                . 'nell\'esercizio aperto, con la data di oggi, quando ci sarà', $emissione->esercizio?->nome ?? '—'));
+        }
+        $oggi = DateHelper::oggiUtente();
+        $gestione = $emissione->gestione_id !== null && DB::table('esercizio_gestione')->where('esercizio_id', $apertoOggi->id)->where('gestione_id', $emissione->gestione_id)->exists()
+            ? (int) $emissione->gestione_id : null;
+
+        return ['azione' => 'scrivi', 'emissione_id' => (int) $emissione->id, 'esercizio_id_rettifica' => (int) $apertoOggi->id, 'gestione_id_rettifica' => $gestione,
+            'data_competenza_rettifica' => $oggi, 'nell_esercizio' => $apertoOggi->nome, 'data_rettifica' => \Illuminate\Support\Carbon::parse($oggi)->format('d/m/Y'), 'motivo' => null];
+    }
+
+    /**
+     * Il pavimento dell'unità, come per l'emissione (`RataQuote::motivoBloccoEmissioneAdPersonam`, controllo (c)): le chiusure da scrivere su
+     * un'unità, sommate nell'ordine delle voci, non superano l'anticipazione ancora aperta («Crediti verso condomini» con l'unità e senza
+     * persona, su tutto il giornale). Se la supererebbero, lo storno della fattura o una nota di credito l'hanno già tolta: la chiusura la
+     * toglierebbe una seconda volta e lascerebbe l'unità a credito senza persona. La voce resta, con il perché.
+     *
+     * @param list<array<string, mixed>> $voci
+     * @return list<array<string, mixed>>
+     */
+    private static function conIlPavimentoDellUnita(array $voci, int $crediti): array
+    {
+        $unita = array_values(array_unique(array_map(fn (array $v) => (int) $v['immobile_id'], array_filter($voci, fn (array $v) => $v['azione'] === 'scrivi'))));
+        if ($unita === []) {
+            return $voci;
+        }
+        $aperta = DB::table('righe_scritture')->join('scritture_contabili as s', 's.id', '=', 'righe_scritture.scrittura_id')->whereNull('s.deleted_at')
+            ->where('righe_scritture.conto_contabile_id', $crediti)->whereIn('righe_scritture.immobile_id', $unita)->whereNull('righe_scritture.anagrafica_id')
+            ->groupBy('righe_scritture.immobile_id')
+            ->selectRaw("righe_scritture.immobile_id as unita, SUM(CASE WHEN righe_scritture.tipo_riga = 'dare' THEN righe_scritture.importo ELSE -righe_scritture.importo END) as n")
+            ->pluck('n', 'unita')->map(fn ($n) => (int) $n)->all();
+        foreach ($voci as $i => $v) {
+            if ($v['azione'] !== 'scrivi') {
+                continue;
+            }
+            $resta = $aperta[(int) $v['immobile_id']] ?? 0;
+            if ($v['importo'] <= $resta) {
+                $aperta[(int) $v['immobile_id']] = $resta - $v['importo'];
+
+                continue;
+            }
+            $voci[$i] = array_merge($v, ['azione' => 'resta', 'esercizio_id_rettifica' => null, 'gestione_id_rettifica' => null, 'data_competenza_rettifica' => null,
+                'nell_esercizio' => null, 'data_rettifica' => null,
+                'motivo' => sprintf('su %s l\'anticipazione ancora aperta è %s, meno della cifra: lo storno della fattura o una nota di credito l\'hanno già tolta, '
+                    . 'e la chiusura la toglierebbe una seconda volta; si controlla nel libro giornale, sulle righe dell\'unità senza persona', $v['unita'], MoneyHelper::format(max(0, $resta)))]);
+        }
+
+        return $voci;
+    }
+
+    /** L'esercizio aperto del condominio che contiene la data di oggi (il più recente, se ce n'è più d'uno), o null. */
+    private static function esercizioApertoDiOggi(int $condominioId): ?\App\Models\Esercizio
+    {
+        $oggi = DateHelper::oggiUtente();
+
+        return \App\Models\Esercizio::where('condominio_id', $condominioId)->where('stato', 'aperto')
+            ->whereDate('data_inizio', '<=', $oggi)->whereDate('data_fine', '>=', $oggi)
+            ->orderByDesc('data_inizio')->orderByDesc('id')->first();
+    }
+
+    /**
+     * Se l'emissione porta a giornale la quota: con righe a nome della persona, o, a zero, con la sola parte ad personam da chiudere
+     * sull'unità (Coda 426). La stessa regola di `ScritturaDiEmissione::scrivi`.
+     *
+     * @param array{righe: list<array{0: string, 1: int}>, anticipazione?: int} $calcolo
+     */
+    private static function daPortare(array $calcolo): bool
+    {
+        return $calcolo['righe'] !== [] || ($calcolo['anticipazione'] ?? 0) > 0;
     }
 
     private static function gemelle(int $rataId, int $anagraficaId, ?int $immobileId): int

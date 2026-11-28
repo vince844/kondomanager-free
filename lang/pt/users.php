@@ -38,7 +38,7 @@ return [
         'list_permissions_head'              => 'Lista de Permissões',
         'list_permissions_description'       => 'Visualize todas as permissões disponíveis na aplicação.',
         'list_invites_head'                  => 'Lista de Convites',
-        'list_invites_description'           => 'Monitorize os convites enviados a novos colaboradores e o seu estado.',
+        'list_invites_description'           => 'Monitorize os convites enviados a novos condóminos e fornecedores e o seu estado.',
         'edit_user_head'                     => 'Editar utilizador',
         'new_user_head'                      => 'Criar novo utilizador',
         'new_user_title'                     => 'Criar novo utilizador',
@@ -113,6 +113,7 @@ return [
         'invite_buildings' => 'Condomínios',
         // Coda 258, decisione 134.1: sulla scheda di un account fuori dalla portata di chi la apre.
         'fuori_portata' => 'Só um administrador gere esta conta: tem um papel diferente de «utente» e «fornitore», ou permissões adicionais que não tem.',
+        'solo_chi_ha_il_permesso' => 'Só a pode retirar quem tem esta permissão.',
     ],
 
     /* ------------------------------------------------------------------
@@ -134,6 +135,7 @@ return [
     'actions' => [
         'new_user'      => 'Criar utilizador',
         'edit_user'     => 'Editar',
+        'save_user'     => 'Guardar',
         'delete_user'   => 'Eliminar',
         'suspend_user'  => 'Suspender',
         'activate_user' => 'Ativar',
@@ -161,7 +163,7 @@ return [
     'dialogs' => [
         'no_users_created'         => 'Ainda não foi criado nenhum utilizador',
         'delete_user_title'        => 'Tem a certeza de que pretende eliminar este utilizador?',
-        'delete_user_description'  => 'Esta ação é irreversível. Eliminará o utilizador e todos os dados associados.',
+        'delete_user_description'  => 'Esta ação é irreversível. Eliminará o utilizador e todos os dados associados: também desaparecem, para todos, as comunicações e as ocorrências que escreveu.',
         'invite_user_title'        => 'Tem a certeza de que pretende reenviar o convite a este utilizador?',
         'invite_user_description'  => 'O utilizador receberá um email com um novo link para criar uma nova palavra-passe.',
     ],
@@ -180,6 +182,8 @@ return [
      | ------------------------------------------------------------------ */
     'badge' => [
         'previously_direct' => 'atribuído anteriormente',
+        'anche_dal_ruolo' => 'também dado pelo perfil',
+        'anche_aggiuntivo' => 'também adicional',
     ],
 
     'roles' => [
@@ -207,6 +211,6 @@ return [
         'roles_title' => 'Papéis e Permissões',
         'roles_desc'  => 'Defina os níveis de autorização para proteger dados sensíveis.',
         'invites_title' => 'Convites',
-        'invites_desc'  => 'Envie e gira convites para novos colaboradores.',
+        'invites_desc'  => 'Envie e gira convites para novos condóminos e fornecedores.',
     ],
 ];

@@ -91,7 +91,9 @@ class PianoRateController extends Controller
         $pianiRate = PianoRate::with(['gestione'])
             ->where('condominio_id', $condominio->id)
             ->delRiparto()
-            ->whereHas('gestione.esercizi', fn($q) => $q->where('esercizio_id', $esercizio->id))
+            // I piani di questo esercizio. La gestione ordinaria si aggancia a ogni esercizio: filtrare per la gestione portava qui i piani degli altri
+            // anni. Un piano senza l'esercizio salvato sta nell'esercizio della sua competenza, e solo lì.
+            ->where(fn ($q) => $q->where('esercizio_id', $esercizio->id)->orWhereIn('id', $this->pianiSenzaEsercizioIn($condominio, $esercizio)))
             ->tap(fn ($q) => $this->ordina($q, $validated, PianoRateIndexRequest::colonneOrdinabili(), predefinita: 'nome'))
             ->paginate($validated['per_page']);
         $pianiAddebiti = PianoRate::with('gestione:id,nome')->withCount('rate')->withSum('rate', 'importo_totale')
@@ -123,6 +125,21 @@ class PianoRateController extends Controller
             'sort'      => $validated['sort'] ?? null,
             'direction' => $validated['direction'] ?? null,
         ]);
+    }
+
+    /**
+     * I piani del condominio senza l'esercizio salvato la cui competenza è l'esercizio dato (`CompetenzaDelPiano::esercizioDelPiano`).
+     *
+     * @return list<int>
+     */
+    private function pianiSenzaEsercizioIn(Condominio $condominio, Esercizio $esercizio): array
+    {
+        $competenza = app(\App\Services\Riparto\CompetenzaDelPiano::class);
+
+        return PianoRate::query()->with('gestione')->where('condominio_id', $condominio->id)->whereNull('esercizio_id')
+            ->whereHas('gestione.esercizi', fn ($q) => $q->where('esercizio_id', $esercizio->id))->get()
+            ->filter(fn (PianoRate $p) => $competenza->esercizioDelPiano($p)?->id === $esercizio->id)
+            ->map(fn (PianoRate $p) => (int) $p->id)->values()->all();
     }
 
     /**
@@ -203,7 +220,36 @@ class PianoRateController extends Controller
             // «Metti a rate questa spesa» dalla fattura (`da_fattura`): «Torna alla fattura» invece di «Torna all'elenco». Solo una fattura del condominio:
             // nessun indirizzo libero preso dalla richiesta.
             'ritorno' => $this->ritornoAllaFattura($request, $condominio),
+            // Coda 743 (decisione 655): «Prepara il piano di ripianamento» (il compito «Deficit da recuperare», dall'Action inbox e dal seguito della delibera)
+            // apre lo straordinario con il debito ereditato da mettere a rate: la cifra proposta, il massimo, la gestione e le tabelle. Niente si scrive qui.
+            // In un esercizio che non è quello della pregressa `altrove` dice dove si prepara, e la pagina si ferma lì.
+            'ripianamento' => ctype_digit((string) $request->query('ripianamento', ''))
+                ? \App\Services\Gestionale\RipianamentoDelDeficit::proposta((int) $condominio->id, (int) $request->query('ripianamento'), (int) $esercizio->id) : null,
+            // «Rendi incassabili questi saldi» dalla pagina dei saldi: il piano di soli saldi già compilato. Niente si scrive qui.
+            'precompilato' => $this->pianoDeiSaldi($request, $condominio, $esercizio),
         ]);
+    }
+
+    /**
+     * Il piano dei soli saldi iniziali di una gestione che li ha liberi (non a zero e in nessun piano), come la creazione lo propone: una rata, i saldi sommati
+     * alla prima rata ordinaria, nessuna voce. Null senza `origine=saldi`, per una gestione di un altro condominio o senza saldi liberi.
+     *
+     * @return ?array{origine: string, gestione_id: int, nome: string, numero_rate: int, metodo_distribuzione: string, totale: int}
+     */
+    private function pianoDeiSaldi(Request $request, Condominio $condominio, Esercizio $esercizio): ?array
+    {
+        $id = (string) $request->query('gestione_id', '');
+        if ($request->query('origine') !== 'saldi' || ! ctype_digit($id)) {
+            return null;
+        }
+        $gestione = Gestione::query()->where('condominio_id', $condominio->id)->find((int) $id);
+        $libero = $gestione === null ? null : \App\Http\Controllers\Gestionale\Saldi\SaldoInizialeController::saldiIncassabili($condominio, $esercizio, (int) $gestione->id)[0] ?? null;
+        if ($libero === null) {
+            return null;
+        }
+
+        return ['origine' => 'saldi', 'gestione_id' => (int) $gestione->id, 'nome' => 'Saldi iniziali ' . $gestione->nome, 'numero_rate' => 1,
+            'metodo_distribuzione' => 'prima_rata', 'totale' => (int) $libero['totale']];
     }
 
     /** @return ?array{url: string, testo: string} */
@@ -275,9 +321,24 @@ class PianoRateController extends Controller
         $notaDestinatari    = $request->string('nota_destinatari')->trim()->value() ?: null;
         $notaScoperti    = $request->string('nota_scoperti')->trim()->value();
 
+        // «Rendi incassabili questi saldi» (`origine=saldi`): il piano di soli saldi non prende nessuna voce, anche su una gestione che ne ha di libere.
+        // L'origine dal browser vale solo se la gestione ha davvero dei saldi fuori da un piano (`SaldoInizialeController::saldiIncassabili`); le voci
+        // mandate insieme non si leggono, e il piano si genera subito: senza le quote dei saldi il ricalcolo non lo riconoscerebbe (`PianoRate::eDiSoliSaldi`).
+        $deiSaldi = ($validated['tipo'] ?? 'ordinario') !== 'straordinario' && $request->input('origine') === 'saldi';
+        if ($deiSaldi) {
+            if (\App\Http\Controllers\Gestionale\Saldi\SaldoInizialeController::saldiIncassabili($condominio, $esercizio, (int) ($validated['gestione_id'] ?? 0)) === []) {
+                return back()->withInput()->with($this->flashError('Impossibile creare il piano dei saldi: la gestione non ha saldi iniziali fuori da un piano rate. '
+                    . 'Per le voci del preventivo crea il piano dalla scheda «Dalle voci del preventivo».'));
+            }
+            $validated['capitoli_ids'] = [];
+            $validated['capitoli_config'] = [];
+            $validated['competenze_capitoli'] = [];
+            $validated['genera_subito'] = true;
+        }
+
         // Coda 489 (decisione 685 (3)): nessun piano nuovo finché un piano senza voci della gestione si ricalcola ancora, e il piano senza voci scelte non
         // nasce con la riga delle voci vuota; prima di ogni scrittura.
-        if (($rifiuto = $this->rifiutoPerIPianiSenzaVoci($validated, $esercizio)) !== null) {
+        if (($rifiuto = $this->rifiutoPerIPianiSenzaVoci($validated, $esercizio, $deiSaldi)) !== null) {
             return back()->withInput()->with($this->flashError($rifiuto));
         }
 
@@ -325,6 +386,8 @@ class PianoRateController extends Controller
             // 1. Determiniamo la Genesi del Piano (Il Contesto)
             $pianoRate->contesto_creazione = match(true) {
                 $request->input('origine') === 'dashboard' => 'integrazione_dashboard',
+                // Il piano dei saldi non è il preventivo dell'anno: il primo piano con le voci resta «ordinario», non «integrativo».
+                $deiSaldi => 'libero_manuale',
                 !empty($validated['fatture_config']) => 'integrazione_dashboard', // Se ha fatture è sicuramente un'integrazione
                 !empty($validated['capitoli_ids']) => 'libero_manuale', // Se l'utente ha cliccato check specifici
                 default => 'preventivo_iniziale', // Il piano madre di inizio anno
@@ -391,6 +454,14 @@ class PianoRateController extends Controller
                     $syncFatture[$fConf['id']] = ['importo_collegato' => $importoCents];
                     $fattureIds[] = $fConf['id'];
                 }
+                // Coda 743 (decisione 655): il ripianamento del debito ereditato nasce con il piano, nella sua transazione (la voce, le coperture, la
+                // rettifica a giornale): niente copertura senza piano. La pregressa entra con la parte che il piano mette a rate.
+                if (($ripianamento = $request->ripianamento()) !== null) {
+                    foreach (\App\Services\Gestionale\RipianamentoDelDeficit::scrivi($pianoRate, $ripianamento['proposta'], $ripianamento['importo'],
+                        $ripianamento['tabella_id'], $delibera, $request->user()) as $fatturaId => $cents) {
+                        $syncFatture[$fatturaId] = ['importo_collegato' => $cents];
+                    }
+                }
                 
                 RegistroModifiche::legame($pianoRate, 'fattureStraordinarie', 'Fatture', fn () => $pianoRate->fattureStraordinarie()->sync($syncFatture), 'numero_documento');
 
@@ -398,10 +469,11 @@ class PianoRateController extends Controller
                 if (!empty($fattureIds)) {
                     DB::table('righe_fattura')
                         ->whereIn('fattura_passiva_id', $fattureIds)
-                        // Spegniamo solo le righe che legittimavano lo sforo o l'ad personam
+                        // Spegniamo solo le righe che legittimavano lo sforo o l'ad personam (dalla Coda 742 anche quelle su una voce a € 0)
                         ->where(function ($query) {
                             $query->where('is_sopravvenienza', true)
-                                  ->orWhereNotNull('immobile_id');
+                                  ->orWhereNotNull('immobile_id')
+                                  ->orWhere(fn ($z) => \App\Services\Gestionale\VoceFuoriDalPreventivo::righe($z));
                         })
                         ->update(['is_rateizzata' => true]);
                 }
@@ -419,7 +491,9 @@ class PianoRateController extends Controller
                 $capitoliConfig = $validated['capitoli_config'] ?? [];
                 $syncData = [];
 
-                if (!empty($capitoliConfig)) {
+                if ($deiSaldi) {
+                    // Il piano dei saldi: nessuna riga, e nessuna voce libera presa.
+                } elseif (!empty($capitoliConfig)) {
                     foreach ($capitoliConfig as $conf) {
                         $importoCents = (isset($conf['importo']) && $conf['importo'] !== '') ? MoneyHelper::toCents($conf['importo']) : null;
                         $syncData[$conf['id']] = ['importo' => $importoCents, 'note' => $conf['note'] ?? null];
@@ -507,7 +581,11 @@ class PianoRateController extends Controller
 
                     }
                 }
+                $syncData = $this->conIlResiduoSulleVoci($pianoRate, $esercizio, $syncData);
                 RegistroModifiche::legame($pianoRate, 'capitoli', 'Capitoli', fn () => $pianoRate->capitoli()->sync($syncData));
+                if (! $deiSaldi) {
+                    $this->conIlTettoSulleVoci($pianoRate, $esercizio);
+                }
 
                 // B2, S6 (decisione 20): i tratti di competenza per voce, sulla pivot appena nata.
                 $competenzeNonApplicate = $this->scriviCompetenzeCapitoli($pianoRate, $validated['competenze_capitoli'] ?? []);
@@ -568,7 +646,8 @@ class PianoRateController extends Controller
                     notaDestinatari: $notaDestinatari,
                     esercizio: $esercizio,
                     notaScoperti: $notaScoperti,
-                    allaCreazione: true
+                    allaCreazione: true,
+                    diSoliSaldi: $deiSaldi,
                 );
             }
 
@@ -599,6 +678,12 @@ class PianoRateController extends Controller
             }
             // ----------------------------
 
+            // Coda 743: salvato il piano del ripianamento, lo scoperto del compito del deficit scende; il compito si chiude se non resta niente da ripianare, e
+            // resta aperto con il resto (anche se il seguito della delibera, collegata sopra, lo aveva chiuso).
+            if (($ripianamento = $request->ripianamento()) !== null) {
+                \App\Services\Gestionale\RipianamentoDelDeficit::allineaIlCompito((int) $condominio->id, (int) $ripianamento['proposta']['compito_id'], $pianoRate);
+            }
+
             DB::commit();
             return $this->redirectSuccess($condominio, $esercizio, $pianoRate, $validated, $statistiche, $competenzeNonApplicate ?? []);
 
@@ -613,11 +698,82 @@ class PianoRateController extends Controller
             return back()->withInput()->with($this->flashError($e->getMessage()));
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error("Errore store piano rate", ['msg' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
-            return back()->withInput()->with($this->flashError($e->getMessage()));
+            // Il rifiuto di una regola (il tetto sulle voci) arriva alla pagina con la sua frase, senza una riga nel registro degli errori.
+            if (! ($e instanceof \DomainException && \App\Support\Errori\MessaggioPerLaPagina::eUnaRegola($e))) {
+                Log::error("Errore store piano rate", ['msg' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
+            }
+            return back()->withInput()->with($this->flashError(\App\Support\Errori\MessaggioPerLaPagina::di($e, 'PianoRateController@store')));
         }
     }
     
+    /**
+     * Prima di scrivere le righe del piano nuovo: l'importo vuoto, la selezione rapida e l'inclusione automatica prendono, per una voce di spesa che gli
+     * altri piani attivi dello stesso esercizio chiedono già (`TettoSulleVoci::chiestoDagliAltri`), quello che resta del suo tetto invece della voce intera.
+     * Una cifra scritta a mano resta com'è, e una voce senza residuo pure: dopo la scrittura le guarda `conIlTettoSulleVoci`.
+     *
+     * @param  array<int, array{importo: ?int, note: ?string}>  $syncData
+     * @return array<int, array{importo: ?int, note: ?string}>
+     */
+    private function conIlResiduoSulleVoci(PianoRate $piano, Esercizio $esercizio, array $syncData): array
+    {
+        if ($syncData === []) {
+            return $syncData;
+        }
+        $conti = Conto::query()->whereIn('id', array_keys($syncData))->withCount('sottoconti')->get()->keyBy('id');
+        // Una voce con un già versato ha la sua guardia, che divide il già versato fra i piani e lo dice con le sue parole
+        // (`CalcoloQuoteService::rifiutoDelGiaVersato`): qui non si guarda.
+        $conGiaVersato = \App\Models\Gestionale\ContributoVersato::query()->where('target_type', Conto::class)->whereIn('target_id', $conti->keys()->all())
+            ->distinct()->pluck('target_id')->map(fn ($id) => (int) $id)->all();
+        $foglie = $conti->filter(fn (Conto $c) => $c->sottoconti_count === 0 && in_array($c->tipo, Conto::TIPI_DI_SPESA, true)
+            && ! in_array((int) $c->id, $conGiaVersato, true));
+        if ($foglie->isEmpty()) {
+            return $syncData;
+        }
+        $altri = app(\App\Services\Gestionale\TettoSulleVoci::class)->chiestoDagliAltri($piano);
+        if ($altri === []) {
+            return $syncData;
+        }
+        $speso = app(SpesaPerVoceService::class)->perEsercizio($esercizio, $foglie->keys()->map(fn ($id) => (int) $id)->all());
+        foreach ($foglie as $id => $conto) {
+            $giaChiesto = (int) ($altri[(int) $id]['chiesto'] ?? 0);
+            $scritto = $syncData[$id]['importo'];
+            $aMano = $scritto !== null && ! in_array($syncData[$id]['note'] ?? null, \App\Services\Gestionale\TettoSulleVoci::NOTE_DEL_PROGRAMMA, true);
+            if ($giaChiesto === 0 || $aMano) {
+                continue;
+            }
+            $residuo = max(0, max(abs((int) $conto->importo), (int) ($speso[(int) $id] ?? 0)) - $giaChiesto);
+            $chiede = $scritto === null ? abs((int) $conto->importo) : (int) $scritto;
+            if ($chiede > $residuo && $residuo > 0) {
+                $syncData[$id]['importo'] = $residuo;
+            }
+        }
+
+        return $syncData;
+    }
+
+    /**
+     * Il tetto sulle voci del piano nuovo, dopo la scrittura delle righe e nella transazione della creazione (`TettoSulleVoci::primoSforo`): una voce, o
+     * una sottovoce che il piano chiede con la riga di un capitolo, oltre quello che resta ferma la creazione con il residuo e i piani che la chiedono già.
+     *
+     * @throws \DomainException con la frase per la pagina
+     */
+    private function conIlTettoSulleVoci(PianoRate $piano, Esercizio $esercizio): void
+    {
+        $sforo = app(\App\Services\Gestionale\TettoSulleVoci::class)->primoSforo($piano, $esercizio);
+        if ($sforo === null) {
+            return;
+        }
+        $euro = fn (int $c) => \App\Services\Gestionale\TettoSulleVoci::euro($c);
+        $inizio = \App\Services\Gestionale\TettoSulleVoci::giaChiesta($sforo) . ': restano ' . $euro($sforo['residuo']) . ' da chiedere';
+        if ($sforo['capitolo'] !== null) {
+            throw new \DomainException($inizio . ', e il capitolo «' . $sforo['capitolo'] . '» di questo piano gliene passa ' . $euro($sforo['chiede'])
+                . '. Scegli le sottovoci del capitolo una per una, ognuna con al massimo quello che resta, o scrivi per il capitolo una cifra più bassa.');
+        }
+        throw new \DomainException($inizio . ($sforo['aMano'] && $sforo['residuo'] > 0
+            ? ', e questo piano ne chiede ' . $euro($sforo['chiede']) . '. Chiedila con al massimo ' . $euro($sforo['residuo']) . ', o toglila da questo piano.'
+            : '. Toglila da questo piano: chiesta di nuovo, i condòmini la pagherebbero due volte. Se la spesa è più alta del preventivo, registra prima la fattura: lo speso alza il tetto.'));
+    }
+
     /**
      * Coda 489 (decisione 685 (3)): i piani della gestione con la riga delle voci vuota (le versioni di prima) fermano la creazione di un piano nuovo,
      * prima di ogni scrittura, con o senza «genera subito». Un piano così prende a ogni ricalcolo le voci libere del suo esercizio senza impegnarle; il suo
@@ -641,7 +797,7 @@ class PianoRateController extends Controller
      *
      * @param  array<string, mixed>  $validated
      */
-    private function rifiutoPerIPianiSenzaVoci(array $validated, Esercizio $esercizio): ?string
+    private function rifiutoPerIPianiSenzaVoci(array $validated, Esercizio $esercizio, bool $deiSaldi = false): ?string
     {
         if (($validated['tipo'] ?? 'ordinario') === 'straordinario') {
             return null;
@@ -654,7 +810,7 @@ class PianoRateController extends Controller
 
         $senzaVoci = PianoRate::where('gestione_id', $gestione->id)->whereIn('stato', ['bozza', 'approvato'])->orderBy('id')->get()
             ->filter(fn (PianoRate $p) => $p->tipo !== 'straordinario' && ! $p->eDegliAddebiti()
-                && ! DB::table('piano_rate_capitoli')->where('piano_rate_id', $p->id)->exists())->values();
+                && ! DB::table('piano_rate_capitoli')->where('piano_rate_id', $p->id)->exists() && ! $p->eDiSoliSaldi())->values();
         $fermi = $senzaVoci->mapWithKeys(fn (PianoRate $p) => [$p->id => $p->eImmutabile()]);
         $perche = $senzaVoci->mapWithKeys(fn (PianoRate $p) => [$p->id => $p->fraseDaRifare('Il piano «' . $p->nome . '» non si può ricalcolare')]);
         // Si ricalcola ancora, e il ricalcolo gli scrive la riga: altrimenti resterebbe senza voci, e fermerebbe ogni piano nuovo senza una strada.
@@ -675,6 +831,10 @@ class PianoRateController extends Controller
                 : $this->fraseDeiPianiSenzaVoci($fermano, $perche->all(), $ricalcolabili->isEmpty());
         }
 
+        // Il piano dei saldi non chiede voci: che siano tutte in un altro piano non lo ferma.
+        if ($deiSaldi) {
+            return null;
+        }
         $piani = $this->pianiDelloStessoEsercizio($gestione, $esercizio);
         if (! $pianoConto->conti()->visibili()->whereNull('parent_id')->exists()
             || $this->capitoliOrfani($gestione, $piani->pluck('id')->all())->isNotEmpty()) {
@@ -789,8 +949,16 @@ class PianoRateController extends Controller
      * @param PianoRate $pianoRate L'entità del piano rate da visualizzare
      * @return Response Renderizzazione del componente Vue di dettaglio
      */
-    public function show(Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate): Response
+    public function show(Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate): Response|RedirectResponse
     {
+        // Il binding risolve il piano per id, senza guardare il condominio dell'indirizzo.
+        abort_unless((int) $pianoRate->condominio_id === (int) $condominio->id, 404);
+        // Il piano si legge nel suo esercizio: lo speso, il già versato e i collegamenti della pagina sono di quell'anno.
+        $delPiano = app(\App\Services\Riparto\CompetenzaDelPiano::class)->esercizioDelPiano($pianoRate);
+        if ($delPiano !== null && $delPiano->id !== $esercizio->id && (int) $delPiano->condominio_id === (int) $condominio->id) {
+            return redirect()->route('admin.gestionale.esercizi.piani-rate.show', [$condominio, $delPiano, $pianoRate]);
+        }
+
         // --- [MODIFICA 1: Aggiunto fattureStraordinarie.fornitore al load] ---
         $pianoRate->load([
             'rate.rateQuote.anagrafica', 
@@ -896,32 +1064,19 @@ class PianoRateController extends Controller
                 ];
             });
 
-        // --- [MODIFICA 2: Il Bivio per leggere Fatture o Capitoli] ---
-        if ($pianoRate->tipo === 'straordinario') {
-            // Logica Piani Straordinari (Legge dalle fatture)
-            $sources = $pianoRate->fattureStraordinarie->map(function ($fattura) {
-                $importoReale = $fattura->pivot->importo_collegato ?? 0;
-                return [
-                    'id'                => $fattura->id,
-                    'nome'              => 'Ft. ' . ($fattura->numero_documento ?? 'S/N') . ' (' . ($fattura->fornitore->ragione_sociale ?? 'Fornitore') . ')',
-                    'importo_residuo'   => $importoReale,
-                    'formatted_residuo' => MoneyHelper::format($importoReale, false)
-                ];
-            });
-        } else {
-            // Logica Piani Ordinari (Legge dai capitoli come faceva prima). Il tipo è quello del segno con cui il motore distribuisce la voce:
-            // il modale offre come destinazione solo le voci dello stesso tipo, e un capitolo con spese ed entrate insieme non si sposta. Una voce
-            // che l'avviso della spesa negativa nomina, e il capitolo che la ripartisce, non si offrono: il server le rifiuta come sorgente.
-            $sources = app(BudgetMovementService::class)->sorgentiPerLaPagina($pianoRate);
-        }
-        // -------------------------------------------------------------
+        // Nel piano straordinario le voci del piano sono le fatture: «Sposta spesa» lavora sulle righe di `piano_rate_capitoli`, che lì non ci sono, e non si
+        // offre (il server lo rifiuta: `BudgetMovementController::store`). Nell'ordinario il tipo è quello del segno con cui il motore distribuisce la voce:
+        // il modale offre come destinazione solo le voci dello stesso tipo, e un capitolo con spese ed entrate insieme non si sposta. Una voce che l'avviso
+        // della spesa negativa nomina, e il capitolo che la ripartisce, non si offrono: il server le rifiuta come sorgente.
+        $straordinario = $pianoRate->tipo === 'straordinario';
+        $sources = $straordinario ? [] : app(BudgetMovementService::class)->sorgentiPerLaPagina($pianoRate);
 
         $destinations = [];
         $avvisoRigheSovrapposte = null;
         $pianoContoId = $pianoRate->gestione->pianoConto?->id;
 
         if ($pianoContoId) {
-            $destinations = app(BudgetMovementService::class)->destinazioniPerLaPagina($pianoRate, $pianoContoId);
+            $destinations = $straordinario ? [] : app(BudgetMovementService::class)->destinazioniPerLaPagina($pianoRate, $pianoContoId);
             $avvisoRigheSovrapposte = app(BudgetMovementService::class)->avvisoRigheSovrapposte($pianoRate, $pianoContoId);
         } else {
             Log::warning("Sposta Spesa: Nessun Piano Conto trovato per la gestione {$pianoRate->gestione_id}");
@@ -963,7 +1118,7 @@ class PianoRateController extends Controller
             'avviso_righe_sovrapposte' => $avvisoRigheSovrapposte,
             'needsMigration' => false, 
             'copertura' => $coperturaData,
-            'sources' => $sources, // <--- Ora questo conterrà le fatture!
+            'sources' => $sources,
             'destinations' => $destinations,
             // Da quale menu di «Sposta spesa» il server ha tolto delle voci di spesa scritte con il meno: il modale lo dice solo lì.
             'spese_negative_fuori_dai_menu' => app(BudgetMovementService::class)->speseNegativeFuoriDaiMenu($pianoRate, $pianoContoId),
@@ -982,6 +1137,9 @@ class PianoRateController extends Controller
             'fondo_speciale' => \App\Services\Assemblee\Seguito\FondoSpecialeDelPiano::perLaPagina($pianoRate, request()->user()),
             // Coda 688: il piano d'urgenza lo ricorda in testa, con il giorno dei lavori, il motivo e la prima assemblea.
             'urgenza_del_piano' => \App\Services\Riparto\GiornoDellUrgenza::perLaPagina($pianoRate, request()->user()),
+            'usufrutti_con_l_ordinaria_al_nudo' => app(\App\Services\Subentro\UsufruttiConLOrdinariaAlNudo::class)->perLaPagina($pianoRate),
+            // La riga «Esercizio: 2026 · Cambia»: gli esercizi aperti della gestione del piano, o la frase che dice perché non si cambia.
+            'cambio_esercizio' => $this->cambioDellEsercizio($pianoRate),
             // Le quote non assegnate che si possono addebitare a una persona (quelle di un'unità), con quanto è già addebitato e quanto resta.
             'addebiti_delle_quote' => $pianoRate->eDegliAddebiti() ? [] : array_map(fn (array $v) => [
                 'chiave' => (string) ($v['chiave'] ?? ''), 'immobile_id' => $v['immobile_id'] ?? null, 'immobile_nome' => $v['immobile_nome'] ?? null,
@@ -1082,6 +1240,112 @@ class PianoRateController extends Controller
      * @param PianoRate $pianoRate
      * @return RedirectResponse
      */
+    /**
+     * Cambia l'esercizio di un piano nato nell'esercizio sbagliato («Esercizio: 2026 · Cambia» nella pagina del piano). Solo per un piano senza rate emesse,
+     * senza incassi e senza il conguaglio di un passaggio, che non è il piano degli addebiti, fra gli esercizi aperti della sua gestione: un piano emesso
+     * sposterebbe il già versato e il giornale, e si rifà. Le rate già generate non cambiano da sole: la frase dice di ricalcolarlo, e il ricalcolo toglie
+     * il già versato dell'esercizio nuovo.
+     */
+    public function updateEsercizio(Request $request, Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate): RedirectResponse
+    {
+        // Il binding risolve il piano per id, senza guardare il condominio dell'indirizzo.
+        abort_unless((int) $pianoRate->condominio_id === (int) $condominio->id, 404);
+        $cambio = $this->cambioDellEsercizio($pianoRate);
+        if ($cambio['fermo'] !== null) {
+            return back()->with($this->flashError($cambio['fermo']));
+        }
+        $request->validate(['esercizio_id' => ['required', 'integer', Rule::in(array_column($cambio['scelte'], 'id'))]],
+            ['esercizio_id.required' => 'Scegli l\'esercizio del piano.', 'esercizio_id.in' => 'Scegli un esercizio aperto della gestione del piano, diverso da quello di oggi.']);
+        $nuovo = Esercizio::findOrFail((int) $request->input('esercizio_id'));
+        $prima = (string) ($cambio['attuale']['nome'] ?? '');
+
+        $gesto = \App\Services\RegistroModifiche\Gesto::sulModello($pianoRate)
+            ->riepilogo('Piano rate «' . $pianoRate->nome . '» spostato dall\'esercizio «' . $prima . '» all\'esercizio «' . $nuovo->nome . '»');
+        // Il tetto sulle voci nell'esercizio di arrivo, dopo lo spostamento e nella sua transazione: se un'altra voce lo sfora, niente resta scritto.
+        try {
+            DB::transaction(function () use ($gesto, $pianoRate, $nuovo) {
+                RegistroModifiche::durante($gesto, function () use ($pianoRate, $nuovo) {
+                    $pianoRate->esercizio_id = $nuovo->id;
+                    $pianoRate->save();
+                });
+                if (($perche = $this->sforoNellEsercizio($pianoRate, $nuovo)) !== null) {
+                    throw new \DomainException('Il piano «' . $pianoRate->nome . '» non passa all\'esercizio «' . $nuovo->nome . '»: ' . $perche
+                        . ' Lascialo nel suo esercizio, o togli la voce da uno dei due piani prima di spostarlo.');
+                }
+            });
+        } catch (\DomainException $e) {
+            $pianoRate->refresh();
+
+            return back()->with($this->flashError($e->getMessage()));
+        }
+
+        $conRate = $pianoRate->rate()->exists();
+
+        return redirect()->route('admin.gestionale.esercizi.piani-rate.show', [$condominio, $nuovo, $pianoRate])->with($this->flashSuccess(
+            'Il piano «' . $pianoRate->nome . '» ora è dell\'esercizio «' . $nuovo->nome . '».'
+            . ($conRate ? ' Le rate sono state calcolate con l\'esercizio di prima: ricalcola il piano, così toglie il già versato di questo esercizio.'
+                . ' Le scadenze delle rate restano quelle del piano: se servono altre date, rifallo.' : '')));
+    }
+
+    /**
+     * Perché il piano, nell'esercizio dato, chiederebbe una voce oltre il suo tetto (`TettoSulleVoci::primoSforo`), o null: «la voce «Spese generali» vale
+     * € 1.200,00 ed è già chiesta dal piano «Preventivo 2027» (€ 1.200,00), restano € 0,00 da chiedere e questo piano ne chiede € 1.200,00.». Lo legge lo
+     * spostamento, dopo aver scritto l'esercizio, e il menu di «Cambia» per ogni esercizio, con il piano in quell'esercizio senza scriverlo.
+     */
+    private function sforoNellEsercizio(PianoRate $pianoRate, Esercizio $esercizio): ?string
+    {
+        $sforo = app(\App\Services\Gestionale\TettoSulleVoci::class)->primoSforo($pianoRate, $esercizio);
+        if ($sforo === null) {
+            return null;
+        }
+
+        return \App\Services\Gestionale\TettoSulleVoci::giaChiesta($sforo, false) . ', restano ' . \App\Services\Gestionale\TettoSulleVoci::euro($sforo['residuo'])
+            . ' da chiedere e questo piano ne chiede ' . \App\Services\Gestionale\TettoSulleVoci::euro($sforo['chiede'])
+            . ($sforo['capitolo'] !== null ? ' con il capitolo «' . $sforo['capitolo'] . '»' : '') . '.';
+    }
+
+    /**
+     * La riga dell'esercizio nella pagina del piano: l'esercizio di oggi, gli esercizi aperti della gestione fra cui spostarlo e, se non si sposta, il perché
+     * (`fermo`, con la strada). Senza altri esercizi aperti nella gestione le scelte sono vuote e la pagina non offre «Cambia».
+     *
+     * @return array{attuale: ?array{id: int, nome: string}, scelte: list<array{id: int, nome: string}>, fermo: ?string}
+     */
+    private function cambioDellEsercizio(PianoRate $pianoRate): array
+    {
+        $attuale = app(\App\Services\Riparto\CompetenzaDelPiano::class)->esercizioDelPiano($pianoRate);
+        $fermo = match (true) {
+            $pianoRate->eDegliAddebiti() => 'Il piano degli addebiti resta nel suo esercizio: ogni addebito è di quell\'anno.',
+            ($attuale?->stato ?? null) === 'chiuso' => 'L\'esercizio «' . $attuale->nome . '» è chiuso: il piano resta lì.',
+            $pianoRate->rate()->whereHas('rateQuote', fn ($q) => $q->whereNotNull('scrittura_contabile_id'))->exists(),
+            $pianoRate->haIncassiRegistrati(),
+            $pianoRate->fraseConguagliato('Cambiarne l\'esercizio', 'ricalcola il piano') !== null
+                => 'Il piano ha rate emesse, incassi o il conguaglio di un passaggio: non cambia esercizio, si rifà. Annulla prima gli incassi e le emissioni, '
+                    . 'poi eliminalo e crealo di nuovo dalla pagina dell\'esercizio giusto.',
+            default => null,
+        };
+        $scelte = $pianoRate->gestione === null ? collect() : $pianoRate->gestione->esercizi()->where('esercizi.condominio_id', $pianoRate->condominio_id)
+            ->where('esercizi.stato', '!=', 'chiuso')->when($attuale !== null, fn ($q) => $q->where('esercizi.id', '!=', $attuale->id))
+            ->orderBy('esercizi.data_inizio')->get(['esercizi.id', 'esercizi.nome', 'esercizi.data_inizio', 'esercizi.data_fine', 'esercizi.stato']);
+
+        // Per ogni esercizio, se il piano lì chiederebbe una voce oltre il tetto, il perché (`perche`): il menu lo dice e non lo fa scegliere. Il piano si
+        // guarda in quell'esercizio senza scriverlo, su una copia in memoria.
+        $perche = function (Esercizio $e) use ($pianoRate, $fermo): ?string {
+            if ($fermo !== null) {
+                return null;
+            }
+            $la = clone $pianoRate;
+            $la->esercizio_id = $e->id;
+
+            return $this->sforoNellEsercizio($la, $e);
+        };
+
+        return [
+            'attuale' => $attuale === null ? null : ['id' => (int) $attuale->id, 'nome' => (string) $attuale->nome],
+            'scelte' => $scelte->map(fn ($e) => ['id' => (int) $e->id, 'nome' => (string) $e->nome, 'perche' => $perche($e)])->values()->all(),
+            'fermo' => $fermo,
+        ];
+    }
+
     public function updateStato(Request $request, Condominio $condominio, Esercizio $esercizio, PianoRate $pianoRate)
     {
         // Il piano degli addebiti nasce approvato senza una delibera, e resta così: una bozza toglierebbe gli addebiti dallo scadenziario.
@@ -1315,6 +1579,17 @@ class PianoRateController extends Controller
                 $fattureIds = $pianoRate->fattureStraordinarie()->pluck('fatture_passive.id')->toArray();
                 
                 if (!empty($fattureIds)) {
+                    // Coda 742: la riga su una voce a € 0 presa da questo piano si riconosce dal suo segno, non dalla regola (che dopo una cifra data alla
+                    // voce in un altro piano non la trova più); il segno si spegne solo se la fattura non è in un altro piano straordinario.
+                    $inUnAltroPiano = DB::table('piano_rate_fatture')->join('piani_rate', 'piani_rate.id', '=', 'piano_rate_fatture.piano_rate_id')
+                        ->whereIn('piano_rate_fatture.fattura_passiva_id', $fattureIds)->where('piano_rate_fatture.piano_rate_id', '!=', $pianoRate->id)
+                        ->where('piani_rate.tipo', 'straordinario')->pluck('piano_rate_fatture.fattura_passiva_id')->map(fn ($id) => (int) $id)->all();
+                    $soloDiQuesto = array_values(array_diff(array_map('intval', $fattureIds), $inUnAltroPiano));
+                    if ($soloDiQuesto !== []) {
+                        DB::table('righe_fattura')->whereIn('fattura_passiva_id', $soloDiQuesto)
+                            ->where(fn ($z) => \App\Services\Gestionale\VoceFuoriDalPreventivo::prese($z, 'righe_fattura', (int) $pianoRate->id))
+                            ->update(['is_rateizzata' => false]);
+                    }
                     DB::table('righe_fattura')
                         ->whereIn('fattura_passiva_id', $fattureIds)
                         ->where(function ($query) {
@@ -1323,6 +1598,13 @@ class PianoRateController extends Controller
                         })
                         ->update(['is_rateizzata' => false]); // Riaccende l'allarme
                 }
+            }
+
+            // Coda 743: il ripianamento del debito ereditato che il piano aveva scritto si toglie con lui (niente copertura senza piano), e con la delibera
+            // la cosa «Prepara il piano di ripianamento» torna da fare.
+            if (\App\Services\Gestionale\RipianamentoDelDeficit::togli($pianoRate, request()->user()) > 0 && request()->user() !== null
+                && \App\Services\Assemblee\CollegamentiDelleDelibere::delibera($pianoRate, \App\Enums\Assemblee\RuoloCollegamento::DELIBERA->value) !== null) {
+                \App\Services\Assemblee\CollegamentiDelleDelibere::scollega($pianoRate, \App\Enums\Assemblee\RuoloCollegamento::DELIBERA->value, request()->user());
             }
 
             // 2. Sganciamo le relazioni (Sia per Ordinario che Straordinario)
@@ -1394,6 +1676,10 @@ class PianoRateController extends Controller
     {
         if (($rifiuto = $pianoRate->rifiutoDegliAddebiti()) !== null) {
             return back()->with($this->flashError($rifiuto));
+        }
+        // Nel piano straordinario le voci sono le fatture: l'id che arriva è quello di una fattura, non di un conto del piano.
+        if ($pianoRate->tipo === 'straordinario') {
+            return back()->with($this->flashError('Nei piani straordinari una fattura non si toglie da qui: elimina il piano e ricrealo con le fatture giuste.'));
         }
 
         // B2, cancello (2): il ricalcolo dopo la rimozione può cambiare i destinatari rispetto al piano
@@ -1523,7 +1809,7 @@ class PianoRateController extends Controller
             return back()->with($this->flashError($e->getMessage()));
         } catch (\Throwable $e) {
             DB::rollBack();
-            return back()->with($this->flashError("Errore durante la rimozione: " . $e->getMessage()));
+            return back()->with($this->flashError("Errore durante la rimozione: " . \App\Support\Errori\MessaggioPerLaPagina::di($e, 'PianoRateController@detachCapitolo')));
         }
     }
 

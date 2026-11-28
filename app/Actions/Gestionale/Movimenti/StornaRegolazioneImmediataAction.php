@@ -92,7 +92,11 @@ class StornaRegolazioneImmediataAction
                 'gestione_id' => $scrittura->gestione_id,
                 'scrittura_padre_id' => $scrittura->id,
                 'data_registrazione' => DateHelper::oggiUtente(),
-                'data_competenza' => DateHelper::oggiUtente(),
+                // La regola dello storno di un incasso: un errore si annulla alla data dell'originale nello stesso esercizio; in un esercizio diverso
+                // (l'originale è chiuso), oggi. Con la data di oggi nello stesso esercizio lo storno cadrebbe fuori dal suo periodo.
+                'data_competenza' => $crossEsercizio
+                    ? DateHelper::oggiUtente()
+                    : ($scrittura->data_competenza?->format('Y-m-d') ?? DateHelper::oggiUtente()),
                 'causale' => mb_substr($causale, 0, 255),
                 'tipo_movimento' => TipoMovimentoContabile::STORNO_REGOLAZIONE_IMMEDIATA,
                 'stato' => 'registrata',

@@ -110,6 +110,8 @@ class PianoRateGenerationController extends Controller
             // della tappa 1 della 1.12.0-beta.14, `GenerateSaldiAction::fraseDelPregressoCambiato`).
             $saldiAction = app(\App\Actions\PianoRate\GenerateSaldiAction::class);
             $pregressoDiPrima = $saldiAction->pregressoDelleUnita($pianoRate);
+            // Il piano di soli saldi si riconosce dalle sue quote, che il ricalcolo cancella: si legge adesso.
+            $diSoliSaldi = $pianoRate->tipo !== 'straordinario' && $pianoRate->eDiSoliSaldi();
 
             // 3. Sincronizzazione Granulare
             $orphanIds = $validated['orphan_ids'] ?? [];
@@ -145,6 +147,7 @@ class PianoRateGenerationController extends Controller
                 esercizio: $esercizio,
                 appenaSincronizzate: $appenaSincronizzate,
                 scriviLaRigaVuota: true,
+                diSoliSaldi: $diSoliSaldi,
             ));
 
             // Ricreiamo l'inbox con i nuovi ID delle rate
@@ -193,8 +196,13 @@ class PianoRateGenerationController extends Controller
             return back()->with($this->flashError($e->getMessage()));
         } catch (\Throwable $e) {
             DB::rollBack();
+            // Il rifiuto di una regola che dice già la strada (la voce già a rate in un piano delle fatture, `SyncOrphanChaptersAction`) arriva alla pagina
+            // con la sua frase sola, senza «Errore durante il ricalcolo» e senza una riga nel registro degli errori.
+            if ($e instanceof \DomainException && \App\Support\Errori\MessaggioPerLaPagina::eUnaRegola($e)) {
+                return back()->with($this->flashError(\App\Support\Errori\MessaggioPerLaPagina::di($e, 'PianoRateGenerationController@__invoke')));
+            }
             Log::error("Errore rigenerazione piano rate", ['error' => $e->getMessage()]);
-            return back()->with($this->flashError("Errore durante il ricalcolo: " . $e->getMessage()));
+            return back()->with($this->flashError("Errore durante il ricalcolo: " . \App\Support\Errori\MessaggioPerLaPagina::di($e, 'PianoRateGenerationController@__invoke')));
         }
     }
 

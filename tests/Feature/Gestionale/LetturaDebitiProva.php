@@ -113,9 +113,8 @@ function lcdProvaPersone($test, $admin, int $condominioId, int $esercizioId, arr
  * (a) Per (persona, unità, rata) con la quota emessa: dovuto − versato della lettura = Σ (importo − pagato) delle quote di quella chiave;
  * e nessuna chiave nella lettura come emessa senza una quota emessa.
  * (b) Lo scaduto per (persona, unità) della lettura = la morosità dell'anteprima del passaggio (`AnteprimaPassaggio::morosita`, la regola
- * comune già scritta), con le sue eccezioni dichiarate: la quota a credito sulla stessa (persona, unità, rata) di una a debito (una vendita
- * seguita da una ricompra, decisione 25: la morosità somma le quote a debito e non vede la gemella a credito, che il giornale netta); una
- * quota con la scrittura di emissione dopo oggi (per la morosità è a giornale, per la lettura non è ancora dovuta).
+ * comune), senza eccezioni: dalla 1.12.0-beta.15 la morosità legge la lettura comune, e le due di prima (la gemella a credito di una
+ * vendita seguita da una ricompra, decisione 25; la quota con la scrittura di emissione dopo oggi) non ci sono più.
  * (c) Per (persona, rata) il residuo della situazione debitoria del modulo dell'incasso (le righe emesse) = il netto della lettura su
  * tutte le unità della persona.
  *
@@ -125,29 +124,17 @@ function lcdProvaPersone($test, $admin, int $condominioId, int $esercizioId, arr
  */
 function lcdProvaChiavi($test, $admin, int $condominioId, array $persone, array $unita): array
 {
-    $oggi = \App\Helpers\DateHelper::oggiUtente();
     $quote = DB::table('rate_quote as q')->join('rate', 'rate.id', '=', 'q.rata_id')->join('piani_rate as p', 'p.id', '=', 'rate.piano_rate_id')
         ->leftJoin('scritture_contabili as em', fn ($j) => $j->on('em.id', '=', 'q.scrittura_contabile_id')->whereNull('em.deleted_at')->where('em.tipo_movimento', 'emissione_rata'))
         ->where('p.condominio_id', $condominioId)->whereNotNull('q.anagrafica_id')
         ->get(['q.rata_id', 'q.anagrafica_id', 'q.immobile_id', 'q.importo', 'q.importo_pagato', 'rate.numero_rata', 'em.id as emissione', 'em.data_competenza as emessa_il']);
 
     $perChiave = [];
-    $eccezioni = [];
     foreach ($quote as $q) {
         $k = "{$q->anagrafica_id}|{$q->immobile_id}|{$q->rata_id}";
-        $perChiave[$k] ??= ['quote' => 0, 'emessa' => false, 'debito' => false, 'credito' => false, 'n' => (int) $q->numero_rata];
+        $perChiave[$k] ??= ['quote' => 0, 'emessa' => false, 'n' => (int) $q->numero_rata];
         $perChiave[$k]['quote'] += (int) $q->importo - (int) $q->importo_pagato;
         $perChiave[$k]['emessa'] = $perChiave[$k]['emessa'] || $q->emissione !== null;
-        $perChiave[$k][(int) $q->importo > 0 ? 'debito' : 'credito'] = true;
-        if ($q->emissione !== null && substr((string) $q->emessa_il, 0, 10) > $oggi) {
-            $eccezioni["{$q->anagrafica_id}|{$q->immobile_id}"] = 'emissione dopo oggi';
-        }
-    }
-    foreach ($perChiave as $k => $g) {
-        if ($g['debito'] && $g['credito']) {
-            [$persona, $immobile] = explode('|', $k);
-            $eccezioni["{$persona}|{$immobile}"] = 'gemelle a debito e a credito';
-        }
     }
 
     $letture = app(LetturaDebiti::class)->perCondominio($condominioId);
@@ -174,9 +161,6 @@ function lcdProvaChiavi($test, $admin, int $condominioId, array $persone, array 
     $morosita = new \ReflectionMethod(\App\Services\Subentro\AnteprimaPassaggio::class, 'morosita');
     foreach ($persone as $chi => $id) {
         foreach ($unita as $nome => $immobile) {
-            if (isset($eccezioni["{$id}|{$immobile->id}"])) {
-                continue;
-            }
             $mor = (int) ($morosita->invoke(app(\App\Services\Subentro\AnteprimaPassaggio::class), $immobile, $id, [(int) $immobile->id])['importo'] ?? 0);
             $scaduto = (int) collect($letture[$id]['rate'] ?? [])->filter(fn ($r) => (int) $r['immobile_id'] === (int) $immobile->id && $r['scaduta'])->sum('residuo');
             if ($mor !== $scaduto) {

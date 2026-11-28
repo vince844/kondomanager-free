@@ -124,9 +124,10 @@ class StatoPatrimonialeService
      * - **le quote emesse nell'esercizio** («Gestione rate», stessi flussi), per la gestione della scrittura (l'emissione la prende dal piano);
      * - **i crediti verso i condòmini alla data** (tutti gli esercizi, come la fotografia), per la gestione del piano della rata e, per una riga senza
      *   rata, per quella della scrittura.
+     * - **la rettifica di esercizi precedenti** ({@see rettificaDiEserciziPrecedenti()}), fuori dalle quote emesse, per la gestione della scrittura.
      * Una scrittura senza gestione sta sotto la chiave 0. La liquidità e i fondi non si dividono: sono del condominio.
      *
-     * @return array{costi: array<int,int>, quote_emesse: array<int,int>, crediti: array<int,int>}
+     * @return array{costi: array<int,int>, quote_emesse: array<int,int>, crediti: array<int,int>, rettifica_esercizi_precedenti: array<int,int>}
      */
     public function perGestione(Condominio $condominio, Esercizio $esercizio, string $allaData): array
     {
@@ -154,7 +155,40 @@ class StatoPatrimonialeService
             ->selectRaw('COALESCE(pr.gestione_id, sc.gestione_id) as gestione_id')
             ->selectRaw("SUM(CASE WHEN rs.tipo_riga = 'dare' THEN rs.importo ELSE -rs.importo END) as saldo");
 
-        return ['costi' => $somma($costi), 'quote_emesse' => $somma($quote), 'crediti' => $somma($crediti)];
+        // Le quote emesse senza la rettifica di esercizi precedenti, che ha la sua colonna: la somma delle due è il saldo di «Gestione rate».
+        $rettifica = $this->rettificaDiEserciziPrecedenti($condominio, $esercizio);
+        $quoteEmesse = $somma($quote);
+        foreach ($rettifica as $id => $importo) {
+            $quoteEmesse[$id] = ($quoteEmesse[$id] ?? 0) - $importo;
+        }
+
+        return ['costi' => $somma($costi), 'quote_emesse' => array_filter($quoteEmesse, fn ($v) => $v !== 0), 'crediti' => $somma($crediti),
+            'rettifica_esercizi_precedenti' => $rettifica];
+    }
+
+    /**
+     * La «Rettifica di esercizi precedenti» dell'esercizio, per gestione (la chiave 0 senza gestione), orientata come le quote emesse
+     * (avere − dare su «Gestione rate»): la chiusura dell'anticipazione ad personam che il riallineamento dei crediti scrive in questo
+     * esercizio per un'emissione di un esercizio chiuso (`RiallineaCreditiService`, la scrittura figlia dell'emissione con la sua causale).
+     * La si riconosce da ciò che la scrittura ha già: la causale della chiusura e la madre in un altro esercizio. Non è una quota chiesta
+     * in questo esercizio, e non sta fra le quote registrate; il risultato di gestione la conta lo stesso. La chiusura scritta nello stesso
+     * esercizio dell'emissione resta fra le quote.
+     *
+     * @return array<int,int>
+     */
+    public function rettificaDiEserciziPrecedenti(Condominio $condominio, Esercizio $esercizio): array
+    {
+        return DB::table('righe_scritture as rs')
+            ->join('scritture_contabili as sc', fn ($j) => $j->on('sc.id', '=', 'rs.scrittura_id')->whereNull('sc.deleted_at'))
+            ->join('scritture_contabili as madre', 'madre.id', '=', 'sc.scrittura_padre_id')
+            ->join('conti_contabili as cc', fn ($j) => $j->on('cc.id', '=', 'rs.conto_contabile_id')->whereNull('cc.deleted_at'))
+            ->where('cc.condominio_id', $condominio->id)->where('cc.ruolo', 'gestione_rate')
+            ->where('sc.esercizio_id', $esercizio->id)->where('sc.tipo_movimento', 'emissione_rata')
+            ->where('sc.causale', 'like', RiallineaCreditiService::MARCATORE.' — chiusura anticipazione ad personam%')
+            ->whereColumn('madre.esercizio_id', '<>', 'sc.esercizio_id')
+            ->groupBy('sc.gestione_id')->select('sc.gestione_id')
+            ->selectRaw("SUM(CASE WHEN rs.tipo_riga = 'avere' THEN rs.importo ELSE -rs.importo END) as saldo")
+            ->get()->groupBy(fn ($r) => (int) $r->gestione_id)->map(fn ($g) => (int) $g->sum('saldo'))->filter(fn ($v) => $v !== 0)->all();
     }
 
     /** Lo Stato Patrimoniale chiude? Scorciatoia per test e controlli di integrità. */

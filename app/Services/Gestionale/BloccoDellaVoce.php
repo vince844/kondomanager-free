@@ -5,8 +5,10 @@
 
 namespace App\Services\Gestionale;
 
+use App\Enums\TipoMovimentoContabile;
 use App\Models\Gestionale\Conto;
 use App\Services\Riparto\SpeseNegativeNelPiano;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Le parole del blocco dei piani approvati su una voce del piano dei conti (`Conto::pianiCheBloccanoLaVoce`): chi la tiene, in quale piano, e la
@@ -117,6 +119,78 @@ final class BloccoDellaVoce
     }
 
     /**
+     * I movimenti a giornale che tengono le voci: le scritture con una riga sulla voce, finché non sono annullate. Annullata vuol dire nello stato
+     * «annullata» (l'incasso stornato, con le sue compensazioni) o con una figlia che la storna (`TipoMovimentoContabile::storniDiScrittura`). Le
+     * scritture di annullamento non contano: gli storni dell'elenco e la rettifica che storna un incasso (una `rettifica` con il padre annullato).
+     * Una coppia stornata si annulla, e senza la voce non cambia niente. Elenco esplicito, non «comincia per storno»: la compensazione con il
+     * credito (`storno_credito`) è una figlia viva dell'incasso, e la rettifica di un riallineamento dei crediti è figlia di una compensazione viva.
+     * Eliminata la voce, la riga del giornale resta senza voce (`righe_scritture.voce_spesa_id` va a null): la spesa resterebbe nei costi e
+     * uscirebbe dal consuntivo per voce e dal riparto.
+     *
+     * @param  list<int>  $vociIds
+     * @return array{voci: int, movimenti: int}
+     */
+    public static function movimentiAGiornale(array $vociIds): array
+    {
+        if ($vociIds === []) {
+            return ['voci' => 0, 'movimenti' => 0];
+        }
+
+        $storni = TipoMovimentoContabile::storniDiScrittura();
+        $righe = DB::table('righe_scritture as rs')
+            ->join('scritture_contabili as s', 's.id', '=', 'rs.scrittura_id')
+            ->whereIn('rs.voce_spesa_id', $vociIds)
+            ->whereNull('s.deleted_at')
+            ->where('s.stato', '!=', 'annullata')
+            ->where(fn ($q) => $q->whereNull('s.tipo_movimento')->orWhereNotIn('s.tipo_movimento', $storni))
+            ->whereNot(fn ($q) => $q->where('s.tipo_movimento', TipoMovimentoContabile::RETTIFICA->value)
+                ->whereExists(fn ($p) => $p->selectRaw('1')->from('scritture_contabili as p')->whereColumn('p.id', 's.scrittura_padre_id')->where('p.stato', 'annullata')))
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('scritture_contabili as st')
+                ->whereColumn('st.scrittura_padre_id', 's.id')->whereIn('st.tipo_movimento', $storni)->whereNull('st.deleted_at'));
+
+        return [
+            'voci' => (clone $righe)->distinct()->count('rs.voce_spesa_id'),
+            'movimenti' => (clone $righe)->distinct()->count('s.id'),
+        ];
+    }
+
+    /**
+     * Il rifiuto di una voce sotto un capitolo dell'altro tipo: un'entrata va sotto un capitolo di entrata, una spesa sotto uno di spesa. La frase dice
+     * la strada che passa: cambiare il tipo del capitolo dalla sua scheda, se si cambia (nessun piano approvato lo tiene e non ha voci del suo tipo,
+     * che finirebbero sotto un capitolo dell'altro), o creare la voce fuori dal capitolo, che passa sempre.
+     *
+     * @param  string  $tipo  il tipo della voce nuova
+     * @param  string  $capitolo  il nome del capitolo scelto
+     * @param  bool  $tipoDelCapitoloSiCambia  il tipo del capitolo si può portare a quello della voce
+     */
+    public static function rifiutoDelTipoSottoIlCapitolo(string $tipo, string $capitolo, bool $tipoDelCapitoloSiCambia): string
+    {
+        [$della, $delCapitolo, $etichetta] = Conto::segnoDelTipo($tipo) === 1 ? ['spesa', 'entrata', 'Spesa (uscita)'] : ['entrata', 'spesa', 'Entrata'];
+
+        return "Una voce di {$della} va sotto un capitolo di {$della}, e «{$capitolo}» è un capitolo di {$delCapitolo}: "
+            . ($tipoDelCapitoloSiCambia ? "cambia il tipo del capitolo in «{$etichetta}» con «Modifica» dalla sua scheda, o crea la voce fuori dal capitolo." : 'crea la voce fuori dal capitolo.');
+    }
+
+    /** Il rifiuto dell'eliminazione di una voce con dei movimenti a giornale. */
+    public static function rifiutoDeiMovimentiAGiornale(int $movimenti): string
+    {
+        return 'Eliminazione inibita: la voce ha ' . self::movimenti($movimenti) . ': ' . ($movimenti === 1 ? 'stornalo' : 'stornali')
+            . ' prima, o lascia la voce.';
+    }
+
+    /** Il rifiuto dell'eliminazione del piano dei conti quando delle sue voci hanno dei movimenti a giornale. */
+    public static function rifiutoDelPianoDeiContiPerIMovimenti(int $voci, int $movimenti): string
+    {
+        return 'Eliminazione inibita: ' . ($voci === 1 ? '1 voce del piano dei conti ha ' : "{$voci} voci del piano dei conti hanno ")
+            . self::movimenti($movimenti) . ': ' . ($movimenti === 1 ? 'stornalo' : 'stornali') . ' prima, o lascia il piano dei conti.';
+    }
+
+    private static function movimenti(int $n): string
+    {
+        return $n === 1 ? '1 movimento a giornale' : "{$n} movimenti a giornale";
+    }
+
+    /**
      * Il rifiuto dell'eliminazione del piano dei conti quando delle sue voci hanno righe di fattura.
      */
     public static function rifiutoDelPianoDeiContiPerLeRighe(int $voci): string
@@ -162,15 +236,23 @@ final class BloccoDellaVoce
     }
 
     /**
-     * «nel piano «Ordinario 2026», approvato», «nei piani «A» e «B», approvati».
+     * «nel piano «Ordinario 2026», approvato», «nei piani «A» e «B», approvati»; un piano delle fatture che tiene una voce a € 0 anche in bozza (Coda 742):
+     * «nel piano «Tetto a rate», in bozza», «nei piani «A», approvato, e «B», in bozza».
      *
-     * @param  list<array{id: int, nome: string}>  $bloccano
+     * @param  list<array{id: int, nome: string, bozza?: bool}>  $bloccano
      */
     public static function nelPiano(array $bloccano): string
     {
         $piani = self::piani($bloccano);
+        $inBozza = array_filter($piani, fn (array $p) => (bool) ($p['bozza'] ?? false));
+        if (count($piani) === 1) {
+            return "nel piano «{$piani[0]['nome']}», " . ($inBozza === [] ? 'approvato' : 'in bozza');
+        }
+        if ($inBozza === [] || count($inBozza) === count($piani)) {
+            return 'nei piani ' . self::nomi($piani) . ($inBozza === [] ? ', approvati' : ', in bozza');
+        }
 
-        return count($piani) === 1 ? "nel piano «{$piani[0]['nome']}», approvato" : 'nei piani ' . self::nomi($piani) . ', approvati';
+        return 'nei piani ' . SpeseNegativeNelPiano::elenco(array_map(fn (array $p) => "«{$p['nome']}», " . (($p['bozza'] ?? false) ? 'in bozza' : 'approvato'), $piani));
     }
 
     /**
@@ -184,6 +266,9 @@ final class BloccoDellaVoce
      */
     public static function frase(string $premessa, array $bloccano, string $poi, string $resta): string
     {
+        if (array_filter($bloccano, fn (array $p) => ($p['fattura'] ?? null) !== null) !== []) {
+            return self::fraseDelPianoDelleFatture($premessa, $bloccano, $poi, $resta);
+        }
         $piani = self::piani($bloccano);
         $uno = count($piani) === 1;
         $fermi = self::fermi($bloccano);
@@ -195,6 +280,45 @@ final class BloccoDellaVoce
         return $premessa . ': ' . ($uno ? 'riporta prima il piano in bozza dalla sua pagina' : 'riporta prima i piani in bozza dalle loro pagine') . ", poi {$poi}. "
             . ($uno ? 'Riportandolo' : 'Riportandoli') . ' in bozza si azzerano il numero del verbale e la nota dell\'approvazione: annotali prima; con delle rate emesse, '
             . self::primaDelleEmissioni($piani) . '.';
+    }
+
+    /**
+     * Coda 742: la voce vale € 0 nel preventivo e un piano delle fatture la mette a rate. Riportare il piano in bozza non la libera (la voce a € 0 resta ferma
+     * anche in bozza): la strada è togliere la fattura dal piano, e in un piano delle fatture una fattura sola non si stacca, quindi si elimina il piano
+     * (dalla bozza, annullando prima le emissioni se ce ne sono), come per lo storno della fattura (`FatturaPassiva::viaDalPiano`). I piani che tengono la
+     * voce in un altro modo (con la sua riga o quella di un capitolo) dicono la strada di sempre.
+     *
+     * @param  list<array{id: int, nome: string, fattura?: ?string, bozza?: bool, movimenti?: list<string>}>  $bloccano
+     */
+    private static function fraseDelPianoDelleFatture(string $premessa, array $bloccano, string $poi, string $resta): string
+    {
+        $diFatture = [];
+        foreach ($bloccano as $p) {
+            if (($p['fattura'] ?? null) !== null) {
+                $diFatture[$p['id']] ??= $p;
+            }
+        }
+        $diFatture = array_values($diFatture);
+        $altri = array_values(array_filter(self::piani($bloccano), fn (array $p) => ! in_array($p['id'], array_column($diFatture, 'id'), true)));
+        $fermi = self::fermi($diFatture);
+        $numeri = array_values(array_unique(array_map(fn (array $p) => 'n. ' . $p['fattura'], $diFatture)));
+        $uno = count($diFatture) === 1;
+        $frase = $premessa . ': la voce vale € 0 nel preventivo e la sua spesa è a rate ' . ($uno ? 'in quel piano' : 'in quei piani') . ' con '
+            . (count($numeri) === 1 ? 'la fattura ' : 'le fatture ') . SpeseNegativeNelPiano::elenco($numeri) . ': cambiata, il preventivo potrebbe chiederla una seconda volta. ';
+        if ($fermi !== []) {
+            return $frase . 'Un passaggio di titolarità registrato da una versione più vecchia, che dal programma non si annulla, ferma l\'annullamento delle '
+                . 'emissioni di ' . self::nomi($fermi) . ": {$resta}.";
+        }
+        $tutteInBozza = array_filter($diFatture, fn (array $p) => ! ($p['bozza'] ?? false)) === [];
+        $frase .= 'Togli prima la fattura dal piano: in un piano delle fatture una fattura sola non si stacca, quindi ' . ($tutteInBozza
+            ? ($uno ? 'elimina il piano dalla sua pagina' : 'elimina i piani dalle loro pagine')
+            : ($uno ? 'riporta il piano in bozza dalla sua pagina ed eliminalo' : 'riporta i piani in bozza dalle loro pagine ed eliminali')
+                . ' (con delle rate emesse, ' . self::primaDelleEmissioni($diFatture) . ')');
+        if ($altri !== []) {
+            $frase .= '; riporta in bozza anche ' . self::nomi($altri) . ' dalla ' . (count($altri) === 1 ? 'sua pagina' : 'loro pagine');
+        }
+
+        return $frase . ", poi {$poi}.";
     }
 
     /**

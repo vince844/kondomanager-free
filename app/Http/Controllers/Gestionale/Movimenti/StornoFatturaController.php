@@ -192,7 +192,9 @@ class StornoFatturaController extends Controller
                     // fornitore che nessuno chiude. `importo_iva` da solo non basta: il
                     // servizio lo ignora per costruzione, e questa chiave è il canale esplicito.
                     'importo_iva_dichiarata' => (float) $r->importo_iva / 100,
-                    'conto_id'           => $r->conto_id,
+                    // La riga di un'unità porta la voce dell'addebito (`conto_addebito_id`): il servizio la riceve come la voce scelta nel modulo e la
+                    // rimette sulla riga della nota, con la voce comune vuota.
+                    'conto_id'           => $r->conto_id ?? ($r->immobile_id !== null ? $r->conto_addebito_id : null),
                     'immobile_id'        => $r->immobile_id,
                     // Propagati dall'originale per far tornare l'importo di ritenuta
                     // storncato esattamente identico a quello versato in origine.
@@ -351,7 +353,7 @@ class StornoFatturaController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error("Errore Storno Fattura ID {$fattura->id}: " . $e->getMessage());
-            return back()->with($this->flashError("Impossibile stornare il documento: " . $e->getMessage()));
+            return back()->with($this->flashError("Impossibile stornare il documento: " . \App\Support\Errori\MessaggioPerLaPagina::di($e, 'StornoFatturaController@__invoke')));
         }
     }
 }

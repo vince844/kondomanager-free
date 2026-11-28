@@ -18,7 +18,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 const axiosPost = vi.fn();
 vi.mock('axios', () => ({ default: { post: (...a: unknown[]) => axiosPost(...a) } }));
 vi.mock('@inertiajs/vue3', () => ({ router: { reload: vi.fn(), post: vi.fn(), delete: vi.fn() }, usePage: () => ({ props: { errors: {} } }) }));
-vi.mock('@/composables/permissions', () => ({ usePermission: () => ({ generateRoute: (nome: string) => nome }) }));
+vi.mock('@/composables/permissions', () => ({ usePermission: () => ({ generateRoute: (nome: string) => nome, hasPermission: () => true }) }));
 const apri = vi.fn();
 vi.mock('@/lib/gestionale/incassi/ricevute', async (originale) => ({ ...(await originale<object>()), apriPdfInUnaScheda: (...a: unknown[]) => apri(...a) }));
 (globalThis as unknown as { route: unknown }).route = (nome: string, p: Record<string, unknown> = {}) => `/${nome}/${p.invio ?? ''}/${p.documento ?? ''}`;

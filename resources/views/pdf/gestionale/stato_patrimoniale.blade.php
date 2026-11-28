@@ -228,7 +228,8 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
         <td style="width: 25%;">
             <div class="et">Risultato di gestione</div>
             <div class="vl {{ $rg['risultato'] < 0 ? 'neg' : '' }}">{{ $fmt($rg['risultato']) }} ({{ \App\Services\Gestionale\RiepilogoPerCompetenza::comeRisultato($rg['risultato']) }})</div>
-            <div class="sub">quote registrate in questo esercizio {{ $fmt($rg['quote_emesse']) }} − costi {{ $fmt($rg['costi']) }}</div>
+            <div class="sub">quote registrate in questo esercizio {{ $fmt($rg['quote_emesse']) }}@if(($rg['rettifica_esercizi_precedenti'] ?? 0) !== 0) {{ $rg['rettifica_esercizi_precedenti'] < 0 ? '−' : '+' }} rettifica di esercizi precedenti {{ $fmt(abs($rg['rettifica_esercizi_precedenti'])) }}@endif − costi {{ $fmt($rg['costi']) }}</div>
+            @if(($rg['rettifica_esercizi_precedenti'] ?? 0) !== 0) <div class="sub">La rettifica di esercizi precedenti toglie la spesa di una sola unità contata due volte nelle rate emesse in un esercizio chiuso: non è una quota chiesta in questo esercizio.</div> @endif
         </td>
     </tr>
 </table>
@@ -313,23 +314,24 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 
 <h2><span class="sec">§ 3</span> Per gestione</h2>
 <p class="intro">I costi seguono la gestione della voce; le quote, quella del piano; i debiti, quella della fattura. I costi e le quote sono dell'esercizio; crediti e debiti sono alla data.</p>
+@php $conRettifica = ($pg['totale']['rettifica_esercizi_precedenti'] ?? 0) !== 0; @endphp
 <table class="p">
-    <thead><tr><th>Gestione</th><th class="n">Costi dell'esercizio</th><th class="n">Quote emesse nell'esercizio</th><th class="n">Crediti verso i condòmini</th><th class="n">Debiti verso fornitori</th></tr></thead>
+    <thead><tr><th>Gestione</th><th class="n">Costi dell'esercizio</th><th class="n">Quote emesse nell'esercizio</th>@if($conRettifica)<th class="n">Rettifica di esercizi precedenti</th>@endif<th class="n">Crediti verso i condòmini</th><th class="n">Debiti verso fornitori</th></tr></thead>
     <tbody>
     @foreach($pg['righe'] as $r)
         <tr>
             <td>{{ $r['gestione']['nome'] }}@if(! str_contains(mb_strtolower($r['gestione']['nome']), mb_strtolower($r['gestione']['tipo']))) <span class="d">· {{ $r['gestione']['tipo'] }}</span>@endif @if($r['cumulato_opera'])<br><span class="d">cumulato dell'opera dal {{ $giornoIt($r['cumulato_opera']['dal']) }}: {{ $fmt($r['cumulato_opera']['consuntivo']) }}</span>@endif</td>
-            <td class="n">{{ $fmt($r['costi']) }}</td><td class="n">{{ $fmt($r['quote_emesse']) }}</td><td class="n">{{ $fmt($r['crediti']) }}</td><td class="n">{{ $fmt($r['debiti']) }}</td>
+            <td class="n">{{ $fmt($r['costi']) }}</td><td class="n">{{ $fmt($r['quote_emesse']) }}</td>@if($conRettifica)<td class="n">{{ $fmt($r['rettifica_esercizi_precedenti'] ?? 0) }}</td>@endif<td class="n">{{ $fmt($r['crediti']) }}</td><td class="n">{{ $fmt($r['debiti']) }}</td>
         </tr>
     @endforeach
     @if($pg['senza_voce'] !== 0 || array_filter($pg['senza_gestione']) !== [] || $pg['differenza_debiti'] !== 0)
         <tr>
             <td class="d">Senza una gestione: commissioni e altre spese non attribuite a una voce, e registrazioni senza gestione @if($pg['differenza_debiti'] !== 0) e la differenza dei debiti (§ 2) @endif</td>
-            <td class="n">{{ $fmt($pg['senza_voce']) }}</td><td class="n">{{ $fmt($pg['senza_gestione']['quote_emesse']) }}</td><td class="n">{{ $fmt($pg['senza_gestione']['crediti']) }}</td><td class="n">{{ $fmt($pg['senza_gestione']['debiti'] + $pg['differenza_debiti']) }}</td>
+            <td class="n">{{ $fmt($pg['senza_voce']) }}</td><td class="n">{{ $fmt($pg['senza_gestione']['quote_emesse']) }}</td>@if($conRettifica)<td class="n">{{ $fmt($pg['senza_gestione']['rettifica_esercizi_precedenti'] ?? 0) }}</td>@endif<td class="n">{{ $fmt($pg['senza_gestione']['crediti']) }}</td><td class="n">{{ $fmt($pg['senza_gestione']['debiti'] + $pg['differenza_debiti']) }}</td>
         </tr>
     @endif
     </tbody>
-    <tfoot><tr><td>Condominio</td><td class="n">{{ $fmt($pg['totale']['costi']) }}</td><td class="n">{{ $fmt($pg['totale']['quote_emesse']) }}</td><td class="n">{{ $fmt($pg['totale']['crediti']) }}</td><td class="n">{{ $fmt($pg['totale']['debiti']) }}</td></tr></tfoot>
+    <tfoot><tr><td>Condominio</td><td class="n">{{ $fmt($pg['totale']['costi']) }}</td><td class="n">{{ $fmt($pg['totale']['quote_emesse']) }}</td>@if($conRettifica)<td class="n">{{ $fmt($pg['totale']['rettifica_esercizi_precedenti']) }}</td>@endif<td class="n">{{ $fmt($pg['totale']['crediti']) }}</td><td class="n">{{ $fmt($pg['totale']['debiti']) }}</td></tr></tfoot>
 </table>
 <p class="d" style="margin: 4px 0 0;">@if($pg['nota_altra_gestione']){{ $pg['nota_altra_gestione'] }} @endif{{ $pg['nota_liquidita'] }}</p>
 

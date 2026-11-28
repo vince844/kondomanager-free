@@ -73,6 +73,8 @@ return [
     'two_factor' => [
         // Coda 261: `enable` con la 2FA già confermata.
         'already_enabled' => 'Two-factor authentication is already on: to change it, turn it off first.',
+        'obbligatoria_per_il_pannello' => 'The office requires two-step verification to enter the panel: turn it on to continue.',
+        'disattivazione_bloccata' => 'The office requires two-step verification to enter the panel: it cannot be turned off.',
         'title' => 'Two-Factor Authentication',
         'heading' => 'Two-Factor Authentication',
         'description' => 'Manage two-factor authentication (2FA) settings',

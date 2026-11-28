@@ -321,13 +321,15 @@ it('Coda 489, porta 1 — «Varie», l\'ultima voce del P26 in bozza, non si eli
 
 it('controprova — una voce che non è l\'ultima del suo piano si elimina dal piano dei conti come prima', function () {
     $s = b14gS7($this);
-    expect(g112Errore(b14gCreaSenzaGenerare($this, $s, '2026', 'R26', ['pulizie' => '200,00', 'varie' => '300,00'])))->toBeNull();
-    // Le Pulizie sono anche nel R26, con le «Varie»: il P26 tiene le sue «Varie», e togliere le Pulizie lascia al R26 una voce.
+    // Le «Varie» sono già chieste per intero dal P26 e non si chiedono di nuovo: il R26 prende le Pulizie e una voce nuova, «Extra», che nessun altro piano chiede.
+    $s['extra'] = be52Voce($this, $s, $s['pc'], 'Extra', 'spesa', '100,00');
+    expect(g112Errore(b14gCreaSenzaGenerare($this, $s, '2026', 'R26', ['pulizie' => '200,00', 'extra' => '100,00'])))->toBeNull();
+    // Togliere le Pulizie dal piano dei conti lascia al R26 una voce, l'«Extra».
     $r = $this->actingAs($this->user)->from('/piano-dei-conti')->delete(route('admin.gestionale.esercizi.piani-conti.conti.destroy', [$s['c'], $s['e'], $s['pc'], $s['pulizie']]));
 
     expect(g112Errore($r))->toBeNull()
         ->and(Conto::find($s['pulizie']->id))->toBeNull()
-        ->and(b14gRiga(g112Piano($s, 'R26')))->toBe([$s['varie']->id => 30000]);
+        ->and(b14gRiga(g112Piano($s, 'R26')))->toBe([$s['extra']->id => 10000]);
 });
 
 it('Coda 489, porta 2 — un piano senza voci scelte quando tutte le voci sono già nei piani del suo esercizio non si crea, nemmeno senza generarlo', function () {
@@ -382,11 +384,13 @@ it('Coda 489 — finché il P26 ha la riga vuota e si ricalcola, un piano nuovo,
         ->and(g112Errore(g112Crea($this, $s, '2026', 'Spese 2026', ['spesa' => '300,00'])))->toBe(B14G_RICALCOLA_P26)
         ->and(g112Piano($s, 'Spese 2026'))->toBeNull();
 
-    // Ricalcolato il P26 (le Pulizie nella riga, € 100,00 a testa), lo «Spese 2026» si crea: € 300,00 a metà, € 150,00 a testa.
+    // Ricalcolato il P26 (le Pulizie nella riga, € 100,00 a testa), un piano nuovo si crea: «Servizi» € 300,00, nata dopo e libera, a metà, € 150,00 a testa. Le
+    // «Spese generali» no: il Q26 le chiede già per intero, e non si chiedono di nuovo.
     expect(g112Errore(g112Ricalcola($this, $s, $p26, '2026')))->toBeNull()
-        ->and(g112Chiesto($p26, $s))->toBe(['ugo' => 10000, 'bice' => 10000])
-        ->and(g112Errore(g112Crea($this, $s, '2026', 'Spese 2026', ['spesa' => '300,00'])))->toBeNull()
-        ->and(g112Chiesto(g112Piano($s, 'Spese 2026'), $s))->toBe(['ugo' => 15000, 'bice' => 15000]);
+        ->and(g112Chiesto($p26, $s))->toBe(['ugo' => 10000, 'bice' => 10000]);
+    $s['servizi'] = be52Voce($this, $s, $s['pc'], 'Servizi', 'spesa', '300,00');
+    expect(g112Errore(g112Crea($this, $s, '2026', 'Servizi 2026', ['servizi' => '300,00'])))->toBeNull()
+        ->and(g112Chiesto(g112Piano($s, 'Servizi 2026'), $s))->toBe(['ugo' => 15000, 'bice' => 15000]);
 });
 
 it('Coda 489 — la catena: il P26 con la riga vuota ricalcolato due volte e poi seguito da un integrativo con una voce nuova; le cifre del P26 restano quelle del motore di prima', function () {
@@ -576,14 +580,20 @@ it('controprova — il piano senza voci di un altro esercizio che non si riscriv
 
     // Il piano del 2027 senza voci scelte prende le due voci, libere nel 2027 (decisione 183.2), € 700,00 a testa: il P26 non le impegna per il 2027, e
     // fermarsi per lui chiederebbe le voci a ogni piano degli esercizi dopo, senza una strada (né il ricalcolo né l'eliminazione passano).
-    // Lo stesso con le voci scelte: le Pulizie, € 100,00 a testa.
+    // Lo stesso con le voci scelte: una voce libera nel 2027, «Giardino» € 400,00 (nata dopo), € 200,00 a testa. Le Pulizie no: il «Preventivo 2027» le chiede già
+    // per intero, e un secondo piano del 2027 sulla stessa voce si rifiuta, con quanto resta da chiedere e il piano che la chiede.
     expect(g112Errore(g112Crea($this, $s, '2027', 'Preventivo 2027', null)))->toBeNull()
         ->and(g112Chiesto(g112Piano($s, 'Preventivo 2027'), $s))->toBe(['ugo' => 70000, 'bice' => 70000])
-        ->and(g112Errore(g112Crea($this, $s, '2027', 'Pulizie 2027', ['pulizie' => '200,00'])))->toBeNull()
-        ->and(g112Chiesto(g112Piano($s, 'Pulizie 2027'), $s))->toBe(['ugo' => 10000, 'bice' => 10000]);
+        ->and(g112Errore(g112Crea($this, $s, '2027', 'Pulizie 2027', ['pulizie' => '200,00'])))
+        ->toBe('La voce «Pulizie» vale € 200,00 ed è già chiesta dal piano «Preventivo 2027» (€ 200,00): restano € 0,00 da chiedere. Toglila da questo piano: chiesta di '
+            .'nuovo, i condòmini la pagherebbero due volte. Se la spesa è più alta del preventivo, registra prima la fattura: lo speso alza il tetto.')
+        ->and(g112Piano($s, 'Pulizie 2027'))->toBeNull();
+    $s['giardino'] = be52Voce($this, $s, $s['pc'], 'Giardino', 'spesa', '400,00');
+    expect(g112Errore(g112Crea($this, $s, '2027', 'Giardino 2027', ['giardino' => '400,00'])))->toBeNull()
+        ->and(g112Chiesto(g112Piano($s, 'Giardino 2027'), $s))->toBe(['ugo' => 20000, 'bice' => 20000]);
 });
 
-it('Coda 489, rilievo 10 dello scettico — il piano senza voci che non si ricalcola più (la gestione ha un piano in un altro esercizio): la creazione senza voci scelte dice subito di eliminarlo e crearlo di nuovo', function (string $anno) {
+it('Coda 489, rilievo 10 dello scettico — il piano senza voci che non si ricalcola più (la gestione ha un piano in un altro esercizio): la creazione senza voci scelte dice subito di eliminarlo e crearlo di nuovo', function (string $anno, bool $giaChiesta) {
     $s = g112Scenario($this, 'importati', ['2026', '2027']);
     // Il Pul27 con le sole Pulizie, € 100,00 a testa, e il P26 della 1.10 nato dopo con una versione di prima (€ 700,00 a testa): il P26, senza voci, con un
     // piano in un altro esercizio, non si ricalcola (decisione 192.1).
@@ -599,11 +609,19 @@ it('Coda 489, rilievo 10 dello scettico — il piano senza voci che non si rical
             .'oppure scegli le voci di questo piano. '.$perche)
         ->and($perche)->toContain('Per rifarlo, eliminalo dall\'elenco dei piani rate e crealo di nuovo dalla pagina dei piani rate dell\'esercizio «Esercizio 2026», scegliendo le voci.')
         ->and(g112Piano($s, 'Integrativo'))->toBeNull();
-    // Il piano con le voci scelte si crea: il P26 si può solo eliminare e rifare, e fermarsi per lui non gli darebbe la riga. «Spese generali» € 300,00, € 150,00
-    // a testa.
-    expect(g112Errore(g112Crea($this, $s, $anno, 'Con le voci', ['spesa' => '300,00'])))->toBeNull()
-        ->and(g112Chiesto(g112Piano($s, 'Con le voci'), $s))->toBe(['ugo' => 15000, 'bice' => 15000]);
-})->with(['dalla pagina del 2026' => '2026', 'dalla pagina del 2027' => '2027']);
+    // Il piano con le voci scelte: il P26 si può solo eliminare e rifare, e fermarsi per lui non gli darebbe la riga. Dalla pagina del 2027 «Spese generali» € 300,00
+    // si crea, € 150,00 a testa: il P26 è del 2026. Dalla pagina del 2026 la voce è già chiesta per intero dal P26 (€ 1.200,00, € 700,00 a testa con le Pulizie), e
+    // un piano del suo stesso esercizio non la chiede di nuovo: si rifiuta, con quanto resta da chiedere e il piano che la chiede.
+    $r = g112Crea($this, $s, $anno, 'Con le voci', ['spesa' => '300,00']);
+    if ($giaChiesta) {
+        expect(g112Errore($r))->toBe('La voce «Spese generali» vale € 1.200,00 ed è già chiesta dal piano «P26» (€ 1.200,00): restano € 0,00 da chiedere. Toglila da questo piano: '
+                .'chiesta di nuovo, i condòmini la pagherebbero due volte. Se la spesa è più alta del preventivo, registra prima la fattura: lo speso alza il tetto.')
+            ->and(g112Piano($s, 'Con le voci'))->toBeNull();
+    } else {
+        expect(g112Errore($r))->toBeNull()
+            ->and(g112Chiesto(g112Piano($s, 'Con le voci'), $s))->toBe(['ugo' => 15000, 'bice' => 15000]);
+    }
+})->with(['dalla pagina del 2026' => ['2026', true], 'dalla pagina del 2027' => ['2027', false]]);
 
 it('Coda 489, rilievo 10 dello scettico — due piani senza voci, uno che si ricalcola e uno che non si ricalcola più (senza il suo esercizio salvato): la frase dà a ognuno la sua strada', function () {
     $s = g112Scenario($this, 'importati', ['2026', '2027']);
@@ -693,10 +711,12 @@ it('Coda 489, decisione 685 (3) — nello stesso esercizio il piano con le voci 
         ->toBe(B14G_RICALCOLA_P26)
         ->and(g112Piano($s, 'Spese 2026'))->toBeNull();
 
-    // Ricalcolato il P26 (le due voci nella riga, € 700,00 a testa), lo «Spese 2026» si crea, € 150,00 a testa, e il P26 ricalcolato dopo resta € 700,00.
-    expect(g112Errore(g112Ricalcola($this, $s, $p26, '2026')))->toBeNull()
-        ->and(g112Errore(g112Crea($this, $s, '2026', 'Spese 2026', ['spesa' => '300,00'])))->toBeNull()
-        ->and(g112Chiesto(g112Piano($s, 'Spese 2026'), $s))->toBe(['ugo' => 15000, 'bice' => 15000])
+    // Ricalcolato il P26 (le due voci nella riga, € 700,00 a testa), un piano nuovo si crea con una voce nata dopo e libera, «Servizi» € 300,00, € 150,00 a testa, e il
+    // P26 ricalcolato dopo resta € 700,00. Le «Spese generali» no: il P26 le chiede già per intero, e non si chiedono di nuovo.
+    expect(g112Errore(g112Ricalcola($this, $s, $p26, '2026')))->toBeNull();
+    $s['servizi'] = be52Voce($this, $s, $s['pc'], 'Servizi', 'spesa', '300,00');
+    expect(g112Errore(g112Crea($this, $s, '2026', 'Servizi 2026', ['servizi' => '300,00'])))->toBeNull()
+        ->and(g112Chiesto(g112Piano($s, 'Servizi 2026'), $s))->toBe(['ugo' => 15000, 'bice' => 15000])
         ->and(g112Errore(g112Ricalcola($this, $s, $p26, '2026')))->toBeNull()
         ->and(g112Chiesto($p26, $s))->toBe(['ugo' => 70000, 'bice' => 70000])
         ->and(b14gRiga($p26))->toBe([$s['spesa']->id => null, $s['pulizie']->id => null]);

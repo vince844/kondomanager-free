@@ -123,6 +123,9 @@ defineEmits(['update:open']);
                 <strong>Lo storno è reversibile, e quasi nessuno lo sa.</strong> La nota di credito che genera è a sua volta una fattura aperta, quindi eliminabile: eliminandola, la fattura originale torna allo stato calcolato dai pagamenti reali. Se hai stornato per sbaglio, non sei in un vicolo cieco.
               </div>
             </div>
+            <div class="mt-4 p-4 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-[13px] text-slate-700 dark:text-slate-300">
+              <strong>La fattura nuova al posto di una annullata.</strong> Se la fattura stornata, o corretta da una nota collegata, è in un piano rate che ha già incassato, quel piano continua a chiederla. Il carrello dello straordinario lo dice sulla fattura nuova dello stesso fornitore: mettila a rate per la sola differenza, o correggi prima quel piano.
+            </div>
             <div class="mt-4 p-4 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[13px] text-slate-600 dark:text-slate-400">
               <strong class="text-slate-800 dark:text-slate-200">La nota di credito del fornitore.</strong> Quando è il fornitore a correggere una fattura, registri la sua nota e la colleghi alla fattura che rettifica: nel modulo, o dopo, con <strong>«Collega a una fattura»</strong> dal menu della nota (così si collegano anche le note registrate con una versione più vecchia). <strong>«Scollega»</strong> toglie il collegamento. Collegata, la fattura vale al netto della nota nei piani rate e nel cruscotto, e non si storna né si elimina finché la nota è collegata: prima si scollega o si elimina la nota.
             </div>
@@ -199,6 +202,9 @@ defineEmits(['update:open']);
               <li>C'è solo se resta qualcosa da mettere a rate; altrimenti il riquadro dice «Nei piani della voce» e porta al piano.</li>
               <li>Apre il nuovo piano sulla scheda giusta, con tutto già scelto: una spesa sulla voce va su «Dalle voci del preventivo».</li>
               <li>Una fattura con una riga «Fuori preventivo» va su «Spese fuori preventivo», con la fattura nel carrello.</li>
+              <li>Anche una spesa su una voce che nel preventivo vale € 0: il riquadro dice «La voce … non è nel preventivo».</li>
+              <li>Se la fattura ha anche righe «Fuori preventivo» o di un'unità, la riga sulla voce a € 0 resta al conguaglio del rendiconto.</li>
+              <li>Se la copre il fondo di riserva non si mette a rate: il riquadro dice il fondo, o che la sua cassa non c'è più.</li>
               <li>Con la delibera della gestione già scelta, se la spesa ne ha una. Il piano nasce quando lo salvi.</li>
             </ul>
           </section>

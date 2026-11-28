@@ -15,6 +15,7 @@ import QuoteMillesimiGuide from '@/components/guides/QuoteMillesimiGuide.vue';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Plus, LoaderCircle, Trash2, Table as TableIcon, Info, Hash, Home, Check, Search, ArrowUp, ArrowDown, ArrowUpDown, X, Layers, Building2, DoorOpen, Shapes } from 'lucide-vue-next';
 import { usePermission } from "@/composables/permissions";
+import { Permission } from "@/enums/Permission";
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -254,7 +255,9 @@ form.transform((dati: any) => ({
   quote: (dati.quote ?? []).map(({ chiave, ...resto }: any) => resto),
 }));
 
-const { generatePath, generateRoute } = usePermission();
+const { generatePath, generateRoute, hasPermission } = usePermission();
+// I millesimi si salvano con «Modifica condomini» (TabellaQuotaController::update): senza, la pagina si legge e «Salva quote» non c'è.
+const puoModificare = hasPermission([Permission.EDIT_CONDOMINI]);
 
 const breadcrumbs = computed<BreadcrumbItem[]>(() => [
   { title: 'Gestionale', href: generatePath('gestionale/:condominio', { condominio: props.condominio.id }) },
@@ -1280,7 +1283,11 @@ const submit = () => {
             Annulla
           </Link>
 
+          <p v-if="!puoModificare" class="text-xs text-slate-500 dark:text-slate-400">
+            Per cambiare i millesimi serve il permesso «Modifica condomini».
+          </p>
           <Button 
+            v-if="puoModificare"
             type="submit"
             :disabled="form.processing" 
             class="h-9 px-8 text-[10px] font-bold uppercase tracking-widest shadow-md gap-2"

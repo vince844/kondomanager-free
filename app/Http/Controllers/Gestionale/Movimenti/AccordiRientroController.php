@@ -11,6 +11,7 @@ use App\Http\Controllers\Assemblee\DeliberaNelleSchede;
 use App\Http\Controllers\Controller;
 use App\Models\Anagrafica;
 use App\Models\Condominio;
+use App\Models\Documento;
 use App\Models\Gestionale\AccordoRientro;
 use App\Services\Documenti\ArchivioDocumenti;
 use App\Services\PDF\PdfService;
@@ -22,6 +23,7 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -90,6 +92,10 @@ class AccordiRientroController extends Controller
 
     public function store(Request $request, Condominio $condominio): JsonResponse
     {
+        // L'accordo firmato caricato è un file nel gestionale: chiede «Crea documenti archivio», come «Allega» della fattura.
+        if ($request->hasFile('documento')) {
+            Gate::authorize('create', Documento::class);
+        }
         $oggi = DateHelper::oggiUtente();
         // L'autorizzazione dalla delibera scelta: il giorno della riunione e il suo verbale entrano nelle colonne di oggi (R1).
         $delibera = DeliberaNelleSchede::dallaRichiesta($request, $condominio);

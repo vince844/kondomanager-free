@@ -13,6 +13,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog'
 import { Trash2, FilePenLine, MoreHorizontal, Percent } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
+import { Permission } from "@/enums/Permission"
 import type { Tabella } from '@/types/gestionale/tabelle'
 import type { Building } from '@/types/buildings'
 
@@ -24,7 +25,9 @@ const isCannotDeleteAlertOpen = ref(false)
 const isDropdownOpen = ref(false)
 const isDeleting = ref(false)
 
-const { generateRoute } = usePermission()
+const { generateRoute, hasPermission } = usePermission()
+// Palazzine, scale, tabelle e millesimi si cambiano con «Modifica condomini» (PalazzinaController, ScalaController, TabellaController, TabellaQuotaController): senza, i pulsanti non ci sono.
+const puoModificare = hasPermission([Permission.EDIT_CONDOMINI])
 
 function handleDelete(targetTabella: Tabella) {
   tabellaID.value = targetTabella.id
@@ -94,7 +97,7 @@ function deleteTabella() {
         </DropdownMenuItem>
 
 
-      <DropdownMenuItem>
+      <DropdownMenuItem v-if="puoModificare">
         <Link
           :href="route(generateRoute('gestionale.tabelle.edit'), { condominio: condominio.id, tabella: tabella.id })"
           preserve-state
@@ -106,6 +109,7 @@ function deleteTabella() {
       </DropdownMenuItem>
 
       <DropdownMenuItem
+        v-if="puoModificare"
         @click="handleDelete(tabella)"
       >
         <Trash2 class="w-4 h-4 text-xs" />

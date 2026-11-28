@@ -260,8 +260,9 @@ it('Coda 438 — un piano del 2026 senza esercizio, aperto dall\'elenco del 2027
     $prima = g112pFoto($p26);
 
     $this->travelTo(now()->setDate(2027, 4, 15)->setTime(10, 0));
+    // L'elenco del 2027 non mostra più P26, che è del 2026; l'indirizzo con il 2027 resta possibile, e «Ricalcola» da lì si rifiuta.
     $elenco = $this->actingAs($this->user)->get(route('admin.gestionale.esercizi.piani-rate.index', [$s['c'], $s['es']['2027']]));
-    expect(collect($elenco->viewData('page')['props']['pianiRate'])->pluck('nome')->all())->toContain('P26');
+    expect(collect($elenco->viewData('page')['props']['pianiRate'])->pluck('nome')->all())->not->toContain('P26');
     $r = g112pRicalcola($this, $s, '2027', $p26);
     g112pRifiutoSenzaEsercizio(g112pErrore($r), 'Impossibile ricalcolare', 'P26');
     // Niente è cambiato: l'esercizio ancora nullo, le stesse rate e le stesse quote, Ugo € 400,00 e Bice € 700,00.
@@ -585,9 +586,9 @@ it('Coda 438 — due piani del 2027 nati senza voci: rifiutati tutti e due, e la
     $this->travelTo(now()->setDate(2027, 1, 20)->setTime(10, 0));
     $s = g112pScenario($this);
     expect(g112pErrore(g112pCrea($this, $s, '2026', 'P26', ['spesa' => '1.200,00', 'pulizie' => '200,00'])))->toBeNull();
-    expect(g112pErrore(g112pCrea($this, $s, '2027', 'P27a', null, ['genera_subito' => 0])))->toBeNull();
-    // Coda 489 (1.12.0-beta.14): senza voci libere nel 2027 un piano senza voci scelte non nasce più; il secondo piano di prima si fa con una voce scelta,
-    // poi la riga svuotata come il primo.
+    // Coda 489 (1.12.0-beta.14): senza voci libere nel 2027 un piano senza voci scelte non nasce più, e una voce già chiesta per intero non si chiede di nuovo
+    // da un altro piano: i due piani di prima si fanno con una voce scelta ciascuno, poi la riga svuotata.
+    expect(g112pErrore(g112pCrea($this, $s, '2027', 'P27a', ['spesa' => '1.200,00'], ['genera_subito' => 0])))->toBeNull();
     expect(g112pErrore(g112pCrea($this, $s, '2027', 'P27b', ['pulizie' => '200,00'], ['genera_subito' => 0])))->toBeNull();
     [$a, $b] = [g112pPiano($s, 'P27a'), g112pPiano($s, 'P27b')];
     g112pRigaVuota($a);
@@ -699,12 +700,13 @@ it('Coda 438 — voci con sottoconti: il piano del 2027 nato senza voci, con le 
     // P26 senza voci scelte: «Spese generali», «Pulizie» a zero e le due foglie. A mano: 1.200 + 600 + 400 = 2.200, 1.100 a testa.
     expect(g112pErrore(g112pCrea($this, $s, '2026', 'P26', null)))->toBeNull()
         ->and(g112pChiesto($s, 'P26'))->toBe(['ugo' => 110000, 'bice' => 110000]);
+    // Un piano del 2027 per la sola manutenzione, con la selezione rapida del capitolo (la riga ha le due foglie). A mano: 500 a testa. Si crea prima del P27:
+    // un piano con la riga vuota chiede ancora le voci libere del suo esercizio, e le foglie, già chieste per intero, non si chiederebbero di nuovo.
+    expect(g112pErrore(g112pCrea($this, $s, '2027', 'M27', null, ['capitoli_ids' => [$man['padre']->id]])))->toBeNull()
+        ->and(g112pChiesto($s, 'M27'))->toBe(['ugo' => 50000, 'bice' => 50000]);
     expect(g112pErrore(g112pCrea($this, $s, '2027', 'P27', null, ['genera_subito' => 0])))->toBeNull();
     $p27 = g112pPiano($s, 'P27');
     g112pRigaVuota($p27);
-    // Un piano del 2027 per la sola manutenzione, con la selezione rapida del capitolo (la riga ha le due foglie). A mano: 500 a testa.
-    expect(g112pErrore(g112pCrea($this, $s, '2027', 'M27', null, ['capitoli_ids' => [$man['padre']->id]])))->toBeNull()
-        ->and(g112pChiesto($s, 'M27'))->toBe(['ugo' => 50000, 'bice' => 50000]);
     $prima = g112pFoto($p27);
 
     g112pRifiutoRigaVuota(g112pErrore(g112pRicalcola($this, $s, '2027', $p27)), 'Impossibile ricalcolare', 'P27', 'ha un piano in un altro esercizio: «P26» («Esercizio 2026»)', 'Esercizio 2027');
@@ -725,15 +727,17 @@ it('Coda 438 — un capitolo nel piano del 2026 e una sua foglia in un piano del
     // P26 chiede il capitolo con il suo importo (la riga ha il capitolo); M27 la sola «Ascensore».
     expect(g112pErrore(g112pCrea($this, $s, '2026', 'P26', ['manutenzione' => '1.000,00'])))->toBeNull()
         ->and(g112pChiesto($s, 'P26'))->toBe(['ugo' => 50000, 'bice' => 50000]);
-    expect(g112pErrore(g112pCrea($this, $s, '2027', 'P27a', null, ['genera_subito' => 0])))->toBeNull();
-    // Coda 489 (1.12.0-beta.14): senza voci libere nel 2027 un piano senza voci scelte non nasce più; il secondo piano di prima si fa con una voce scelta,
-    // poi la riga svuotata come il primo.
-    expect(g112pErrore(g112pCrea($this, $s, '2027', 'P27b', ['caldaia' => '400,00'], ['genera_subito' => 0])))->toBeNull();
+    // Il M27 si crea per primo: un piano con la riga vuota chiede ancora le voci libere del suo esercizio, e l'«Ascensore», già chiesto per intero, non si
+    // chiederebbe di nuovo.
+    expect(g112pErrore(g112pCrea($this, $s, '2027', 'M27', ['ascensore' => '600,00'])))->toBeNull()
+        ->and(g112pChiesto($s, 'M27'))->toBe(['ugo' => 30000, 'bice' => 30000]);
+    // Coda 489 (1.12.0-beta.14): senza voci libere nel 2027 un piano senza voci scelte non nasce più, e una voce già chiesta per intero non si chiede di nuovo da
+    // un altro piano: i due piani di prima si fanno con la «Caldaia» a metà ciascuno (€ 200,00 il primo, il residuo il secondo), poi la riga svuotata.
+    expect(g112pErrore(g112pCrea($this, $s, '2027', 'P27a', ['caldaia' => '200,00'], ['genera_subito' => 0])))->toBeNull();
+    expect(g112pErrore(g112pCrea($this, $s, '2027', 'P27b', ['caldaia' => '200,00'], ['genera_subito' => 0])))->toBeNull();
     [$a, $b] = [g112pPiano($s, 'P27a'), g112pPiano($s, 'P27b')];
     g112pRigaVuota($a);
     g112pRigaVuota($b);
-    expect(g112pErrore(g112pCrea($this, $s, '2027', 'M27', ['ascensore' => '600,00'])))->toBeNull()
-        ->and(g112pChiesto($s, 'M27'))->toBe(['ugo' => 30000, 'bice' => 30000]);
     [$primaA, $primaB] = [g112pFoto($a), g112pFoto($b)];
 
     foreach (['P27a' => $a, 'P27b' => $b] as $nome => $piano) {
@@ -863,10 +867,11 @@ it('Coda 438, controprova — un piano con la riga vuota sulla gestione usata in
 it('Coda 438, controprova — un piano con la riga vuota e le voci in un altro piano dello stesso esercizio: il messaggio di oggi, non il rifiuto nuovo', function () {
     $this->travelTo(now()->setDate(2027, 1, 20)->setTime(10, 0));
     $s = g112pScenario($this, conIl2027: false);
-    expect(g112pErrore(g112pCrea($this, $s, '2026', 'P26', ['spesa' => '1.200,00', 'pulizie' => '200,00'])))->toBeNull();
+    // Il P26 chiede le «Pulizie» per metà (€ 100,00 su € 200,00): il V26 chiede l'altra metà, il residuo, e non la voce intera.
+    expect(g112pErrore(g112pCrea($this, $s, '2026', 'P26', ['spesa' => '1.200,00', 'pulizie' => '100,00'])))->toBeNull();
     // Coda 489 (1.12.0-beta.14): un piano senza voci scelte quando non ce n'è nessuna libera non nasce più; quello di prima si fa con una voce scelta, poi la
     // riga svuotata.
-    expect(g112pErrore(g112pCrea($this, $s, '2026', 'V26', ['pulizie' => '200,00'], ['genera_subito' => 0])))->toBeNull();
+    expect(g112pErrore(g112pCrea($this, $s, '2026', 'V26', ['pulizie' => '100,00'], ['genera_subito' => 0])))->toBeNull();
     $v26 = g112pPiano($s, 'V26');
     g112pRigaVuota($v26);
 
@@ -902,12 +907,13 @@ it('Coda 438 — un piano del 2027 con la riga vuota quando tutte le voci sono n
     $this->travelTo(now()->setDate(2027, 1, 20)->setTime(10, 0));
     $s = g112pScenario($this);
     expect(g112pErrore(g112pCrea($this, $s, '2026', 'P26', ['spesa' => '1.200,00', 'pulizie' => '200,00'])))->toBeNull();
-    expect(g112pErrore(g112pCrea($this, $s, '2027', 'P27', null)))->toBeNull();
+    // Il P27 chiede le «Pulizie» per metà (€ 100,00 su € 200,00): l'I27 chiede l'altra metà, il residuo, e non la voce intera.
+    expect(g112pErrore(g112pCrea($this, $s, '2027', 'P27', ['spesa' => '1.200,00', 'pulizie' => '100,00'])))->toBeNull();
     // Nessuna voce libera nel 2027 (sono nel P27). Fino alla 1.12.0-beta.13 l'integrativo creato senza generarlo nasceva senza voci; dalla Coda 489 la
     // creazione si rifiuta, e il piano di prima si fa con una voce scelta, poi la riga svuotata, con l'esercizio della pagina.
     expect(g112pErrore(g112pCrea($this, $s, '2027', 'I27', null, ['genera_subito' => 0])))->toStartWith('Impossibile creare il piano rate: tutte le voci di questa gestione sono già nel piano «P27»')
         ->and(g112pPiano($s, 'I27'))->toBeNull();
-    expect(g112pErrore(g112pCrea($this, $s, '2027', 'I27', ['pulizie' => '200,00'], ['genera_subito' => 0])))->toBeNull();
+    expect(g112pErrore(g112pCrea($this, $s, '2027', 'I27', ['pulizie' => '100,00'], ['genera_subito' => 0])))->toBeNull();
     $i27 = g112pPiano($s, 'I27');
     g112pRigaVuota($i27);
     expect(DB::table('piano_rate_capitoli')->where('piano_rate_id', $i27->id)->exists())->toBeFalse()
@@ -916,9 +922,9 @@ it('Coda 438 — un piano del 2027 con la riga vuota quando tutte le voci sono n
 
     // Prima diceva che le voci sono tutte nel piano «P27» (vero anche oggi); ora la riga vuota con il piano del 2026 parla per prima, con la strada.
     g112pRifiutoRigaVuota(g112pErrore(g112pRicalcola($this, $s, '2027', $i27)), 'Impossibile ricalcolare', 'I27', 'ha un piano in un altro esercizio: «P26» («Esercizio 2026»)', 'Esercizio 2027');
-    // A mano: niente cambiato; P27 700 a testa, I27 niente.
+    // A mano: niente cambiato; P27 (1.200 + 100) / 2 = 650 a testa, I27 niente.
     expect(g112pFoto($i27))->toBe($prima)
-        ->and(g112pChiesto($s, 'P27'))->toBe(['ugo' => 70000, 'bice' => 70000])
+        ->and(g112pChiesto($s, 'P27'))->toBe(['ugo' => 65000, 'bice' => 65000])
         ->and(g112pChiesto($s, 'I27'))->toBe(['ugo' => 0, 'bice' => 0]);
 });
 

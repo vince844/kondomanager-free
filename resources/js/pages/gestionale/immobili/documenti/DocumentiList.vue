@@ -13,6 +13,7 @@ import { createColumns } from '@/components/gestionale/immobili/documenti/column
 import Alert from "@/components/Alert.vue";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { usePermission } from "@/composables/permissions";
+import { Permission } from "@/enums/Permission";
 import { Files, ShieldCheck, Share2, UploadCloud, List } from 'lucide-vue-next';
 import type { BreadcrumbItem } from '@/types';
 import type { Flash } from '@/types/flash';
@@ -28,7 +29,9 @@ const props = defineProps<{
   meta: PaginationMeta;
 }>()
  
-const { generatePath, generateRoute } = usePermission();
+const { generatePath, generateRoute, hasPermission } = usePermission();
+// L'unità e i suoi documenti si modificano con «Modifica condomini» (ImmobileController, ImmobileDocumentoController): senza, i pulsanti non ci sono.
+const puoModificare = hasPermission([Permission.EDIT_CONDOMINI]);
 
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
@@ -86,6 +89,7 @@ const pageGuides = computed(() => [
             </Link>
 
             <Link
+              v-if="puoModificare"
               :href="route(generateRoute('gestionale.immobili.documenti.create'), { condominio: props.condominio.id, immobile: props.immobile.id })"
               class="inline-flex h-8 items-center justify-center gap-2 rounded-md shadow px-4 bg-primary text-[10px] font-bold uppercase tracking-widest text-primary-foreground hover:bg-primary/90 transition-colors"
             >

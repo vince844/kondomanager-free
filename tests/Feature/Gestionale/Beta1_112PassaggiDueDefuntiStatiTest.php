@@ -359,15 +359,15 @@ it('Coda 440 — tre defunti sulla stessa unità e la parte non legata di Anna: 
     expect($s->somme('Preventivo 2026', ['ugo', 'ada', 'eva', 'anna', 'bruno']))->toBe(['ugo' => 0, 'ada' => 0, 'eva' => 0, 'anna' => 54001, 'bruno' => 35999]);
 });
 
-it('Coda 440, controprova — con il piano che non applica i saldi le due voci non leggono la riga non legata di Anna: tutte e due chiedono le sue righe legate, e nessuna dice che i saldi ci sono già', function () {
+it('Coda 440, controprova — con il piano che non applica i saldi le due voci non leggono la riga non legata di Anna come la parte: tutte e due chiedono, al condizionale, le sue righe legate, e nessuna dice che i saldi ci sono già', function () {
     [$s, $sub] = ddtScenario($this, applicaSaldi: false);
     ddtStato($this, $s, $sub, 'anna', false, false, 'parte');
 
-    // La riga di Anna sta nel 2027, fuori dal posto del Wallet del piano del 2026: per tutte e due le voci Anna non ha niente. Il piano non assorbe saldi: la strada
-    // è registrarli e creare di nuovo il piano, e quel piano passa dal cancello che li legge.
+    // La riga di Anna sta nel 2027, l'esercizio aperto: occupa il posto del Wallet (Coda 286), e per tutte e due le voci il programma non sa se comprende la parte.
+    // Il piano non assorbe saldi: la strada è registrare le righe che mancano e creare di nuovo il piano, e quel piano passa dal cancello che li legge.
     $frasi = ddtFrasi(ddtGenera($this, $s));
     foreach (['Ugo' => 'Ada', 'Ada' => 'Ugo'] as $defunto => $altro) {
-        expect($frasi[$defunto])->toContain(sprintf('Questo piano non applica i saldi del Wallet: quelli già registrati non entrano nelle sue quote. Le parti di %s e Bruno ci sono già, nei saldi legati alla successione. Per passare la parte agli eredi registra dal Wallet il saldo legato alla successione del 1 maggio 2026 che manca (€ 118,36 a debito di Anna) e crea di nuovo il piano', $defunto))
+        expect($frasi[$defunto])->toContain(sprintf('Anna ha su quella gestione e quell\'unità saldi non legati alla successione, e il programma non sa se comprendono la parte. Questo piano non applica i saldi del Wallet: quelli già registrati non entrano nelle sue quote. Le parti di %s e Bruno ci sono già, nei saldi legati alla successione. Se quelli non legati comprendono la parte, crea di nuovo il piano', $defunto))
             ->and($frasi[$defunto])->not->toContain('I saldi ci sono già');
     }
 });

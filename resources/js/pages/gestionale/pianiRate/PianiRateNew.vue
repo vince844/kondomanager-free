@@ -49,6 +49,10 @@ import { campiDellUrgenza } from '@/lib/gestionale/pianiRate/urgenza';
 import { oggiLocale } from '@/lib/giorno';
 import { gestisceLeAssemblee } from '@/lib/assemblee/permessi';
 import { nomeDelPianoPreparato } from '@/lib/assemblee/pianoStraordinario';
+import {
+  cifraFuoriDaiLimiti, cifraIniziale, righeDelRipianamento, ripianamentoAltrove, ripianamentoDaInviare, ripianamentoVisibile, tabellaIniziale,
+  type RipianamentoDaInviare, type RipianamentoProposto,
+} from '@/lib/gestionale/pianiRate/ripianamento';
 import type { DeliberaDelMenu } from '@/types/assemblee';
 
 interface Capitolo {
@@ -123,7 +127,13 @@ const props = defineProps<{
   deliberaProposta?: DeliberaDelMenu | null
   /** «Metti a rate questa spesa» dalla fattura: «Torna alla fattura» invece di «Torna all'elenco» (il server dice dove). */
   ritorno?: { url: string; testo: string } | null
+  /** Coda 743: «Prepara il piano di ripianamento» (il compito «Deficit da recuperare»): il debito ereditato da mettere a rate, in centesimi. */
+  ripianamento?: RipianamentoProposto | null
+  /** «Rendi incassabili questi saldi» dalla pagina dei saldi: il piano di soli saldi già compilato (`PianoRateController::pianoDeiSaldi`), il totale in centesimi. */
+  precompilato?: { origine: 'saldi'; gestione_id: number; nome: string; numero_rate: number; metodo_distribuzione: string; totale: number } | null
 }>()
+
+const euroDeiSaldi = (cents: number) => `€ ${(cents / 100).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 const permessi = usePermission()
 const { generateRoute, generatePath } = permessi
@@ -257,7 +267,20 @@ const form = useForm({
   nota_scoperti: '' as string,
   accetta_destinatari: false as boolean,
   nota_destinatari: '' as string,
+  // Coda 743: il debito ereditato da ripianare, che si scrive con il piano.
+  ripianamento: null as RipianamentoDaInviare | null,
 })
+
+// Coda 743 (decisione 655): il debito ereditato da ripianare, dal compito «Deficit da recuperare» o dal seguito della delibera. Si vede sulla scheda «Spese
+// fuori preventivo» e sulla gestione della pregressa; la cifra e la tabella le decide l'amministratore; si scrive solo quando si salva il piano.
+const ripianamentoAttivo = ref(true);
+const ripianamentoImporto = ref<string>(props.ripianamento ? cifraIniziale(props.ripianamento) : '');
+const ripianamentoTabella = ref<number | null>(props.ripianamento ? tabellaIniziale(props.ripianamento) : null);
+const ripianamentoSiVede = computed(() => ripianamentoVisibile(props.ripianamento, form.tipo, form.gestione_id));
+// In un esercizio che non è quello della pregressa il ripianamento non si prepara: la pagina si ferma e dice dove.
+const ripianamentoFermo = computed(() => ripianamentoAltrove(props.ripianamento, form.tipo));
+const ripianamentoNelPiano = computed(() => ripianamentoSiVede.value && ripianamentoAttivo.value);
+const avvisoDellaCifra = computed(() => props.ripianamento && ripianamentoNelPiano.value ? cifraFuoriDaiLimiti(props.ripianamento, ripianamentoImporto.value) : null);
 
 
 /**
@@ -295,10 +318,11 @@ const flashMessage = computed(() => usePage<{ flash: { message?: Flash } }>().pr
 // Coda 686 (b): anche gli errori dei campi che la pagina non mostra accanto al campo (il giorno del mese, la ricorrenza, i saldi, …) e quelli di un campo
 // oggi nascosto (lo scudo legale a carrello vuoto, la data con «Urgenza») stanno qui: «Salva» non resta mai muto. I messaggi sono in parole semplici
 // (`ParoleDelPiano`), quindi si leggono così come arrivano.
-const scudoVisibile = computed(() => form.tipo === 'straordinario' && fattureStraordinarie.value.length > 0 && !gestioneStraordinaria.value);
+const scudoVisibile = computed(() => form.tipo === 'straordinario' && (fattureStraordinarie.value.length > 0 || ripianamentoSiVede.value) && !gestioneStraordinaria.value);
 const dataDeliberaVisibile = computed(() => mostraDataDelibera.value && !(form.tipo_autorizzazione === 'urgenza' && gestioneStraordinaria.value));
 const haUnPostoAccanto = (campo: string): boolean => {
   if (['nome', 'gestione_id', 'numero_rate', 'data_prima_scadenza'].includes(campo)) return true;
+  if (campo.startsWith('ripianamento')) return ripianamentoSiVede.value;
   if (campo === 'metodo_distribuzione') return mostraDistribuzioneSaldo.value;
   if (campo === 'data_delibera_assemblea' || campo === 'delibera_id') return dataDeliberaVisibile.value;
   if (campo === 'tipo_autorizzazione' || campo === 'motivazione_autorizzazione') return scudoVisibile.value || gestioneStraordinaria.value;
@@ -403,6 +427,27 @@ onMounted(() => {
     preselectedGestioneId.value = form.gestione_id;
   }
 
+  // Coda 743: il piano del ripianamento si apre sulla gestione della pregressa, con il nome già scritto; in un altro esercizio solo sulla scheda, che dice dove.
+  if (props.ripianamento) {
+    form.tipo = 'straordinario';
+    if (!props.ripianamento.altrove) {
+      if (!form.gestione_id) form.gestione_id = props.ripianamento.gestione_id;
+      if (!form.nome) form.nome = props.ripianamento.voce;
+    }
+  }
+
+  // «Rendi incassabili questi saldi»: la gestione, il nome, una rata, i saldi sommati alla prima rata ordinaria, nessuna voce. `origine` dice al server
+  // che è il piano dei saldi (`PianoRateController::store`): non prende voci e si genera subito.
+  if (props.precompilato) {
+    form.tipo = 'ordinario';
+    form.origine = 'saldi';
+    form.genera_subito = true;
+    form.gestione_id = props.precompilato.gestione_id;
+    form.nome = props.precompilato.nome;
+    form.numero_rate = props.precompilato.numero_rate;
+    form.metodo_distribuzione = props.precompilato.metodo_distribuzione;
+  }
+
   if (urlParams.has('conto_id')) {
     const id = Number(urlParams.get('conto_id'));
     preselectedContoId.value = Number.isFinite(id) && id > 0 ? id : null;
@@ -439,7 +484,7 @@ const mettiARateDalleVoci = (contoId: number | null) => {
 };
 
 /** Coda 686 (b): senza fatture scelte il piano «Spese fuori preventivo» non si manda; il pulsante dice perché. */
-const senzaFattureScelte = computed(() => form.tipo === 'straordinario' && !fattureStraordinarie.value.some(f => f.selezionata));
+const senzaFattureScelte = computed(() => form.tipo === 'straordinario' && !fattureStraordinarie.value.some(f => f.selezionata) && !ripianamentoNelPiano.value);
 
 // Quando si arriva da un CTA della Dashboard, il tipo di piano non è una
 // scelta dell'utente: la Dashboard lo ha già determinato in base alla voce
@@ -934,7 +979,9 @@ const submit = () => {
   if (senzaFattureScelte.value) return;
 
   // 1. Prepariamo i capitoli solo se siamo in ordinario
-  form.capitoli_config = form.tipo === 'ordinario' 
+  // Il piano dei saldi non manda voci.
+  if (props.precompilato) form.capitoli_ids = [];
+  form.capitoli_config = form.tipo === 'ordinario' && !props.precompilato
     ? capitoliDettaglio.value.map(c => ({ id: c.id, importo: c.importo_da_usare, note: c.note })) 
     : [];
 
@@ -950,6 +997,11 @@ const submit = () => {
       .filter(f => f.selezionata)
       .map(f => ({ id: f.id, importo: f.importo_suggerito }))
     : [];
+
+  // Coda 743: il debito ereditato viaggia con il piano, solo sulla scheda delle fatture e sulla gestione della pregressa.
+  form.ripianamento = form.tipo === 'straordinario'
+    ? ripianamentoDaInviare(props.ripianamento, ripianamentoSiVede.value, ripianamentoAttivo.value, ripianamentoImporto.value, ripianamentoTabella.value)
+    : null;
 
   // 3. Saldi config (comune a entrambi)
   // Issue 58: un saldo dell'unità con una scelta diversa dalla regola porta il giorno dei titolari (`alla_data`); con la regola non si manda.
@@ -1007,6 +1059,13 @@ const submit = () => {
         <!-- «Crea il piano straordinario» (decisione 622 (1)): la gestione, la voce e la delibera sono già scelte; il piano nasce solo con «Salva il piano». -->
         <p v-if="preparatoDallaDelibera" class="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
           data-testid="preparato-dalla-delibera">{{ preparatoDallaDelibera }}</p>
+
+        <div v-if="props.precompilato" data-testid="piano-dei-saldi"
+          class="space-y-1 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
+          <p class="font-semibold">Nuovo piano rate, già compilato</p>
+          <p><strong>Voci</strong>: nessuna: il piano chiede solo i saldi.</p>
+          <p>Il piano nasce in bozza con una rata da {{ euroDeiSaldi(props.precompilato.totale) }}. Si approva con la data della delibera del consuntivo da cui vengono i saldi, poi si emette.</p>
+        </div>
 
         <div v-if="showBannerPreselezione" class="bg-amber-100 border border-amber-300 text-amber-900 p-4 rounded-xl shadow-sm flex items-start gap-4">
           <div class="w-10 h-10 bg-amber-200 text-amber-700 rounded-full flex items-center justify-center shrink-0 mt-0.5">
@@ -1367,7 +1426,7 @@ const submit = () => {
           </CardContent>
         </Card>
 
-        <Card v-if="form.tipo === 'ordinario'" class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
+        <Card v-if="form.tipo === 'ordinario' && !props.precompilato" data-testid="scelta-delle-voci" class="border-dashed shadow-sm bg-slate-50/50 dark:bg-slate-900/20">
           <CardHeader class="pb-3 border-b border-dashed mb-4">
             <CardTitle class="text-base font-semibold">Budget e capitoli di spesa</CardTitle>
             <CardDescription>Scegli quali voci di spesa includere nel piano rate e con quali importi.</CardDescription>
@@ -1567,7 +1626,7 @@ const submit = () => {
             due righe di preambolo per un contenuto di due righe.
           -->
           <CardHeader
-            v-if="isLoadingFatture || !form.gestione_id || fattureStraordinarie.length > 0"
+            v-if="isLoadingFatture || !form.gestione_id || fattureStraordinarie.length > 0 || ripianamentoSiVede"
             class="pb-3 border-b border-amber-200/50 border-dashed mb-4"
           >
             <CardTitle class="text-base font-semibold text-amber-900 flex items-center gap-2">
@@ -1603,6 +1662,50 @@ const submit = () => {
                 di ripeterla: «fatture impreviste o ad personam» sta già nella descrizione
                 della card, e ridirlo qui era ciò che faceva sembrare le due metà sconnesse.
             -->
+            <!-- Coda 743: in un esercizio che non è quello della pregressa (o con quell'esercizio chiuso) il ripianamento non si prepara: la pagina lo dice. -->
+            <div v-if="ripianamentoFermo" data-blocco="ripianamento-altrove"
+              class="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+              <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              <div class="min-w-0 flex-1">
+                <b class="block font-semibold">Il debito ereditato da ripianare</b>
+                {{ ripianamentoFermo }}
+              </div>
+            </div>
+
+            <!-- Coda 743 (decisione 655): il debito ereditato da ripianare, dal compito «Deficit da recuperare». Si scrive con il piano, si toglie con lui. -->
+            <div v-if="ripianamentoSiVede && props.ripianamento" data-blocco="ripianamento"
+              class="space-y-3 rounded-lg border border-amber-200 bg-white p-4 dark:border-amber-800 dark:bg-slate-950">
+              <div class="flex items-start gap-3">
+                <Checkbox id="ripianamento_attivo" v-model="ripianamentoAttivo" class="mt-0.5" />
+                <div class="min-w-0 flex-1 space-y-1">
+                  <Label for="ripianamento_attivo" class="text-sm font-semibold text-slate-900 dark:text-slate-100">Il debito ereditato da ripianare</Label>
+                  <ul class="list-disc space-y-0.5 pl-4 text-xs text-slate-600 dark:text-slate-400">
+                    <li v-for="riga in righeDelRipianamento(props.ripianamento)" :key="riga">{{ riga }}</li>
+                  </ul>
+                </div>
+              </div>
+              <div v-if="ripianamentoAttivo" class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:pl-7">
+                <div class="space-y-1.5">
+                  <Label for="ripianamento_importo" class="text-xs">Quanto mettere a rate</Label>
+                  <div class="relative">
+                    <span class="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">€</span>
+                    <MoneyInput id="ripianamento_importo" v-model="ripianamentoImporto" :money-options="moneyOptions" :lazy="true"
+                      class="h-9 pl-6 text-right text-sm" @update:model-value="form.clearErrors('ripianamento.importo' as any)" />
+                  </div>
+                  <p v-if="avvisoDellaCifra" class="text-xs text-amber-700 dark:text-amber-300" data-testo="cifra-fuori">{{ avvisoDellaCifra }}</p>
+                  <InputError :message="(form.errors as Record<string, string>)['ripianamento.importo']" />
+                </div>
+                <div class="space-y-1.5">
+                  <Label for="ripianamento_tabella" class="text-xs">La tabella del riparto</Label>
+                  <v-select input-id="ripianamento_tabella" v-model="ripianamentoTabella" :options="props.ripianamento.tabelle" label="nome"
+                    :reduce="(t: { id: number }) => t.id" :clearable="false" placeholder="Scegli la tabella..." class="bg-white text-sm dark:bg-slate-950"
+                    @update:model-value="form.clearErrors('ripianamento.tabella_id' as any)" />
+                  <InputError :message="(form.errors as Record<string, string>)['ripianamento.tabella_id']" />
+                </div>
+              </div>
+              <InputError :message="(form.errors as Record<string, string>).ripianamento || (form.errors as Record<string, string>)['ripianamento.compito_id']" />
+            </div>
+
             <div v-if="isLoadingFatture" class="flex justify-center py-8 text-amber-600 gap-3">
               <LoaderCircle class="w-5 h-5 animate-spin" /><span>Ricerca fatture impreviste in corso...</span>
             </div>
@@ -1613,7 +1716,7 @@ const submit = () => {
             </p>
 
             <!-- Coda 686 (a), decisione 510: il carrello vuoto dice che cosa la scheda mostra e che cosa non si vede, con l'azione giusta. -->
-            <div v-else-if="fattureStraordinarie.length === 0" data-blocco="carrello-vuoto" class="flex items-start gap-4 px-2 py-2 md:px-4 md:py-4">
+            <div v-else-if="fattureStraordinarie.length === 0 && !ripianamentoSiVede" data-blocco="carrello-vuoto" class="flex items-start gap-4 px-2 py-2 md:px-4 md:py-4">
               <div class="w-11 h-11 rounded-lg bg-amber-100/60 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300 flex items-center justify-center shrink-0">
                 <ReceiptText class="w-6 h-6" />
               </div>
@@ -1657,7 +1760,7 @@ const submit = () => {
               </div>
             </div>
 
-            <div v-else class="border border-amber-200 rounded-lg overflow-hidden bg-white shadow-sm">
+            <div v-else-if="fattureStraordinarie.length > 0" class="border border-amber-200 rounded-lg overflow-hidden bg-white shadow-sm">
               <div class="bg-amber-50 px-4 py-3 border-b border-amber-200 flex flex-wrap justify-between items-center gap-2">
                 <span class="text-xs font-bold text-amber-800 uppercase tracking-wider">Fatture disponibili</span>
                 <span class="text-sm font-bold text-amber-700 bg-white px-3 py-1 rounded border border-amber-200 shadow-sm">Totale richiesto: {{ totaleStraordinarioSelezionatoFormatted }}</span>
@@ -1681,6 +1784,10 @@ const submit = () => {
                       <div v-if="avvisoDi(fat)?.tono === 'nota'" class="text-[10px] text-slate-500 mt-0.5">{{ avvisoDi(fat)?.testo }}</div>
                       <div v-else-if="avvisoDi(fat)" class="text-[10px] font-semibold text-amber-700 mt-0.5 flex items-start gap-1">
                         <AlertTriangle class="w-3 h-3 shrink-0 mt-px" /> <span>{{ avvisoDi(fat)?.testo }}</span>
+                      </div>
+                      <!-- Coda 159: lo stesso fornitore ha una fattura annullata che un piano che ha incassato chiede ancora (`CarrelloDelloStraordinario`). -->
+                      <div v-if="fat.avviso_sostituzione" class="text-xs font-semibold text-amber-700 mt-0.5 flex items-start gap-1">
+                        <AlertTriangle class="w-3 h-3 shrink-0 mt-px" /> <span>{{ fat.avviso_sostituzione }}</span>
                       </div>
                     </div>
                    </div>
@@ -1716,7 +1823,7 @@ const submit = () => {
               I valori già scritti non vengono azzerati: cambiando di nuovo gestione il
               riquadro riappare con dentro quello che l'amministratore aveva battuto.
             -->
-            <div v-if="fattureStraordinarie.length > 0 && !gestioneStraordinaria" class="bg-white dark:bg-slate-950 border border-amber-200 dark:border-amber-800 rounded-xl p-5 space-y-4">
+            <div v-if="(fattureStraordinarie.length > 0 || ripianamentoSiVede) && !gestioneStraordinaria" class="bg-white dark:bg-slate-950 border border-amber-200 dark:border-amber-800 rounded-xl p-5 space-y-4">
               <h4 class="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                 <Info class="w-4 h-4 text-amber-500" /> Scudo Legale (Obbligatorio)
               </h4>
@@ -1913,7 +2020,7 @@ const submit = () => {
                 />
                 <InputError :message="form.errors.data_prima_scadenza" />
               </div>
-              <div class="flex items-center pt-6">
+              <div v-if="!props.precompilato" class="flex items-center pt-6">
                  <div class="flex items-center gap-2">
                   <Checkbox id="genera_subito" v-model="form.genera_subito" />
                   <Label for="genera_subito" class="cursor-pointer font-medium text-sm">Genera calcolo scadenze subito</Label>

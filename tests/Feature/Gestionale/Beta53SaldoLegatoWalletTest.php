@@ -163,8 +163,10 @@ it('una persona con un saldo legato non si elimina, e il messaggio dice quanto s
     // Seguito dalle rotte: la riga si toglie dai saldi dell'unità, e la persona si elimina.
     $riga = Saldo::where('anagrafica_id', $dora->id)->sole();
     expect(sl53Errori($this->actingAs($this->user)->from('/saldi')->delete(route('admin.gestionale.saldi.destroy', [$s['c'], $riga]))))->toBe([]);
-    $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
-    expect(Anagrafica::find($dora->id))->toBeNull();
+    // Il saldo legato non tiene più la persona, ma la sua riga di titolarità chiusa sì: eliminandola ne sparirebbe lo storico dell'unità.
+    $r = $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
+    expect(Anagrafica::find($dora->id))->not->toBeNull()
+        ->and(sl53Messaggio($r)['message'])->toStartWith('Dora non si può eliminare: ha quote, saldi o righe di titolarità in')->not->toContain('saldi legati');
 });
 
 it('chi vende e chi compra, con un saldo legato, non si eliminano, e il messaggio non indica di togliere il saldo legato: la persona resta lo stesso', function (string $chi) {
@@ -210,8 +212,10 @@ it('una persona con un saldo legato in un esercizio che non è quello aperto: il
     expect(fds50Storico($s, $s['vendita']->fresh())['annullabile']['motivo'] ?? null)->toBeNull();
     expect(sl53Errori(sl53Annulla($this, $s, $s['vendita'])))->toBe([])
         ->and(Saldo::find($riga->id))->toBeNull();
-    $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
-    expect(Anagrafica::find($dora->id))->toBeNull();
+    // Il saldo legato non tiene più la persona, ma la sua riga di titolarità chiusa sì: eliminandola ne sparirebbe lo storico dell'unità.
+    $r = $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
+    expect(Anagrafica::find($dora->id))->not->toBeNull()
+        ->and(sl53Messaggio($r)['message'])->toStartWith('Dora non si può eliminare: ha quote, saldi o righe di titolarità in')->not->toContain('saldi legati');
 });
 
 /**
@@ -256,8 +260,10 @@ it('una persona con un saldo legato nell\'esercizio chiuso e un passaggio regist
     $this->travel(1)->minutes();
     expect(sl53Errori(sl53Annulla($this, $s, $s['vendita'])))->toBe([])
         ->and(Saldo::where('anagrafica_id', $dora->id)->count())->toBe(0);
-    $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
-    expect(Anagrafica::find($dora->id))->toBeNull();
+    // Il saldo legato non tiene più la persona, ma la sua riga di titolarità chiusa sì: eliminandola ne sparirebbe lo storico dell'unità.
+    $r = $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
+    expect(Anagrafica::find($dora->id))->not->toBeNull()
+        ->and(sl53Messaggio($r)['message'])->toStartWith('Dora non si può eliminare: ha quote, saldi o righe di titolarità in')->not->toContain('saldi legati');
     // I due passaggi, avvenuti davvero, si registrano di nuovo dal primo.
     $this->travel(1)->minutes();
     fds50Registra($this, $s, fds50ModuloVendita($s, 'Ugo', 'Elsa', '2026-11-01'));
@@ -284,8 +290,10 @@ it('una persona con un saldo legato nell\'esercizio chiuso, assorbito da un pian
     expect(\App\Models\Gestionale\PianoRate::find($p2->id))->toBeNull();
     expect(sl53Errori(sl53Annulla($this, $s, $s['vendita'])))->toBe([])
         ->and(Saldo::where('anagrafica_id', $dora->id)->count())->toBe(0);
-    $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
-    expect(Anagrafica::find($dora->id))->toBeNull();
+    // Il saldo legato non tiene più la persona, ma la sua riga di titolarità chiusa sì: eliminandola ne sparirebbe lo storico dell'unità.
+    $r = $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
+    expect(Anagrafica::find($dora->id))->not->toBeNull()
+        ->and(sl53Messaggio($r)['message'])->toStartWith('Dora non si può eliminare: ha quote, saldi o righe di titolarità in')->not->toContain('saldi legati');
 });
 
 /** Annulla dalla pagina del piano le emissioni delle sue rate con scadenza dopo il giorno dato. */
@@ -349,8 +357,10 @@ it('una persona con il saldo legato libero nell\'esercizio chiuso e il conguagli
     expect(\App\Models\Gestionale\PianoRate::find($p->id))->toBeNull();
     expect(sl53Errori(sl53Annulla($this, $s, $s['vendita'])))->toBe([])
         ->and(Saldo::where('anagrafica_id', $dora->id)->count())->toBe(0);
-    $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
-    expect(Anagrafica::find($dora->id))->toBeNull();
+    // Il saldo legato non tiene più la persona, ma la sua riga di titolarità chiusa sì: eliminandola ne sparirebbe lo storico dell'unità.
+    $r = $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
+    expect(Anagrafica::find($dora->id))->not->toBeNull()
+        ->and(sl53Messaggio($r)['message'])->toStartWith('Dora non si può eliminare: ha quote, saldi o righe di titolarità in')->not->toContain('saldi legati');
 });
 
 it('una persona con il saldo legato nell\'esercizio chiuso, un passaggio registrato dopo e un piano in bozza che ha assorbito la riga e il conguaglio di quel passaggio: il messaggio rimanda allo storico; seguita, la persona si elimina e i passaggi si registrano di nuovo', function () {
@@ -375,8 +385,10 @@ it('una persona con il saldo legato nell\'esercizio chiuso, un passaggio registr
     $this->travel(1)->minutes();
     expect(sl53Errori(sl53Annulla($this, $s, $s['vendita'])))->toBe([])
         ->and(Saldo::where('anagrafica_id', $dora->id)->count())->toBe(0);
-    $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
-    expect(Anagrafica::find($dora->id))->toBeNull();
+    // Il saldo legato non tiene più la persona, ma la sua riga di titolarità chiusa sì: eliminandola ne sparirebbe lo storico dell'unità.
+    $r = $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
+    expect(Anagrafica::find($dora->id))->not->toBeNull()
+        ->and(sl53Messaggio($r)['message'])->toStartWith('Dora non si può eliminare: ha quote, saldi o righe di titolarità in')->not->toContain('saldi legati');
     $this->travel(1)->minutes();
     fds50Registra($this, $s, fds50ModuloVendita($s, 'Ugo', 'Elsa', '2026-11-01'));
     $this->travel(1)->minutes();
@@ -406,8 +418,10 @@ it('una persona con i saldi legati a due vendite nell\'esercizio chiuso e le rat
     expect(fds50Storico($s, $s['vendita']->fresh())['annullabile']['motivo'] ?? null)->toBeNull();
     expect(sl53Errori(sl53Annulla($this, $s, $s['vendita'])))->toBe([])
         ->and(Saldo::where('anagrafica_id', $dora->id)->count())->toBe(0);
-    $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
-    expect(Anagrafica::find($dora->id))->toBeNull();
+    // Il saldo legato non tiene più la persona, ma la sua riga di titolarità chiusa sì: eliminandola ne sparirebbe lo storico dell'unità.
+    $r = $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
+    expect(Anagrafica::find($dora->id))->not->toBeNull()
+        ->and(sl53Messaggio($r)['message'])->toStartWith('Dora non si può eliminare: ha quote, saldi o righe di titolarità in')->not->toContain('saldi legati');
 });
 
 /** Il rifiuto, con la riga di Dora portata a zero dal Wallet nell'esercizio 2026 chiuso. */
@@ -428,8 +442,10 @@ it('una persona con il saldo legato portato a € 0,00 e l\'esercizio chiuso: la
     expect(fds50Storico($s, $s['vendita']->fresh())['annullabile']['motivo'] ?? null)->toBeNull();
     expect(sl53Errori(sl53Annulla($this, $s, $s['vendita'])))->toBe([])
         ->and(Saldo::where('anagrafica_id', $dora->id)->count())->toBe(0);
-    $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
-    expect(Anagrafica::find($dora->id))->toBeNull();
+    // Il saldo legato non tiene più la persona, ma la sua riga di titolarità chiusa sì: eliminandola ne sparirebbe lo storico dell'unità.
+    $r = $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
+    expect(Anagrafica::find($dora->id))->not->toBeNull()
+        ->and(sl53Messaggio($r)['message'])->toStartWith('Dora non si può eliminare: ha quote, saldi o righe di titolarità in')->not->toContain('saldi legati');
 });
 
 /** Il rifiuto, con le righe di Dora legate alla fine di Ines (€ 7,00) e alla vendita (€ 10,00), nell'esercizio 2026 chiuso. */
@@ -452,8 +468,10 @@ it('una persona con i saldi legati alla fine di Ines e alla vendita, nell\'eserc
     expect(fds50Storico($s, $s['fine']->fresh())['annullabile']['motivo'] ?? null)->toBeNull();
     expect(sl53Errori(sl53Annulla($this, $s, $s['fine'], 'Annullo per togliere le righe di Dora')))->toBe([])
         ->and(Saldo::where('anagrafica_id', $dora->id)->count())->toBe(0);
-    $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
-    expect(Anagrafica::find($dora->id))->toBeNull();
+    // Il saldo legato non tiene più la persona, ma la sua riga di titolarità chiusa sì: eliminandola ne sparirebbe lo storico dell'unità.
+    $r = $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
+    expect(Anagrafica::find($dora->id))->not->toBeNull()
+        ->and(sl53Messaggio($r)['message'])->toStartWith('Dora non si può eliminare: ha quote, saldi o righe di titolarità in')->not->toContain('saldi legati');
 });
 
 it('una persona con i saldi legati alla fine di Ines e alla vendita, e un passaggio registrato dopo: il messaggio dice di annullarli dallo storico, che dice di annullare prima quello dopo; seguito, la persona si elimina', function () {
@@ -476,8 +494,10 @@ it('una persona con i saldi legati alla fine di Ines e alla vendita, e un passag
     $this->travel(1)->minutes();
     expect(sl53Errori(sl53Annulla($this, $s, $s['fine'], 'Annullo per togliere le righe di Dora')))->toBe([])
         ->and(Saldo::where('anagrafica_id', $dora->id)->count())->toBe(0);
-    $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
-    expect(Anagrafica::find($dora->id))->toBeNull();
+    // Il saldo legato non tiene più la persona, ma la sua riga di titolarità chiusa sì: eliminandola ne sparirebbe lo storico dell'unità.
+    $r = $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
+    expect(Anagrafica::find($dora->id))->not->toBeNull()
+        ->and(sl53Messaggio($r)['message'])->toStartWith('Dora non si può eliminare: ha quote, saldi o righe di titolarità in')->not->toContain('saldi legati');
 });
 
 it('una persona con il saldo legato nell\'esercizio chiuso, assorbito da un piano in bozza, e le rate passate con la vendita già emesse: il messaggio rimanda allo storico, che dice che cosa fare prima; seguito lo storico, la persona si elimina', function () {
@@ -500,8 +520,10 @@ it('una persona con il saldo legato nell\'esercizio chiuso, assorbito da un pian
     sl53wAnnullaEmissioni($this, $s, $s['piano'], '2026-10-31');
     expect(sl53Errori(sl53Annulla($this, $s, $s['vendita'])))->toBe([])
         ->and(Saldo::where('anagrafica_id', $dora->id)->count())->toBe(0);
-    $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
-    expect(Anagrafica::find($dora->id))->toBeNull();
+    // Il saldo legato non tiene più la persona, ma la sua riga di titolarità chiusa sì: eliminandola ne sparirebbe lo storico dell'unità.
+    $r = $this->actingAs($this->user)->from('/anagrafiche')->delete(route('admin.anagrafiche.destroy', $dora));
+    expect(Anagrafica::find($dora->id))->not->toBeNull()
+        ->and(sl53Messaggio($r)['message'])->toStartWith('Dora non si può eliminare: ha quote, saldi o righe di titolarità in')->not->toContain('saldi legati');
 });
 
 it('il selettore del modale non dice «c\'è una parte da regolare a mano» per una fermata che non vale più: annullato il conguaglio della fine', function () {

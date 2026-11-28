@@ -76,7 +76,7 @@ class EmissioneRateController extends Controller
         'data_emissione.date' => 'La data di emissione non è una data.',
         'descrizione_personalizzata.string' => 'La descrizione è un testo.',
         'descrizione_personalizzata.max' => 'La descrizione può avere al massimo 255 caratteri.',
-        'invia_notifiche.boolean' => 'Scegli se avvisare i condòmini.',
+        'invia_notifiche.boolean' => 'Scegli se rendere visibili le rate ai condòmini.',
     ];
 
     /**
@@ -225,6 +225,7 @@ class EmissioneRateController extends Controller
                 // ricalcolo farebbe pagare due volte a chi è entrato i suoi giorni. La sua emissione si rifiuta, e l'esito dice perché.
                 $presiPrima = collect($pianoRate->passaggiCheLoHannoConguagliato())->filter(fn ($s) => $pianoRate->presoSoloInParteDa($s))->values()->all();
 
+                $promemoria = null;
                 foreach ($rateSelezionate as $rata) {
                     if ($rata->rateQuote->whereNotNull('scrittura_contabile_id')->isNotEmpty()) {
                         // Già a giornale: un doppio invio, o la pagina aperta in due schede. Il messaggio la nomina (rilievo S2/D7).
@@ -269,16 +270,11 @@ class EmissioneRateController extends Controller
                     }
                     $aGiornale[] = (int) $rata->id;
 
-                    // 4. Gestione Eventi Condòmini (Rendiamo la query robusta)
+                    // 4. I promemoria dei condòmini della rata, letti una volta per emissione (sotto, `promemoriaDelleRate`)
                     $rataId = (int) $rata->id;
-                    $userEvents = Evento::where('tipo', EventoTipo::SCADENZA_RATA_CONDOMINO->value)
-                        ->where(function($q) use ($rataId) {
-                            $q->where('meta->context->rata_id', $rataId)
-                            ->orWhere('meta->context->rata_id', (string) $rataId);
-                        })
-                        ->get();
+                    $promemoria ??= $this->promemoriaDelleRate($rateSelezionate->pluck('id')->map(fn ($id) => (int) $id)->all());
 
-                    foreach ($userEvents as $evt) {
+                    foreach ($promemoria->get($rataId, collect()) as $evt) {
                         $meta = $evt->meta;
                         $meta['is_emitted'] = true;
                         $meta['is_published'] = $inviaNotifiche; 
@@ -294,14 +290,14 @@ class EmissioneRateController extends Controller
                         RataEmessa::dispatch($rata);
                     }
 
-                    // 6. Pulizia Task Admin (CORRETTO: usiamo where standard per i path JSON)
-                    Evento::where('tipo', EventoTipo::EMISSIONE_RATA->value)
-                        ->where(function($q) use ($rataId) {
-                            $q->where('meta->context->rata_id', $rataId)
-                            ->orWhere('meta->context->rata_id', (string) $rataId);
-                        })
-                        ->delete();
+                }
 
+                // 6. Il compito dello studio delle rate andate a giornale, tolto con una cancellazione sola
+                if ($aGiornale !== []) {
+                    Evento::where('tipo', EventoTipo::EMISSIONE_RATA->value)
+                        ->where(fn ($q) => $q->whereIn('meta->context->rata_id', $aGiornale)
+                            ->orWhereIn('meta->context->rata_id', array_map('strval', $aGiornale)))
+                        ->delete();
                 }
 
                 // «Emessa» solo la rata che è andata a giornale (decisione 34): una rata che non ha prodotto scritture resta in
@@ -629,6 +625,27 @@ class EmissioneRateController extends Controller
             $chi);
 
         return implode(' ', $frasi);
+    }
+
+    /**
+     * I promemoria dei condòmini delle rate date, raggruppati per rata: una lettura sola per emissione. Il legame con la rata sta nel JSON
+     * dell'evento, senza indice, e una lettura per rata in un condominio con dodici rate le ripeteva tutte; il numero può essere scritto
+     * come numero o come testo, e si cercano tutti e due.
+     *
+     * @param list<int> $rateIds
+     * @return \Illuminate\Support\Collection<int, \Illuminate\Support\Collection<int, Evento>>
+     */
+    private function promemoriaDelleRate(array $rateIds): \Illuminate\Support\Collection
+    {
+        if ($rateIds === []) {
+            return collect();
+        }
+
+        return Evento::where('tipo', EventoTipo::SCADENZA_RATA_CONDOMINO->value)
+            ->where(fn ($q) => $q->whereIn('meta->context->rata_id', $rateIds)
+                ->orWhereIn('meta->context->rata_id', array_map('strval', $rateIds)))
+            ->get()
+            ->groupBy(fn (Evento $e) => (int) ($e->meta['context']['rata_id'] ?? 0));
     }
 
     /**

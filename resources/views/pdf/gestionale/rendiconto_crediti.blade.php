@@ -96,7 +96,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
             <tr>
                 <td class="c">{{ $r['nome'] }}</td>
                 <td class="c">{{ $r['unita'] ?? '—' }}</td>
-                <td class="c">@if(filled($r['addebito'] ?? null)){{ \App\Models\Gestionale\PianoRate::nomeDellAddebito($r['addebito']) }}@else{{ $r['piano'] }}, rata {{ $r['numero_rata'] }}@endif <span class="d">· {{ $r['gestione'] }}@if($r['pregresso_nella_rata']) · {{ \App\Services\Gestionale\PosizioniDeiCondomini::NOTA_PREGRESSO_NELLA_RATA }} @endif</span></td>
+                <td class="c">@if(filled($r['addebito'] ?? null)){{ \App\Models\Gestionale\PianoRate::nomeDellAddebito($r['addebito']) }}@else{{ $r['piano'] }}, rata {{ $r['numero_rata'] }}@endif <span class="d">· {{ $r['gestione'] }}@if($r['pregresso_nella_rata']) · {{ \App\Services\Gestionale\PosizioniDeiCondomini::NOTA_PREGRESSO_NELLA_RATA }} @endif@if($r['di_prima_nella_rata'] ?? false) · {{ \App\Services\Gestionale\PosizioniDeiCondomini::NOTA_DI_PRIMA_NELLA_RATA }} @endif</span></td>
                 <td class="cn">{{ $euro($r['importo']) }}</td>
                 <td class="c">{{ $giorno($r['scadenza']) }}</td>
                 <td class="c">{{ $r['origine'] !== null && $r['giorni'] === null ? $r['origine'] : ($r['scaduta'] ? $r['giorni'] . ' giorni, ' . $fasce[$r['fascia']] : 'non ancora scaduta') }}</td>

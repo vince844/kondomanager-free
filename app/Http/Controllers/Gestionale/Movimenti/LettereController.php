@@ -22,6 +22,7 @@ use App\Traits\HandleFlashMessages;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -113,6 +114,8 @@ class LettereController extends Controller
     public function ricevuta(Request $request, Condominio $condominio, string|int $invio): RedirectResponse
     {
         $riga = $this->assicuraInvio($condominio, $invio);
+        // Un file nel gestionale: chiede «Crea documenti archivio», come «Allega» della fattura.
+        Gate::authorize('create', Documento::class);
         $request->validate([
             'ricevuta' => ['required', 'file', 'extensions:' . implode(',', RegistroLettere::ESTENSIONI_PROVA), 'max:' . LimiteCaricamento::regolaMax(RegistroLettere::MB_PROVA),
                 \App\Support\FileComeIlNome::regola()],
@@ -266,6 +269,8 @@ class LettereController extends Controller
     public function allegaProva(Request $request, Condominio $condominio, string|int $invio): RedirectResponse
     {
         $riga = $this->assicuraInvio($condominio, $invio);
+        // Un file nel gestionale: chiede «Crea documenti archivio», come «Allega» della fattura.
+        Gate::authorize('create', Documento::class);
         $request->validate([
             // `extensions:` e non `mimes:`: un `.p7m` e un `.eml` non hanno un contenuto che `finfo` riconosca. Un PDF, un JPG o un PNG invece
             // devono esserlo davvero (`FileComeIlNome`). Il file va su un disco privato con un nome casuale e l'estensione del nome, e si scarica soltanto.

@@ -60,8 +60,8 @@ function elencoRotteSoloLogin(): array
         'appearance'                           => $account,
         // Il redirect risponde a tutti i metodi del router: da Laravel 13.38 fra questi c'è anche QUERY.
         'GET|POST|PUT|PATCH|DELETE|OPTIONS|QUERY settings' => [ROTTA_ACCOUNT, 'redirect a settings/profile'],
-        'POST confirm-password'                => $account,
         'password.confirm'                     => $account,
+        'password.confirm.store'               => $account,
         'password.confirm.stato'               => [ROTTA_ACCOUNT, 'dice solo se la propria sessione ha la password ridigitata da poco'],
         'logout'                               => $account,
         'password.edit'                        => $account,
@@ -271,9 +271,75 @@ function contieneUnControllo(ReflectionMethod $metodo): bool
     // autorizza in modifica, non in creazione). Non abort_if/abort_unless né abort(403): possono
     // essere un 404 su un file mancante, o un 403 dentro un if che copre un caso solo, e nessuno dei
     // due prova che il controllo principale c'è. Un `if (...) abort(403)` si scrive Gate::denyIf.
-    $cheBlocca = '/Gate::(authorize|allowIf|denyIf)\b|->authorize\(/';
+    //
+    // E conta solo come **istruzione di primo livello del metodo, prima di ogni `if`, `return` o
+    // chiusura**: un controllo dentro un ramo, dopo un ritorno anticipato o dentro una funzione che
+    // forse non gira non protegge il metodo. Le istruzioni che lo precedono (leggere l'utente,
+    // caricare un modello) sono ammesse.
+    $cheBlocca = '/^(\\\\?([A-Za-z_]+\\\\)*)?Gate::(authorize|allowIf|denyIf)\b|^\$this->authorize\(/';
 
-    return preg_match($cheBlocca, senzaCommenti(sorgenteDelMetodo($metodo))) === 1;
+    foreach (istruzioniDiPrimoLivello(senzaCommenti(sorgenteDelMetodo($metodo))) as $istruzione) {
+        if (preg_match($cheBlocca, $istruzione) === 1) {
+            return true;
+        }
+        if (preg_match('/^(if|elseif|else|return|function|fn|switch|match|foreach|for|while|do|try)\b/i', $istruzione) === 1) {
+            return false;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Le istruzioni del corpo del metodo al primo livello, nell'ordine, ciascuna come testo senza spazi in testa.
+ * Un blocco (`if (…) { … }`, `try { … }`) è un'istruzione sola, che comincia con la sua parola chiave.
+ *
+ * @return list<string>
+ */
+function istruzioniDiPrimoLivello(string $sorgente): array
+{
+    $token = token_get_all("<?php\n".$sorgente);
+    $livello = 0;
+    $nelCorpo = false;
+    $istruzioni = [];
+    $corrente = '';
+
+    foreach ($token as $t) {
+        $testo = is_array($t) ? $t[1] : $t;
+
+        if (! $nelCorpo) {
+            if ($testo === '{') {
+                $nelCorpo = true;
+                $livello = 1;
+            }
+            continue;
+        }
+
+        if ($testo === '{' || (is_array($t) && in_array($t[0], [T_CURLY_OPEN, T_DOLLAR_OPEN_CURLY_BRACES], true))) {
+            $livello++;
+        } elseif ($testo === '}') {
+            $livello--;
+            if ($livello === 0) {
+                break;
+            }
+            if ($livello === 1) {
+                $corrente .= $testo;
+                $istruzioni[] = ltrim($corrente);
+                $corrente = '';
+                continue;
+            }
+        }
+
+        if ($livello === 1 && $testo === ';') {
+            $istruzioni[] = ltrim($corrente);
+            $corrente = '';
+            continue;
+        }
+
+        $corrente .= $testo;
+    }
+
+    return array_values(array_filter($istruzioni, fn ($i) => $i !== ''));
 }
 
 function eUnMetodoVuoto(ReflectionMethod $metodo): bool
@@ -298,12 +364,21 @@ test('l\'elenco non ha voci per rotte che non ci sono più o che hanno ormai un 
     expect(array_keys($sparite))->toBe([], 'Voci da togliere da elencoRotteSoloLogin(): la rotta non esiste più o è protetta da un middleware.');
 });
 
+/**
+ * Le rotte il cui controllo di primo livello viene dopo un ritorno anticipato che è già un rifiuto, con il perché:
+ * la guardia le salta, e una voce nuova qui si scrive solo leggendo il metodo.
+ */
+const CONTROLLO_DOPO_UN_RIFIUTO = [
+    // Prima del Gate: nella demo pubblica la rotta risponde 403 a tutti.
+    'errori.avviso' => 'il ritorno che precede il controllo è il 403 della demo',
+];
+
 test('dove l\'elenco dice «controllo nel controller», il controllo c\'è davvero', function () {
     $rotte = rotteProtetteDalSoloLogin();
     $senza = [];
 
     foreach (elencoRotteSoloLogin() as $chiave => [$categoria]) {
-        if ($categoria !== ROTTA_CONTROLLO || ! isset($rotte[$chiave])) {
+        if ($categoria !== ROTTA_CONTROLLO || ! isset($rotte[$chiave]) || isset(CONTROLLO_DOPO_UN_RIFIUTO[$chiave])) {
             continue;
         }
 
@@ -375,6 +450,53 @@ test('la guardia stessa: un controllo commentato non conta, uno vero sì', funct
         {
         }
     };
+
+    // Il controllo dentro un ramo, o dopo un ritorno anticipato, non protegge il metodo; dopo una lettura sì.
+    $inUnRamo = new class
+    {
+        public function azione($x): void
+        {
+            if ($x) {
+                \Illuminate\Support\Facades\Gate::authorize('update', $x);
+            }
+        }
+    };
+    $dopoUnRitorno = new class
+    {
+        public function azione($x)
+        {
+            if (! $x) {
+                return null;
+            }
+            \Illuminate\Support\Facades\Gate::authorize('update', $x);
+        }
+    };
+    $inUnaChiusura = new class
+    {
+        public function azione($x): void
+        {
+            collect([$x])->each(function ($y) {
+                \Illuminate\Support\Facades\Gate::authorize('update', $y);
+            });
+        }
+    };
+    $dopoUnaLettura = new class
+    {
+        public function azione($request): void
+        {
+            $utente = $request->user();
+            $this->authorize('update', $utente);
+        }
+
+        public function authorize(...$a): void
+        {
+        }
+    };
+
+    expect(contieneUnControllo(new ReflectionMethod($inUnRamo, 'azione')))->toBeFalse()
+        ->and(contieneUnControllo(new ReflectionMethod($dopoUnRitorno, 'azione')))->toBeFalse()
+        ->and(contieneUnControllo(new ReflectionMethod($inUnaChiusura, 'azione')))->toBeFalse()
+        ->and(contieneUnControllo(new ReflectionMethod($dopoUnaLettura, 'azione')))->toBeTrue();
 
     expect(contieneUnControllo(new ReflectionMethod($commentato, 'azione')))->toBeFalse()
         ->and(contieneUnControllo(new ReflectionMethod($vero, 'azione')))->toBeTrue()

@@ -9,6 +9,7 @@ use App\Actions\Gestionale\Movimenti\RegistraRegolazioneImmediataAction;
 use App\Helpers\DateHelper;
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\PianoConto;
+use App\Services\Gestionale\VoceDellaGestione;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -87,6 +88,9 @@ class StoreRegolazioneImmediataRequest extends FormRequest
             // "Registra e nuova": dopo il salvataggio si torna al modulo vuoto
             // invece che al dettaglio della scrittura.
             'crea_altro' => ['nullable', 'boolean'],
+
+            // La data fuori dal periodo della gestione si registra solo dopo che chi registra l'ha confermata (`avviso_data`).
+            'conferma_avviso_data' => ['nullable', 'boolean'],
         ];
     }
 
@@ -111,6 +115,33 @@ class StoreRegolazioneImmediataRequest extends FormRequest
 
             if ($voce !== null && Conto::segnoDelTipo((string) $voce->tipo) !== 1) {
                 $validator->errors()->add('conto_id', RegistraRegolazioneImmediataAction::messaggioVoceDiEntrata($voce->nome));
+            }
+        });
+
+        // La gestione, la voce, l'esercizio e la data si confrontano fra loro (`VoceDellaGestione`): la voce della gestione scelta, la gestione
+        // agganciata all'esercizio, la data nel periodo della gestione o confermata da chi registra.
+        $validator->after(function ($validator) {
+            $errori = $validator->errors();
+            if ($errori->hasAny(['gestione_id', 'esercizio_id', 'conto_id', 'data_operazione'])) {
+                return;
+            }
+            $gestioneId = (int) filter_var($this->input('gestione_id'), FILTER_VALIDATE_INT);
+            $esercizioId = (int) filter_var($this->input('esercizio_id'), FILTER_VALIDATE_INT);
+            $contoId = (int) filter_var($this->input('conto_id'), FILTER_VALIDATE_INT);
+
+            if (($rifiuto = VoceDellaGestione::rifiutoPerLaVoce($gestioneId, $contoId)) !== null) {
+                $errori->add('conto_id', $rifiuto);
+
+                return;
+            }
+            if (($rifiuto = VoceDellaGestione::rifiutoPerLEsercizio($gestioneId, $esercizioId)) !== null) {
+                $errori->add('gestione_id', $rifiuto);
+
+                return;
+            }
+            if (! $this->boolean('conferma_avviso_data')
+                && ($avviso = VoceDellaGestione::avvisoPerLaData($gestioneId, $esercizioId, (string) $this->input('data_operazione'))) !== null) {
+                $errori->add('avviso_data', $avviso);
             }
         });
     }

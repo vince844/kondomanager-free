@@ -75,7 +75,7 @@ it('senza fattura servono il tipo, la base e la voce della gestione: la scelta �
     adbRegistra($this, $s, $voce(['tipo_accessorio' => 'sollecito']))->assertStatus(422)
         ->assertJsonPath('errors.addebiti.0', 'Scegli la base della spesa: la legge, il regolamento, una delibera, un provvedimento del giudice o nessuna.');
     adbRegistra($this, $s, $voce(['tipo_accessorio' => 'sollecito', 'base' => 'regolamento']))->assertStatus(422)
-        ->assertJsonPath('errors.addebiti.0', 'Scegli la voce che riceve il denaro quando la persona lo versa: una voce della gestione «Ordinaria 2026». Se non c\'è, creala nel piano dei conti con il preventivo a zero.');
+        ->assertJsonPath('errors.addebiti.0', 'Scegli la voce che riceve il denaro quando la persona lo versa: una voce della gestione «Ordinaria 2026». Se non c\'è, creala nel piano dei conti con il preventivo a zero e una tabella millesimale collegata.');
     // Una voce di un altro condominio è un 404.
     $altro = accViaVerdi($this);
     adbRegistra($this, $s, $voce(['tipo_accessorio' => 'sollecito', 'base' => 'regolamento', 'conto_id' => $altro['postali']->id]))->assertNotFound();

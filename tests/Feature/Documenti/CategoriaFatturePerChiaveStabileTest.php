@@ -34,6 +34,8 @@ beforeEach(function () {
 
     $this->user = User::factory()->create();
     $this->user->givePermissionTo('Accesso pannello amministratore');
+    // Rinominare una categoria chiede «Modifica documenti archivio», che l'amministratore di serie ha.
+    $this->user->givePermissionTo(Permission::firstOrCreate(['name' => \App\Enums\Permission::EDIT_ARCHIVE_DOCUMENTS->value, 'guard_name' => 'web']));
     $this->actingAs($this->user);
 });
 

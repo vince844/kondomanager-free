@@ -15,6 +15,16 @@ use Illuminate\Support\Str;
 
 class ImmobileResource extends JsonResource
 {
+    /** Nell'elenco delle unità i soggetti escono nella forma ridotta della colonna «Soggetti» ({@see SoggettoDellElencoResource}). */
+    private bool $perLElenco = false;
+
+    public function perLElenco(): static
+    {
+        $this->perLElenco = true;
+
+        return $this;
+    }
+
     /**
      * Transform the resource into an array.
      *
@@ -42,7 +52,9 @@ class ImmobileResource extends JsonResource
             'tipologia'          => new TipologiaImmobileResource($this->whenLoaded('tipologiaImmobile')),
             'palazzina'          => new PalazzinaResource($this->whenLoaded('palazzina')),
             'scala'              => new ScalaResource($this->whenLoaded('scala')),
-            'anagrafiche'        => ImmobileAnagraficaResource::collection($this->whenLoaded('anagrafiche')),
+            'anagrafiche'        => $this->perLElenco
+                ? SoggettoDellElencoResource::collection($this->whenLoaded('anagrafiche'))
+                : ImmobileAnagraficaResource::collection($this->whenLoaded('anagrafiche')),
 
             // Il legame «Pertinenza di», nelle sue due forme alternative. `pertinenzaDi` esce solo
             // se la relazione è stata caricata: l'elenco unità la carica, il modulo no — gli basta

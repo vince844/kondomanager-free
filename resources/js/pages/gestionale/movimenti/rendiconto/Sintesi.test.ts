@@ -23,6 +23,7 @@ vi.mock('@inertiajs/vue3', () => ({
 vi.mock('@/composables/permissions', () => ({
     usePermission: () => ({
         generateRoute: (nome: string) => nome,
+        hasPermission: () => true,
         generatePath: (p: string, parametri: Record<string, unknown> = {}) => `/${Object.entries(parametri).reduce((s, [k, v]) => s.replace(`:${k}`, String(v)), p)}`,
     }),
 }));
@@ -198,6 +199,13 @@ describe('la Sintesi del rendiconto', () => {
         expect(testo(monta({ prospetto: { ...sintesi().prospetto, risultato: 500 } }).find('[data-test="risultato"]').html())).toContain('€ 5,00 (avanzo)');
         expect(testo(p.find('[data-test="raccordo-quote"]').html())).toContain('+ rate di questi piani emesse in un altro esercizio € 300,00');
         expect(monta({ prospetto: { ...sintesi().prospetto, quote_piani: 411000 } }).find('[data-test="raccordo-quote"]').exists()).toBe(false);
+    });
+
+    test('la rettifica di esercizi precedenti nel risultato: il segno davanti alla voce, «−» se negativa e «+» se positiva, mai dentro la cifra', () => {
+        const con = (rettifica: number) => testo(monta({ prospetto: { ...sintesi().prospetto, rettifica_esercizi_precedenti: rettifica } }).find('[data-test="risultato"]').html());
+
+        expect(con(-122000)).toContain('quote registrate in questo esercizio € 4.110,00 − rettifica di esercizi precedenti € 1.220,00 − costi € 4.131,00');
+        expect(con(5000)).toContain('quote registrate in questo esercizio € 4.110,00 + rettifica di esercizi precedenti € 50,00 − costi € 4.131,00');
     });
 
     test('Coda 568 — il risultato e la riga che lega le quote dei piani dicono «quote registrate in questo esercizio», come le stampe: mai «a giornale»', () => {

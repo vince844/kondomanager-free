@@ -134,7 +134,8 @@ final class AccessoriDaIncassare
     /**
      * La voce che riceve il versamento: quella scelta all'addebito, se la sua gestione è dell'esercizio del versamento; altrimenti la voce con lo stesso
      * nome e lo stesso tipo in una gestione dello stesso tipo di quell'esercizio (l'interesse del 2026 versato nel 2027 va all'«Interessi di mora»
-     * dell'ordinaria del 2027, dove il rendiconto del 2027 lo legge e lo divide). Se quella voce non c'è, nasce nel piano dei conti della gestione, con
+     * dell'ordinaria del 2027, dove il rendiconto del 2027 lo legge e lo divide), che non sia un capitolo con delle voci sotto, e fra due con quel nome
+     * quella con le tabelle. Se quella voce non c'è, nasce nel piano dei conti della gestione, con
      * il mastro e le tabelle della voce scelta; se il piano dei conti non c'è ancora, l'incasso non si registra e la frase lo dice.
      *
      * @param RataQuote|null $quota l'addebito versato, per la frase
@@ -155,7 +156,12 @@ final class AccessoriDaIncassare
         $tipo = $voce->pianoConto?->gestione?->tipo;
         $gemella = Conto::query()->join('piani_conti as pc', 'pc.id', '=', 'conti.piano_conto_id')->join('gestioni as g', 'g.id', '=', 'pc.gestione_id')
             ->whereIn('pc.gestione_id', $gestioni)->where('g.tipo', $tipo)->whereRaw('LOWER(conti.nome) = ?', [mb_strtolower(trim((string) $voce->nome))])
-            ->where('conti.tipo', $voce->tipo)->whereNotNull('conti.conto_contabile_id')->orderBy('conti.id')->first(['conti.*']);
+            ->where('conti.tipo', $voce->tipo)->whereNotNull('conti.conto_contabile_id')
+            // Un capitolo con delle voci sotto non riceve il versamento: non ha tabelle, e il conguaglio lo direbbe «non attribuito». Fra le altre
+            // voci con quel nome, prima quella con le tabelle; se resta solo il capitolo, nasce la voce nuova (il doppio nome è a un livello diverso).
+            ->whereNotExists(fn ($q) => $q->selectRaw('1')->from('conti as figli')->whereColumn('figli.parent_id', 'conti.id'))
+            ->orderByRaw('CASE WHEN EXISTS (SELECT 1 FROM conto_tabella_millesimale ctm WHERE ctm.conto_id = conti.id) THEN 0 ELSE 1 END')
+            ->orderBy('conti.id')->first(['conti.*']);
         if ($gemella !== null) {
             return $gemella;
         }

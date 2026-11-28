@@ -10,7 +10,7 @@ use App\Http\Resources\Anagrafica\AnagraficaNomeResource;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Documenti\Categorie\CategoriaDocumentoResource;
-use App\Http\Resources\User\UserResource;
+use App\Http\Resources\User\AutoreResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Str;
@@ -53,7 +53,7 @@ class DocumentoResource extends JsonResource
                 }
 
                 return [
-                    'user'       => new UserResource($this->createdBy),
+                    'user'       => new AutoreResource($this->createdBy),
                     // Della persona in rubrica dell'autore, id e nome (Coda 408): il resto sta nella sua scheda.
                     'anagrafica' => $this->createdBy->relationLoaded('anagrafica')
                         ? new AnagraficaNomeResource($this->createdBy->anagrafica)

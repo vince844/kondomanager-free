@@ -12,6 +12,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Models\Anagrafica;
 use App\Models\Condominio;
+use App\Models\Documento;
 use App\Models\Gestionale\DispensaSeiMesi;
 use App\Services\Documenti\ArchivioDocumenti;
 use App\Services\Gestionale\Debiti\SeiMesi;
@@ -22,6 +23,7 @@ use App\Traits\HasEsercizio;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -74,6 +76,10 @@ class DispensaSeiMesiController extends Controller
 
     public function store(Request $request, Condominio $condominio): RedirectResponse
     {
+        // Il verbale caricato è un file nel gestionale: chiede «Crea documenti archivio», come «Allega» della fattura.
+        if ($request->hasFile('verbale')) {
+            Gate::authorize('create', Documento::class);
+        }
         // La delibera scelta dà il giorno della riunione e il numero del suo verbale: le colonne di oggi si scrivono con quelli (R1).
         $delibera = DeliberaNelleSchede::dallaRichiesta($request, $condominio);
         if ($delibera !== null) {

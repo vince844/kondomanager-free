@@ -185,7 +185,7 @@ class CassaController extends Controller
             ]);
             
             return to_route('admin.gestionale.casse.index', $condominio)->with(
-                $this->flashError($e->getMessage())
+                $this->flashError(\App\Support\Errori\MessaggioPerLaPagina::di($e, 'CassaController@store'))
             );
 
         }
@@ -263,7 +263,7 @@ class CassaController extends Controller
             ]);
             
             return back()->with(
-                $this->flashError('Errore durante il salvataggio: ' . $e->getMessage())
+                $this->flashError('Errore durante il salvataggio: ' . \App\Support\Errori\MessaggioPerLaPagina::di($e, 'CassaController@update'))
             );
         }
     }
@@ -345,7 +345,7 @@ class CassaController extends Controller
             ]);
 
             return back()->with(
-                $this->flashError('Impossibile eliminare la risorsa: ' . $e->getMessage())
+                $this->flashError('Impossibile eliminare la risorsa: ' . \App\Support\Errori\MessaggioPerLaPagina::di($e, 'CassaController@destroy'))
             );
         }
     }

@@ -18,6 +18,7 @@ use App\Models\Condominio;
 use App\Models\Esercizio;
 use App\Models\Immobile;
 use App\Models\TipologiaImmobile;
+use App\Services\Gestionale\Titolarita\RigheAQuotaZero;
 use App\Traits\HandleFlashMessages;
 use App\Traits\OrdinaElenco;
 use App\Traits\PaginaElenco;
@@ -27,6 +28,7 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -146,7 +148,8 @@ class ImmobileController extends Controller
             'condominio' => $condominio,
             'esercizio'  => $esercizio,
             'condomini'  => $condomini,
-            'immobili'   => ImmobileResource::collection($immobili)->resolve(),
+            // I soggetti di ogni unità nella forma della colonna «Soggetti», senza il codice fiscale.
+            'immobili'   => $immobili->getCollection()->map(fn (Immobile $immobile) => (new ImmobileResource($immobile))->perLElenco()->resolve())->all(),
             'meta'       => [
                 'current_page' => $immobili->currentPage(),
                 'last_page'    => $immobili->lastPage(),
@@ -160,6 +163,9 @@ class ImmobileController extends Controller
             'filters'   => $request->only(['nome', 'pertinenze']),
             'sort'      => $validated['sort'] ?? null,
             'direction' => $validated['direction'] ?? null,
+            // Le righe di proprietà chiuse a quota 0 che un altro proprietario segue: nei loro giorni nessuno paga per l'unità. Solo da leggere, riga per riga
+            // allo storico dell'unità; vuoto se non ce ne sono.
+            'righeAQuotaZero' => app(RigheAQuotaZero::class)->perCondominio($condominio->id),
         ]);
     }
 
@@ -192,6 +198,9 @@ class ImmobileController extends Controller
      */
     public function create(Condominio $condominio): Response
     {
+        // L'unità si crea, si modifica e si elimina con «Modifica condomini», come le impostazioni del condominio.
+        Gate::authorize('update', $condominio);
+
         $condominio->load(['palazzine', 'scale']);
 
         $condomini = $this->getCondomini();
@@ -244,6 +253,9 @@ class ImmobileController extends Controller
      */
     public function store(CreateImmobileRequest $request, Condominio $condominio): RedirectResponse
     {
+        // L'unità si crea, si modifica e si elimina con «Modifica condomini», come le impostazioni del condominio.
+        Gate::authorize('update', $condominio);
+
         try {
             
             $data = $request->validated();
@@ -369,6 +381,9 @@ class ImmobileController extends Controller
      */
     public function edit(Condominio $condominio, Immobile $immobile): Response
     {
+        // L'unità si crea, si modifica e si elimina con «Modifica condomini», come le impostazioni del condominio.
+        Gate::authorize('update', $condominio);
+
         $immobile->loadMissing(['palazzina', 'scala', 'tipologiaImmobile']);
 
         // Get the current active and open esercizio this is important to navigate gestioni menu
@@ -500,6 +515,9 @@ class ImmobileController extends Controller
      */
     public function update(UpdateImmobileRequest $request, Condominio $condominio, Immobile $immobile): RedirectResponse
     {
+        // L'unità si crea, si modifica e si elimina con «Modifica condomini», come le impostazioni del condominio.
+        Gate::authorize('update', $condominio);
+
         try {
 
             $data = $request->validated();
@@ -563,6 +581,9 @@ class ImmobileController extends Controller
      */
     public function destroy(Condominio $condominio, Immobile $immobile): RedirectResponse
     {
+        // L'unità si crea, si modifica e si elimina con «Modifica condomini», come le impostazioni del condominio.
+        Gate::authorize('update', $condominio);
+
         // ⚠️ Stessa ragione della guardia gemella su `TabellaController@destroy`: senza, si
         // cancellava l'unità di un altro condominio, e con lei le sue quote in ogni tabella.
         abort_unless($immobile->condominio_id === $condominio->id, 404);

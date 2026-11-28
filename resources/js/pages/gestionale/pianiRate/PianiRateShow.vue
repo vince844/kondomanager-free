@@ -45,6 +45,7 @@ import type { Flash } from '@/types/flash';
 import { creditoDisponibileCents, haCreditoDisponibile, versatoRataCents } from '@/lib/gestionale/pianiRate/credito';
 import { rataScaduta, scadutoDaIncassare } from '@/lib/gestionale/pianiRate/scaduto';
 import { oggiLocale } from '@/lib/giorno';
+import vSelect from 'vue-select';
 import { saldoNettoMovimenti } from '@/lib/gestionale/pianiRate/budgetMovements';
 import TestaDelPianoStraordinario from '@/components/gestionale/pianiRate/TestaDelPianoStraordinario.vue';
 import type { FondoSpecialeDelPiano, UrgenzaDelPiano } from '@/lib/gestionale/pianiRate/testaDelPiano';
@@ -86,6 +87,16 @@ const props = defineProps<{
    * il piano chiede più di quanto ripartisce. Nomina il capitolo e i sottoconti e dice come uscirne. Fisso finché le righe sono sovrapposte, senza pulsanti.
    */
   avviso_righe_sovrapposte?: { titolo: string; voci: string[]; situazione: string; strade: string[] } | null;
+  /**
+   * Le unità in usufrutto con delle voci dell'ordinaria sul «Proprietario», che in questo piano vanno al nudo proprietario (`UsufruttiConLOrdinariaAlNudo`): una
+   * riga per unità, da leggere, senza blocco.
+   */
+  usufrutti_con_l_ordinaria_al_nudo?: Array<{ immobile_id: number; frase: string }>;
+  /**
+   * La riga «Esercizio: 2026 · Cambia»: l'esercizio del piano, gli esercizi aperti della sua gestione fra cui spostarlo e, se non si sposta (rate emesse,
+   * incassi, conguaglio, esercizio chiuso), la frase con la strada (`PianoRateController::cambioDellEsercizio`).
+   */
+  cambio_esercizio?: { attuale: { id: number; nome: string } | null; scelte: Array<{ id: number; nome: string; perche?: string | null }>; fermo: string | null };
   copertura: {
       scoperto_count: number;
       orfani: Array<{ id: number; nome: string; importo: number; da_sposta_spesa?: boolean }>;
@@ -111,6 +122,21 @@ const props = defineProps<{
 }>()
 
 const { generatePath, generateRoute } = usePermission();
+
+// «Esercizio: 2026 · Cambia»: l'esercizio di un piano senza rate emesse né incassi si sceglie da un menu, e la pagina si riapre nell'esercizio nuovo.
+const cambioEsercizioAperto = ref(false);
+const esercizioScelto = ref<number | null>(null);
+const cambioEsercizioInCorso = ref(false);
+function spostaInUnAltroEsercizio() {
+    if (esercizioScelto.value === null) return;
+    cambioEsercizioInCorso.value = true;
+    router.put(route(generateRoute('gestionale.esercizi.piani-rate.update-esercizio'), {
+        condominio: props.condominio.id, esercizio: props.esercizio.id, pianoRate: props.pianoRate.id,
+    }), { esercizio_id: esercizioScelto.value }, {
+        preserveScroll: true,
+        onFinish: () => { cambioEsercizioInCorso.value = false; cambioEsercizioAperto.value = false; },
+    });
+}
 const { toItalian } = useDateConverter();
 const { euro } = useCurrencyFormatter();
 
@@ -289,7 +315,10 @@ const RIMEDI: Record<string, [string, string]> = {
     coefficienti_sotto_il_cento: ['porta al 100 % le tabelle della voce', 'portare al 100 % le tabelle della voce'],
     ripartizioni_sotto_il_cento: ['porta al 100 % le percentuali della voce', 'portare al 100 % le percentuali della voce'],
     millesimo_non_compilato: ['compila il millesimo che manca', 'compilare il millesimo che manca'],
-    giorni_senza_titolare: ['registra il passaggio a chi è entrato (se qualcuno è entrato)', 'registrare il passaggio a chi è entrato (se qualcuno è entrato)'],
+    giorni_senza_titolare: [
+        'registra il passaggio a chi è entrato (se qualcuno è entrato) o, se il nuovo proprietario lo è dalla vendita, correggi la sua data di inizio',
+        'registrare il passaggio a chi è entrato (se qualcuno è entrato) o, se il nuovo proprietario lo è dalla vendita, correggere la sua data di inizio',
+    ],
     titolari_fuori_competenza: ['controlla le date dei titolari', 'controllare le date dei titolari'],
 };
 const RIMEDIO_TITOLARE: [string, string] = ['censisci il titolare che manca', 'censire il titolare che manca'];
@@ -863,8 +892,12 @@ const aggregates = computed(() => {
   const src = tab.value === "anagrafica" ? props.quotePerAnagrafica : props.quotePerImmobile;
   const perRata: Record<number, number> = {};
   let scadute = 0; let versato = 0; let crediti = 0; let totaleTeorico = 0;
-  (src || []).forEach((item: any) => {
+  // Lo scaduto si legge sempre per persona, in tutte e due le schede: il credito è netto per la persona (anche su un'altra sua unità), e la scheda per
+  // unità non lo può nettare fra le unità della stessa persona. La card dice la stessa cifra qualunque scheda sia aperta.
+  (props.quotePerAnagrafica || []).forEach((item: any) => {
     scadute += scadutoDaIncassare(item.rate || []);
+  });
+  (src || []).forEach((item: any) => {
     (item.rate || []).forEach((r: any) => {
       const importo = r.importo ?? 0;
       perRata[r.numero] = (perRata[r.numero] || 0) + importo;
@@ -877,6 +910,9 @@ const aggregates = computed(() => {
   const daIncassareTotale = totaleTeorico - versato;
   return { totaleGenerale: daIncassareTotale, totaliPerRata: perRata, totaleRateScadute: scadute, totaleVersato: versato, creditiTotali: crediti, totaleTeorico, daIncassareTotale };
 });
+
+// Nel piano straordinario le voci sono le fatture: «Sposta spesa» e il cestino della voce lavorano sulle righe dei capitoli e lì non si offrono (il server li rifiuta).
+const pianoStraordinario = computed(() => props.pianoRate.tipo === 'straordinario');
 
 const isRecalculateBlocked = computed(() => {
     const haIncassi = aggregates.value.totaleVersato > 0;
@@ -1017,6 +1053,10 @@ const printRipartoCapitoli = () => {
         :esercizio="props.esercizio"
         :backUrl="route(generateRoute('gestionale.esercizi.piani-rate.index'), { condominio: props.condominio.id, esercizio: props.esercizio.id })"
         backText="Torna alla lista"
+        una-fila
+        una-fila-sempre
+        una-fila-col-percorso
+        esercizio-breve
         :text-guides="textGuidesList"
         @open-text-guide="openGuide"
       >
@@ -1029,6 +1069,33 @@ const printRipartoCapitoli = () => {
 
           <div v-if="flashMessage" class="animate-in fade-in slide-in-from-top-4 duration-300">
               <Alert :message="flashMessage.message" :type="flashMessage.type" />
+          </div>
+
+          <!-- L'esercizio del piano: «Cambia» per un piano nato nell'esercizio sbagliato, senza rate emesse né incassi; per gli altri la riga dice perché. -->
+          <div v-if="cambio_esercizio?.attuale" class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400" data-testid="riga-esercizio">
+              <span class="flex items-center gap-2"><CalendarDays class="h-4 w-4 text-slate-400" />Esercizio del piano: <span class="font-medium text-slate-900 dark:text-slate-100">{{ cambio_esercizio.attuale.nome }}</span></span>
+              <template v-if="!cambio_esercizio.fermo && cambio_esercizio.scelte.length && !cambioEsercizioAperto">
+                  <button type="button" class="font-medium text-blue-600 hover:underline dark:text-blue-400" @click="cambioEsercizioAperto = true">Cambia</button>
+              </template>
+              <span v-else-if="cambio_esercizio.fermo" class="w-full pl-6 text-xs text-slate-500 dark:text-slate-400">{{ cambio_esercizio.fermo }}</span>
+              <div v-if="cambioEsercizioAperto" class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+                  <v-select
+                      :options="cambio_esercizio.scelte"
+                      label="nome"
+                      class="w-56 bg-white text-sm dark:bg-slate-950"
+                      v-model="esercizioScelto"
+                      :reduce="(e: { id: number }) => e.id"
+                      :selectable="(e: { perche?: string | null }) => !e.perche"
+                      :clearable="false"
+                      placeholder="Scegli l'esercizio..."
+                  />
+                  <Button size="sm" :disabled="esercizioScelto === null || cambioEsercizioInCorso" @click="spostaInUnAltroEsercizio">Sposta il piano</Button>
+                  <Button size="sm" variant="ghost" @click="cambioEsercizioAperto = false">Annulla</Button>
+                  <!-- Gli esercizi dove il piano chiederebbe una voce oltre il tetto: il menu non li fa scegliere, e qui c'è il perché. -->
+                  <ul v-if="cambio_esercizio.scelte.some((e) => e.perche)" class="w-full space-y-1 text-xs" data-testid="esercizi-non-scelti">
+                      <li v-for="e in cambio_esercizio.scelte.filter((x) => x.perche)" :key="e.id">«{{ e.nome }}» non si può scegliere: {{ e.perche }}</li>
+                  </ul>
+              </div>
           </div>
 
           <!-- Il piano degli addebiti a singole persone: una rata per addebito, registrato e annullato dall'estratto conto della persona. -->
@@ -1099,6 +1166,18 @@ const printRipartoCapitoli = () => {
                           </ul>
                       </div>
                   </div>
+              </div>
+          </div>
+
+          <!-- L'unità in usufrutto con le voci dell'ordinaria sul «Proprietario»: una riga informativa per unità, senza pulsanti né blocco. -->
+          <div v-if="usufrutti_con_l_ordinaria_al_nudo?.length" class="space-y-2" data-testid="usufrutti-ordinaria-al-nudo">
+              <div
+                  v-for="riga in usufrutti_con_l_ordinaria_al_nudo"
+                  :key="riga.immobile_id"
+                  class="flex gap-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+              >
+                  <Info class="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+                  <p>{{ riga.frase }}</p>
               </div>
           </div>
 
@@ -1658,7 +1737,7 @@ const printRipartoCapitoli = () => {
                     </HoverCard>
 
                     <!-- SPOSTA SPESA -->
-                    <HoverCard>
+                    <HoverCard v-if="!pianoStraordinario">
                         <HoverCardTrigger as-child>
                             <Button variant="outline" class="h-8 px-3 border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800 bg-white shrink-0 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300 dark:bg-card" @click="isSpostaSpesaOpen = true">
                                 <ArrowRightLeft class="w-4 h-4 2xl:mr-2" />
@@ -1688,7 +1767,7 @@ const printRipartoCapitoli = () => {
 
             <div v-if="isReady" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                 <Card class="bg-white shadow-sm border dark:bg-card"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-gray-400 tracking-wider">Totale Piano</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-gray-900 dark:text-neutral-100">{{ euro(aggregates.totaleTeorico) }}</CardContent></Card>
-                <Card class="bg-red-50/40 shadow-sm border-red-100 relative group dark:bg-red-950/30 dark:border-red-900/60"><CardHeader class="p-4 pb-2 flex flex-row items-center justify-between space-y-0"><CardTitle class="text-xs uppercase text-red-400 tracking-wider">Scaduto da incassare</CardTitle><TooltipProvider><Tooltip><TooltipTrigger><Info class="w-3 h-3 text-red-300 hover:text-red-500 transition-colors cursor-help" /></TooltipTrigger><TooltipContent><p class="text-xs">Le rate emesse con la scadenza passata, meno quanto già versato: anche il <strong>pregresso</strong> della rata 0, se è emessa.</p><p class="text-xs text-muted-foreground">Una rata è scaduta dal giorno dopo la sua scadenza. Le rate non ancora emesse restano fuori. Non sottrae i crediti di altre rate; dentro una rata, sì.</p></TooltipContent></Tooltip></TooltipProvider></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-red-600 dark:text-red-400">{{ euro(aggregates.totaleRateScadute) }}</CardContent></Card>
+                <Card class="bg-red-50/40 shadow-sm border-red-100 relative group dark:bg-red-950/30 dark:border-red-900/60"><CardHeader class="p-4 pb-2 flex flex-row items-center justify-between space-y-0"><CardTitle class="text-xs uppercase text-red-400 tracking-wider">Scaduto da incassare</CardTitle><TooltipProvider><Tooltip><TooltipTrigger><Info class="w-3 h-3 text-red-300 hover:text-red-500 transition-colors cursor-help" /></TooltipTrigger><TooltipContent><p class="text-xs">Le rate emesse con la scadenza passata, meno quanto già versato: anche il <strong>pregresso</strong> della rata 0, se è emessa.</p><p class="text-xs text-muted-foreground">Una rata è scaduta dal giorno dopo la sua scadenza. Le rate non ancora emesse restano fuori. Non sottrae i crediti di altre rate; dentro una rata, il credito di una persona toglie solo dal suo debito, anche su un'altra sua unità, mai da quello di un'altra persona.</p></TooltipContent></Tooltip></TooltipProvider></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-red-600 dark:text-red-400">{{ euro(aggregates.totaleRateScadute) }}</CardContent></Card>
                 <Card class="bg-emerald-50/40 shadow-sm border-emerald-100 dark:bg-emerald-950/30 dark:border-emerald-900/60"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-emerald-400 tracking-wider">Incassato</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-emerald-600 dark:text-emerald-400">{{ euro(aggregates.totaleVersato) }}</CardContent></Card>
                 <Card class="bg-blue-50/40 shadow-sm border-blue-100 dark:bg-blue-950/30 dark:border-blue-900/60"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-blue-400 tracking-wider">Crediti (Anticipi)</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold text-blue-600 dark:text-blue-400">{{ aggregates.creditiTotali > 0 ? euro(aggregates.creditiTotali) : "—" }}</CardContent></Card>
                 <Card class="bg-gray-50 shadow-sm border dark:bg-neutral-900"><CardHeader class="p-4 pb-2"><CardTitle class="text-xs uppercase text-gray-500 tracking-wider">Saldo Netto</CardTitle></CardHeader><CardContent class="p-4 pt-0 text-xl font-bold" :class="aggregates.totaleGenerale > 0.01 ? 'text-red-600 dark:text-red-400' : (aggregates.totaleGenerale < -0.01 ? 'text-blue-600 dark:text-blue-400' : 'text-emerald-600 dark:text-emerald-400')">{{ euro(aggregates.totaleGenerale) }}</CardContent></Card>
@@ -1799,7 +1878,8 @@ const printRipartoCapitoli = () => {
                                     @stornato="showFeedback('Movimento stornato', 'I fondi sono tornati alla voce di origine.', false)"
                                 />
                                 <span class="text-xs font-medium text-gray-700 dark:text-neutral-300">{{ capitolo.tipo === 'entrata' ? euro(-Math.abs(capitolo.importo)) : euro(capitolo.importo) }}</span>
-                                <button 
+                                <button
+                                    v-if="!pianoStraordinario"
                                     @click="confirmDetachItem(capitolo)"
                                     :disabled="switchState || isRecalculateBlocked"
                                     class="p-1.5 rounded-md text-gray-300 hover:text-red-600 transition-colors dark:hover:text-red-400"

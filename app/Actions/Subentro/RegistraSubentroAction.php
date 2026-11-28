@@ -194,6 +194,12 @@ final class RegistraSubentroAction
                         'ordinaria_dopo_atto' => $ordinaria['scelta'],
                         'voci_spostate' => $spostate === [] ? [] : app(VociDaSpostare::class)->sposta($spostate),
                     ];
+                    // Le voci che con la legge l'amministratore ha tenuto sul «Proprietario» togliendo la spunta (non quelle bloccate da un
+                    // piano): la pagina del piano non gli chiede poi di spostarle, dice che è la scelta del passaggio.
+                    if ($ordinaria['scelta'] === Subentro::ORDINARIA_ALL_USUFRUTTUARIO) {
+                        $registroOrdinaria['voci_tenute'] = array_values(array_map(fn ($v) => (int) $v['id'],
+                            array_filter($ordinaria['voci'], fn ($v) => ! $v['spostata'] && ! $v['bloccata'])));
+                    }
                 } elseif (($ordinaria['ereditata'] ?? null) !== null) {
                     // Rilievo D4: l'estinzione di un usufrutto nato «come la voce» chiude quella scelta, e i passaggi dopo
                     // devono saperlo (`ConguaglioPassaggio::predecessori()`): la si scrive con il passaggio da cui viene.
@@ -858,9 +864,7 @@ final class RegistraSubentroAction
 
         $uscenteLi = null;
         if ($uscente !== null) {
-            $uscenteLi = $pertinenza->titolarita()->with('anagrafica')->where('anagrafica_id', $uscente->anagrafica_id)->where('tipologia', $uscente->tipologia)
-                ->lockForUpdate()->get()
-                ->first(fn (TitolaritaImmobile $t) => $t->inCorsoIl($giornoPrima) && $t->passaggioCheLaChiude() === null);
+            $uscenteLi = TitolaritaImmobile::rigaCheEsceDallaPertinenza($pertinenza, (int) $uscente->anagrafica_id, (string) $uscente->tipologia, $giornoPrima, blocca: true);
             if ($uscenteLi === null) {
                 $ruolo = RuoloAnagraficaImmobile::tryFrom((string) $uscente->tipologia)?->label() ?? $uscente->tipologia;
                 throw ValidationException::withMessages(['pertinenze' => sprintf('%s: %s non risulta %s alla data del passaggio. Togli la spunta, o registra il passaggio dalla pertinenza.', $pertinenza->nome, $uscente->anagrafica?->nome, mb_strtolower($ruolo))]);

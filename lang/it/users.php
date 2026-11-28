@@ -37,7 +37,7 @@ return [
         'list_permissions_head'              => 'Elenco permessi',
         'list_permissions_description'       => 'Visualizza tutti i permessi disponibili all\'interno dell\'applicazione.',
         'list_invites_head'                  => 'Elenco inviti',
-        'list_invites_description'           => 'Monitora gli inviti inviati ai nuovi collaboratori e il loro stato.',
+        'list_invites_description'           => 'Monitora gli inviti inviati ai nuovi condòmini e fornitori e il loro stato.',
         'edit_user_head'                     => 'Modifica utente',
         'new_user_head'                      => 'Crea nuovo utente',
         'new_user_title'                     => 'Crea nuovo utente',
@@ -110,6 +110,7 @@ return [
         'invite_buildings' => 'Condomini',
         // Coda 258, decisione 134.1: sulla scheda di un account fuori dalla portata di chi la apre.
         'fuori_portata' => 'Questo account lo gestisce solo un amministratore: ha un ruolo diverso da «utente» e «fornitore», o permessi aggiuntivi che tu non hai.',
+        'solo_chi_ha_il_permesso' => 'Lo può togliere solo chi ha questo permesso.',
     ],
     /* ------------------------------------------------------------------
      | Placeholders
@@ -129,6 +130,7 @@ return [
     'actions' => [
         'new_user'      => 'Crea utente',
         'edit_user'     => 'Modifica',
+        'save_user'     => 'Salva',
         'delete_user'   => 'Elimina',
         'suspend_user'  => 'Sospendi',
         'activate_user' => 'Attiva',
@@ -154,7 +156,7 @@ return [
     'dialogs' => [
         'no_users_created'         => 'Nessun utente ancora creato',
         'delete_user_title'        => 'Sei sicuro di volere eliminare questo utente?',
-        'delete_user_description'  => 'Questa azione non è reversibile. Eliminerà l\'utente e tutti i dati ad esso associati.',
+        'delete_user_description'  => 'Questa azione non è reversibile. Eliminerà l\'utente e tutti i dati ad esso associati: anche le comunicazioni e le segnalazioni che ha scritto spariscono, per tutti.',
         'invite_user_title'        => 'Sei sicuro di volere invitare nuovamente questo utente?',
         'invite_user_description'  => 'L\'utente riceverà una email con un nuovo link per la creazione di una nuova password.',
     ],
@@ -171,6 +173,8 @@ return [
      | ------------------------------------------------------------------ */
     'badge' => [
         'previously_direct' => 'in precedenza assegnato',
+        'anche_dal_ruolo' => 'dato anche dal ruolo',
+        'anche_aggiuntivo' => 'anche aggiuntivo',
     ],
 
     'roles' => [
@@ -198,6 +202,6 @@ return [
         'roles_title' => 'Ruoli e Permessi',
         'roles_desc'  => 'Definisci i livelli di autorizzazione per proteggere i dati sensibili.',
         'invites_title' => 'Inviti',
-        'invites_desc'  => 'Invia e monitora gli inviti per i nuovi collaboratori.',
+        'invites_desc'  => 'Invia e monitora gli inviti per i nuovi condòmini e fornitori.',
     ],
 ];

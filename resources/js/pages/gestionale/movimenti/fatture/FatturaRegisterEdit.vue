@@ -231,7 +231,8 @@ const form = useForm({
     stato_approvazione: props.fattura.stato_approvazione,
     righe: props.fattura.righe ? props.fattura.righe.map((r: any) => ({
         descrizione: r.descrizione || '',
-        conto_id: r.conto_id,
+        // La riga di un'unità ha la voce comune vuota e la voce scelta in `conto_addebito_id`: il modulo la mostra dove l'amministratore l'ha scelta.
+        conto_id: r.conto_id ?? (r.immobile_id ? (r.conto_addebito_id ?? null) : null),
         immobile_id: r.immobile_id,
         // Valore assoluto **solo sulla nota di credito**, e la distinzione è la
         // correzione della beta.18 (Fase 1-bis, rilievo 2). Su una NC il database tiene
@@ -489,6 +490,8 @@ const budgetImpacts = computed(() => {
     form.righe.forEach((r: any, idx: number) => {
         // Coda 687: una riga «Fuori preventivo» non consuma il budget di una voce: sta sulla sua voce tecnica, che vale € 0,00 per costruzione.
         if (!r.conto_id || r.is_sopravvenienza) return;
+        // La riga di un'unità non sta sul capitolo che porta (il servizio la registra sull'unità): non consuma il suo budget, come nel modulo nuovo.
+        if (r.immobile_id) return;
         const c = props.conti.find(c => c.id === r.conto_id);
         if (!c) return;
 
@@ -548,13 +551,15 @@ const lordoRigaRegistratoCents = (idx: number, riga: { importo_imponibile: unkno
         : euroToCents(riga.importo_imponibile) + iva;
 };
 
-const rigaInSforo = (idx: number, riga: { conto_id: number | null; importo_imponibile: unknown; aliquota_iva: unknown; is_sopravvenienza?: boolean }): boolean => {
+const rigaInSforo = (idx: number, riga: { conto_id: number | null; immobile_id?: number | null; importo_imponibile: unknown; aliquota_iva: unknown; is_sopravvenienza?: boolean }): boolean => {
     // ⚠️ Coda 122: una nota di credito non può mai sforare un budget che sta liberando.
     if (isNotaCredito.value) return false;
     // Coda 687: la riga «Fuori preventivo» è fuori dal budget per definizione.
     if (riga.is_sopravvenienza) return false;
 
     if (!riga.conto_id) return false;
+    // La riga di un'unità non va sul capitolo (vedi `budgetImpacts`), quindi non lo sfora.
+    if (riga.immobile_id) return false;
     const c = props.conti.find(c => c.id === riga.conto_id);
     if (!c || c.residuo_budget === undefined) return false;
 

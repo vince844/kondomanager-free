@@ -65,9 +65,15 @@ class FetchFattureStraordinarieController extends Controller
                         'importo' => MoneyHelper::fromCents($n['importo']),
                     ], $f['note']),
                     'selezionata'           => false,
+                    // Coda 159: la fattura annullata dello stesso fornitore che un piano che ha incassato chiede ancora (`CarrelloDelloStraordinario`).
+                    'avviso_sostituzione'   => $f['avviso_sostituzione'] ?? null,
                     'ha_competenza'         => $conPeriodo,
                     'is_pregresso'          => $f['is_pregresso'],
                     'senza_periodo'         => $f['is_pregresso'] && ! $conPeriodo,
+                    // La spesa vecchia senza periodo, non pregressa: sull'ordinaria il riparto la divide sui giorni di quest'anno, anche la parte di una sola
+                    // unità (`CalcoloQuoteService::giornoDellaSpesaPersonale`), e il carrello dice come farla pagare a chi era titolare allora.
+                    'spesa_vecchia'         => ! $f['is_pregresso'] && ! $conPeriodo && $inizioEsercizio !== null
+                        && substr((string) $f['data_documento'], 0, 10) < substr((string) $inizioEsercizio, 0, 10),
                     'periodo_nell_esercizio' => $f['is_pregresso'] && $conPeriodo
                         && FatturaPassivaService::periodoChiusoPrimaDellEsercizio($f['competenza_al'], $inizioEsercizio) === false,
                     'competenza'            => $conPeriodo

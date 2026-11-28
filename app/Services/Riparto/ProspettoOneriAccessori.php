@@ -513,6 +513,12 @@ final class ProspettoOneriAccessori
                 // chi è stato conduttore nei suoi giorni li divide come nel cambio scritto, e le due catene danno gli stessi numeri (decisione 84.1).
                 if ($pz['modo'] === 'conguaglio' || $pz['modo'] === 'regolato') {
                     $this->chiEntraDopoIlCambio($pz, $r, $competenza, (int) $partiNette[$i][$j], $immobileId, $base, $partecipanti, $righeInquilino, $voci);
+                } elseif ($this->rimborsatoDopoLAccordo($piano, $pz)) {
+                    // Decisione 144 sull'accordo con chi ha la riga: fuori dai giorni dell'accordo chi è conduttore li rimborsa a chi ha la riga, per quota e per giorni, come
+                    // nei giorni di un cambio con il conguaglio scritto; non chi ha preso il posto di chi ha la riga con quel cambio (i suoi giorni sono dell'accordo).
+                    $this->chiEntraDopoIlCambio($pz + ['cambio' => ['passaggio' => $pz['accordo'], 'uscente' => (int) $pz['anagrafica_id']]], $r, $competenza, $i > 0 ? (int) $partiNette[$i][$j]
+                        : (int) ($gruppo->count() === 1 ? $netti[0]['importo'] : MoneyHelper::ripartisciPerQuote((int) $netti[0]['importo'], $pesi)[$j]),
+                        $immobileId, $base, $partecipanti, $righeInquilino, $voci);
                 }
             }
         }
@@ -1174,7 +1180,8 @@ final class ProspettoOneriAccessori
                 $tratti = $dopoLAccordo->decorrenza->toDateString() > $restante->dal()->toDateString()
                     ? $restante->intersezione(new PeriodoCompetenza($restante->dal(), $dopoLAccordo->decorrenza->toImmutable()->subDay())) : null;
                 $pezzi[] = ['anagrafica_id' => $chi, 'importo' => (int) $d['uscente'], 'giorni' => (int) $d['giorni_uscente'], 'modo' => $modo, 'conguaglio_del' => $del,
-                    'tratti' => $tratti] + ($tratti !== null ? ['regolato_il' => $passaggio->decorrenza->toDateString()] + $this->giorniDellaParte($passaggio, $chi, $immobileId, $tratti, $modo) : [])
+                    'tratti' => $tratti] + ($tratti !== null ? ['regolato_il' => $passaggio->decorrenza->toDateString()] + $this->giorniDellaParte($passaggio, $chi, $immobileId, $tratti, $modo)
+                        + ($modo === 'rate' ? ['accordo' => $passaggio] : []) : [])
                     + $cambio;
                 $visti[] = (int) $passaggio->id;
                 $dopoIl = $passaggio->decorrenza->toDateString();
@@ -1188,6 +1195,40 @@ final class ProspettoOneriAccessori
                 if ($passaggio !== null) {
                     $regolatoIl = $passaggio->decorrenza->toDateString();
                     $accordo = $passaggio;
+                    // La lettura P della decisione 145 dopo un accordo: se l'accordo finisce con l'uscita, con la coppia scritta, di chi aveva ceduto i giorni a chi ha il pezzo (Ines
+                    // → Sara «Scrivi», l'accordo di Sara con Zoe, Zoe → Ines «Non scriverlo», la fine di Ines «Scrivi»), la coppia di quell'uscita dà a credito a lui i giorni dopo, che
+                    // non erano più suoi, e li dà a chi paga al posto dell'inquilino. Da lì la catena lo segue come nella Coda 380 (`ripreso`): chi entra rimborsa chi ha pagato con la
+                    // coppia, e lui rimborsa chi ha il pezzo. Prima la fine si leggeva solo come la fine dell'accordo, e chi entrava rimborsava chi ha il pezzo.
+                    $poi = $ripreso === null && $modo !== 'rate' ? $this->fineDellAccordoConLaCoppia($piano, $accordo, $chi, $immobileId, $restante) : null;
+                    $suoPezzo = $poi !== null ? collect($pezzi)->first(fn (array $p) => (int) $p['anagrafica_id'] === (int) $poi->anagrafica_uscente_id) : null;
+                    if ($suoPezzo !== null) {
+                        $e = ProRataTemporis::dividi($resto, $restante, $poi->decorrenza);
+                        $pezzi[] = self::pezzoDiMezzo($chi, (int) $e['uscente'], $modo, $del, $restante, $poi, ['regolato_il' => $regolatoIl] + $cambio);
+                        // L'uscita che le frasi nominano è il cambio con cui chi esce poi ha preso il posto della parte nell'accordo (Zoe → Ines «Non scriverlo»), come la Coda 380 nomina il
+                        // cambio «Non scriverlo»; senza, il giorno dell'accordo.
+                        $alPosto = Subentro::where('immobile_id', $immobileId)->where('tipo_passaggio', 'fine_locazione')->where('anagrafica_entrante_id', (int) $poi->anagrafica_uscente_id)
+                            ->whereDate('decorrenza', '>', $regolatoIl)->whereDate('decorrenza', '<', $poi->decorrenza->toDateString())->orderByDesc('decorrenza')->orderByDesc('id')->first();
+                        $ripreso = ['dal' => $poi->decorrenza->toDateString(), 'da' => $chi, 'modo' => $modo, 'conguaglio_del' => $del,
+                            'uscita' => ['strada' => 'A', 'scelta' => ($alPosto?->capo()->registro['conguaglio']['scelta'] ?? null) === Subentro::CONGUAGLIO_NON_SCRITTO ? Subentro::CONGUAGLIO_NON_SCRITTO : null,
+                                'del' => $alPosto?->decorrenza->toDateString() ?? $regolatoIl, 'chi_esce' => (string) Anagrafica::whereKey($chi)->value('nome'),
+                                'pagato_da' => (string) Anagrafica::whereKey($chi)->value('nome')],
+                            'chi' => (int) $poi->anagrafica_uscente_id, 'modo_di_chi' => (string) $suoPezzo['modo'], 'del_di_chi' => $suoPezzo['conguaglio_del'],
+                            // La stampa dice l'accordo, non la fine di chi paga, che non c'è: il giorno dell'accordo e quello dell'uscita che lo chiude.
+                            'accordo' => ['del' => $regolatoIl, 'fino' => $poi->decorrenza->toDateString()]];
+                        $visti[] = (int) $passaggio->id;
+                        $dopoIl = $passaggio->decorrenza->toDateString();
+                        $resto = (int) $e['entrante'];
+                        $restante = $restante->intersezione(new PeriodoCompetenza($poi->decorrenza->toImmutable(), $restante->al()));
+                        $chi = (int) $poi->anagrafica_uscente_id;
+                        $modo = (string) $suoPezzo['modo'];
+                        $del = $suoPezzo['conguaglio_del'];
+                        $riuscita = $poi;
+                        unset($regolatoIl, $accordo);
+                        if ($restante === null) {
+                            return self::conIlRipreso($pezzi, $ripreso);
+                        }
+                        continue;
+                    }
                 }
                 break;
             }
@@ -1317,7 +1358,7 @@ final class ProspettoOneriAccessori
             $del = $passaggio->decorrenza->toDateString();
         }
         $pezzi[] = ['anagrafica_id' => $chi, 'importo' => $resto, 'giorni' => $restante->giorni(), 'modo' => $modo, 'conguaglio_del' => $del, 'tratti' => $restante]
-            + (isset($regolatoIl) ? ['regolato_il' => $regolatoIl] + $this->giorniDellaParte($accordo, $chi, $immobileId, $restante, $modo) : []) + $cambio;
+            + (isset($regolatoIl) ? ['regolato_il' => $regolatoIl] + $this->giorniDellaParte($accordo, $chi, $immobileId, $restante, $modo) + ($modo === 'rate' ? ['accordo' => $accordo] : []) : []) + $cambio;
 
         return self::conIlRipreso($pezzi, $ripreso);
     }
@@ -1328,16 +1369,15 @@ final class ProspettoOneriAccessori
      * allora, dalla Coda 413, fino all'uscita di chi ne ha preso il posto, nello stesso modo, decisioni 148.1 e 153.3); nella fine senza chi entra, i giorni dopo l'uscita fino al
      * rientro di chi è uscito. Dopo, i giorni sono di nuovo di chi ha il pezzo, con il suo conguaglio, e chi entra in quei giorni, che dell'accordo non è parte, li divide come
      * nei giorni di un cambio con il conguaglio scritto (decisione 117, Coda 364): `regolato_fino` è l'ultimo giorno dell'accordo dentro i giorni del pezzo
-     * (`chiEntraDopoIlCambio`, e il pannello con `chiHaPagatoDopo`). Senza un'uscita della parte (o un rientro) dentro il pezzo l'accordo va fino alla fine, come prima. Solo per
-     * i pezzi di chi è entrato con un cambio d'inquilino (con il conguaglio o regolato fra le parti), che chi entra dopo divide: i giorni di chi ha la riga sono nelle sue rate.
+     * (`chiEntraDopoIlCambio`, e il pannello con `chiHaPagatoDopo`). Senza un'uscita della parte (o un rientro) dentro il pezzo l'accordo va fino alla fine, come prima.
+     * Anche per l'accordo con chi ha la riga (il suo cambio d'inquilino regolato fra le parti, decisioni 144 e 153.4): finisce con l'uscita della parte, e dopo i giorni sono di
+     * nuovo nelle rate di chi ha la riga, che chi entra in quei giorni gli rimborsa (`dividiLeRate`, il pezzo «nelle sue rate» con `accordo`). Fino alla 1.12.0-beta.14 i pezzi
+     * «nelle sue rate» non avevano una fine dell'accordo, e chi entrava dopo l'uscita della parte non rimborsava niente.
      *
      * @return array{regolato_fino?: string}
      */
     private function giorniDellaParte(Subentro $accordo, int $chi, int $immobileId, InsiemePeriodi $tratti, string $modo): array
     {
-        if ($modo === 'rate') {
-            return [];
-        }
         $parte = $accordo->anagrafica_entrante_id !== null ? (int) $accordo->anagrafica_entrante_id : null;
         $dal = $accordo->decorrenza->toDateString();
         while (true) {
@@ -1357,6 +1397,37 @@ final class ProspettoOneriAccessori
 
             return $fine !== null ? ['regolato_fino' => $fine->decorrenza->toImmutable()->subDay()->toDateString()] : [];
         }
+    }
+
+    /**
+     * L'uscita che chiude l'accordo (la stessa ricerca di `giorniDellaParte`), se è la fine di una persona che non è chi ha il pezzo, con la coppia scritta su questa unità e
+     * gestione (le righe in `saldi` con l'id del capo, come `uscitaConLaCoppia`), non annullata. Null se l'accordo non finisce dentro i giorni, o finisce in un altro modo.
+     */
+    private function fineDellAccordoConLaCoppia(PianoRate $piano, Subentro $accordo, int $chi, int $immobileId, InsiemePeriodi $tratti): ?Subentro
+    {
+        $fino = $this->giorniDellaParte($accordo, $chi, $immobileId, $tratti, 'regolato')['regolato_fino'] ?? null;
+        if ($fino === null) {
+            return null;
+        }
+        $giorno = CarbonImmutable::parse($fino)->addDay()->toDateString();
+
+        return Subentro::where('immobile_id', $immobileId)->where('tipo_passaggio', 'fine_locazione')->whereNull('anagrafica_entrante_id')->whereDate('decorrenza', $giorno)
+            ->where('anagrafica_uscente_id', '!=', $chi)->orderBy('id')->get()
+            ->first(fn (Subentro $s) => ! $s->capo()->conguaglioAnnullato()
+                && DB::table('saldi')->where('subentro_id', $s->capo()->id)->where('immobile_id', $immobileId)->where('gestione_id', $piano->gestione_id)->exists());
+    }
+
+    /**
+     * L'accordo con chi ha la riga (il suo cambio d'inquilino regolato fra le parti) finito con l'uscita della parte (`regolato_fino`, `giorniDellaParte`): fuori dai suoi giorni il pezzo
+     * «nelle sue rate» lo dividono i conduttori, che rimborsano chi ha la riga. Solo sui piani dell'accordo: quelli che il cambio ha preso, o che non si ricalcolano più; un piano che
+     * il cambio non ha preso e che si ricalcola ancora resta nelle rate di chi ha la riga fino al ricalcolo (decisione 43).
+     *
+     * @param array<string, mixed> $pz
+     */
+    private function rimborsatoDopoLAccordo(PianoRate $piano, array $pz): bool
+    {
+        return $pz['modo'] === 'rate' && isset($pz['regolato_il'], $pz['regolato_fino'], $pz['accordo'])
+            && ($piano->presoNelConguaglioDa($pz['accordo']) || $this->nonSiRicalcolaPiu($piano));
     }
 
     /**
@@ -1450,7 +1521,9 @@ final class ProspettoOneriAccessori
     {
         $rp = $pz['ripreso'];
         $u = $rp['uscita'];
-        $dellUscita = ['strada' => $u['strada'], 'scelta' => $u['scelta'], 'uscita_del' => $u['del']];
+        $dellUscita = ['strada' => $u['strada'], 'scelta' => $u['scelta'], 'uscita_del' => $u['del']]
+            // Dopo un accordo fra le parti (Coda 428): chi paga non è uscito, aveva i giorni con il conguaglio; la stampa lo dice con l'accordo.
+            + (isset($rp['accordo']) ? ['accordo_del' => $rp['accordo']['del'], 'accordo_fino' => $rp['accordo']['fino'], 'conguaglio_di_chi_paga' => $rp['conguaglio_del']] : []);
         $nota = ['nota' => sprintf('giorni dopo l\'uscita, dal %s', CarbonImmutable::parse($u['del'])->format('d/m/Y'))];
         $fine = CarbonImmutable::parse($rp['dal'])->format('d/m/Y');
         $voce = fn (array $altro) => array_replace($base($r, $competenza), ['giorni' => null, 'tratti' => null, 'pagato_da' => null, 'conguaglio_del' => null], $altro);
@@ -1646,6 +1719,10 @@ final class ProspettoOneriAccessori
                     $nomi[] = $presi[] = $perModo['scritto'][] = (string) Anagrafica::whereKey((int) $pz['anagrafica_id'])->value('nome');
                     $cambi[] = ['del' => (string) $pz['conguaglio_del'], 'chi_esce' => (string) Anagrafica::whereKey((int) $daChi)->value('nome')];
                 }
+            } elseif ($this->rimborsatoDopoLAccordo($piano, $pz) && $pz['regolato_fino'] < $dopo->dal->toDateString()) {
+                // Dopo l'accordo con chi ha la riga, finito con l'uscita della parte: i giorni sono nelle sue rate, e chi entra glieli rimborsa con il prospetto.
+                $come[] = 'non_scritto';
+                $nomi[] = $perModo['non_scritto'][] = (string) Anagrafica::whereKey((int) $pz['anagrafica_id'])->value('nome');
             } elseif ($pz['modo'] === 'conguaglio') {
                 $come[] = 'scritto';
                 $nomi[] = $presi[] = $perModo['scritto'][] = (string) Anagrafica::whereKey((int) $pz['anagrafica_id'])->value('nome');
@@ -2452,7 +2529,7 @@ final class ProspettoOneriAccessori
         // La strada P (Coda 245) ha le sue frasi (`ProspettoRegolaDelPiano::frasi`).
         $dellUscita = collect([...array_merge([], ...array_values($voci)), ...$senza])->filter(fn ($v) => ! empty($v['strada']) && $v['strada'] !== 'P' && ! empty($v['uscita_del']));
         $restituire = 'Nella sua sezione sono da restituire; per i giorni di un conduttore entrato dopo glieli rimborsa lui, per quelli senza conduttore si regolano fra le parti.';
-        $chiave = fn ($v) => $v['uscita_del'] . '|' . $v['strada'] . '|' . ($v['scelta'] ?? '');
+        $chiave = fn ($v) => $v['uscita_del'] . '|' . $v['strada'] . '|' . ($v['scelta'] ?? '') . '|' . ($v['accordo_del'] ?? '');
         // R18 della Fase 1-bis della .50: con più piani la stessa fine può avere due strade, una per piano (il preventivo che la coppia ha
         // preso, il riscaldamento no). Ogni frase dice di quale piano parla, e solo di quello.
         // Giro stretto della .50 (G17): con «Scrivi» e una parte dei giorni dopo l'uscita senza nessuno al posto dell'inquilino (R2) la stessa
@@ -2469,6 +2546,14 @@ final class ProspettoOneriAccessori
                 $fuse = $v['strada'] === 'B' && in_array($v['uscita_del'], $insieme, true);
                 $piani = $pianiDi[$fuse ? $v['uscita_del'] . '|B|' . Subentro::CONGUAGLIO_SCRITTO : $chiave($v)] ?? [];
                 $dove = $piuPiani && $piani !== [] ? sprintf(', per %s «%s»,', count($piani) === 1 ? 'il piano' : 'i piani', implode('», «', $piani)) : '';
+
+                // Coda 428: i giorni dopo un accordo fra le parti finito con l'uscita, con la coppia, di chi aveva ceduto i giorni: nessuno di chi li paga è uscito.
+                if (! empty($v['accordo_del'])) {
+                    return sprintf('Con il cambio d\'inquilino del %s%s chi è entrato ha preso il posto della parte nell\'accordo fra le parti del %s, senza scrivere il conguaglio; con la sua uscita del %s, '
+                        . 'con il conguaglio scritto, l\'accordo è finito: i giorni dopo li aveva pagati chi li aveva con il conguaglio, e chi è uscito glieli restituisce.',
+                        CarbonImmutable::parse($v['uscita_del'])->format('d/m/Y'), $dove, CarbonImmutable::parse($v['accordo_del'])->format('d/m/Y'),
+                        CarbonImmutable::parse($v['accordo_fino'])->format('d/m/Y'));
+                }
 
                 return sprintf(match (true) {
                     $fuse => 'Alla fine della locazione del %s%s il conguaglio è stato scritto: i giorni dopo l\'uscita in cui qualcuno stava al posto dell\'inquilino li ha presi con la coppia chi ci stava, che li ha pagati («pagata da …»), e un conduttore entrato dopo glieli rimborsa per i suoi giorni; negli altri nessuno stava al posto dell\'inquilino, e sono rimasti nelle rate di chi è uscito, che li ha pagati. ' . $restituire,

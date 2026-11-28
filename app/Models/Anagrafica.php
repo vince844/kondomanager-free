@@ -43,6 +43,26 @@ class Anagrafica extends Model
     ];
 
     /**
+     * Le persone di un condominio per l'incasso e l'estratto conto: chi è fra le persone del condominio (il pivot `anagrafica_condominio`), chi ha o ha
+     * avuto una riga di titolarità su una sua unità (anche cessata: si paga una rata di quando c'era) e chi ha quote nelle rate di un suo piano. Il terzo
+     * criterio tiene sceglibile chi è stato tolto dal condominio dopo una vendita, o dissociato da un'unità, con un debito rimasto: le sue rate si
+     * incassano lo stesso. Una sola fonte per la regola del pagante (`StoreIncassoRateRequest`), la scelta del pagante nella pagina dell'incasso e
+     * l'estratto conto.
+     *
+     * @return \Illuminate\Database\Eloquent\Builder<self>
+     */
+    public static function delCondominio(int $condominioId): \Illuminate\Database\Eloquent\Builder
+    {
+        return self::query()->where(fn ($q) => $q
+            ->whereIn('anagrafiche.id', fn ($sub) => $sub->select('anagrafica_id')->from('anagrafica_condominio')->where('condominio_id', $condominioId))
+            ->orWhereIn('anagrafiche.id', fn ($sub) => $sub->select('anagrafica_immobile.anagrafica_id')->from('anagrafica_immobile')
+                ->join('immobili', 'immobili.id', '=', 'anagrafica_immobile.immobile_id')->where('immobili.condominio_id', $condominioId))
+            ->orWhereIn('anagrafiche.id', fn ($sub) => $sub->select('rate_quote.anagrafica_id')->from('rate_quote')
+                ->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->join('piani_rate', 'piani_rate.id', '=', 'rate.piano_rate_id')
+                ->where('piani_rate.condominio_id', $condominioId)->whereNotNull('rate_quote.anagrafica_id')));
+    }
+
+    /**
      * Get the buildings associated with the anagrafica.
      */
     public function condomini()

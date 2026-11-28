@@ -6,10 +6,12 @@
 namespace App\Http\Requests\Fornitore\Documento;
 
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Facades\Auth;
-use App\Enums\Permission;
 use App\Support\LimiteCaricamento;
 
+/**
+ * La modifica di un documento di un fornitore. L'autore (`created_by`) e l'approvazione (`is_approved`) si scrivono solo alla creazione (Coda 396): qui
+ * non hanno una regola e non entrano in `validated()`; l'approvazione cambia solo dall'interruttore.
+ */
 class UpdateFornitoreDocumentoRequest extends FormRequest
 {
     /**
@@ -30,27 +32,9 @@ class UpdateFornitoreDocumentoRequest extends FormRequest
         return [
             'name'            => ['sometimes', 'required', 'string'],
             'description'     => ['sometimes', 'nullable', 'string'],
-            'created_by'      => ['sometimes', 'required', 'exists:users,id'],
-            'is_approved'     => ['sometimes', 'required', 'boolean'],
             'is_published'    => ['sometimes', 'required', 'boolean'],
             'file'            => ['nullable', 'file', 'mimes:pdf', 'max:'.LimiteCaricamento::regolaMax()],
         ];
-    }
-
-    /**
-     * Prepare the data for validation.
-     *
-     * @return void
-     */
-    public function prepareForValidation(): void
-    {
-
-        $user = Auth::user();
-
-        $this->merge([
-            'created_by' => $user->id,
-            'is_approved' => $user->hasPermissionTo(Permission::PUBLISH_ARCHIVE_DOCUMENTS->value),
-        ]);
     }
 
     /**

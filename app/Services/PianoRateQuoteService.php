@@ -148,7 +148,19 @@ class PianoRateQuoteService
         $entrate = 0;
         $idSpese = [];
 
+        $conRiga = array_fill_keys($pianoRate->capitoli->pluck('id')->map(fn ($id) => (int) $id)->all(), true);
+
         foreach ($pianoRate->capitoli as $capitolo) {
+            // Un capitolo senza cifra nel piano il motore lo porta con il suo importo e con i sottoconti, ognuno con il suo.
+            if ($capitolo->pivot->importo === null && $capitolo->sottoconti->isNotEmpty()) {
+                $parti = self::partiSenzaCifra($capitolo, $conRiga);
+                $spese += $parti['spese'];
+                $entrate += $parti['entrate'];
+                array_push($idSpese, ...$parti['id_spese']);
+
+                continue;
+            }
+
             $parti = $capitolo->ripartoPerSegno((int) ($capitolo->pivot->importo ?? $capitolo->importo), $pianoRate->created_at);
 
             $spese += $parti['spese'];
@@ -165,6 +177,33 @@ class PianoRateQuoteService
         }
 
         return ['spese' => $spese, 'entrate' => $entrate, 'id_spese' => array_values(array_unique($idSpese))];
+    }
+
+    /**
+     * Le spese e le entrate di una voce che il piano tiene senza cifra, come le chiede il motore (`CalcoloQuoteService::processaConti`, il ramo senza
+     * copia): l'importo della voce dal lato del suo tipo, in valore assoluto, più i sottoconti a ogni livello, ognuno con il suo importo. Un sottoconto che
+     * ha la sua riga nel piano non si somma qui: lo conta la sua riga. `id_spese` sono la voce e i sottoconti con una parte di spesa (il già versato sta
+     * su di loro).
+     *
+     * @param  array<int, true>  $conRiga  le voci che hanno una riga nel piano
+     * @return array{spese: int, entrate: int, id_spese: list<int>}
+     */
+    public static function partiSenzaCifra(Conto $voce, array $conRiga = []): array
+    {
+        $parti = Conto::partiDelTipo((string) ($voce->tipo ?? 'spesa'), (int) $voce->importo);
+        $idSpese = Conto::segnoDelTipo((string) ($voce->tipo ?? 'spesa')) > 0 ? [(int) $voce->id] : [];
+
+        foreach ($voce->sottoconti as $figlio) {
+            if (isset($conRiga[(int) $figlio->id])) {
+                continue;
+            }
+            $delFiglio = self::partiSenzaCifra($figlio, $conRiga);
+            $parti['spese'] += $delFiglio['spese'];
+            $parti['entrate'] += $delFiglio['entrate'];
+            array_push($idSpese, ...$delFiglio['id_spese']);
+        }
+
+        return ['spese' => $parti['spese'], 'entrate' => $parti['entrate'], 'id_spese' => $idSpese];
     }
 
     /**
@@ -341,9 +380,24 @@ class PianoRateQuoteService
 
         $scarto = (int) $registrate['scarto_cents'];
         // Con il segno della voce: la quota di una voce di entrata è un credito che nessuno riceve, e lo scarto la conta con il meno.
-        $spiegato = array_sum(array_map(fn ($voce) => ((int) ($voce['segno'] ?? 1) < 0 ? -1 : 1) * abs((int) $voce['importo_cents']), $conCifra));
+        // Il già versato dell'unità sulla voce l'atteso lo toglie già (`totaleAttesoCents`): la quota registrata è lorda, e spiega lo scarto per ciò che resta.
+        $versato = fn (array $voce) => (int) ($voce['segno'] ?? 1) < 0 || empty($voce['immobile_id']) || empty($voce['conto_id'])
+            ? 0 : $this->giaVersatoSullUnita((int) $pianoRate->id, (int) $voce['conto_id'], (int) $voce['immobile_id']);
+        $spiegato = array_sum(array_map(fn ($voce) => ((int) ($voce['segno'] ?? 1) < 0 ? -1 : 1) * max(0, abs((int) $voce['importo_cents']) - $versato($voce)), $conCifra));
 
         return abs($scarto - $spiegato) <= count($conCifra) ? $scarto : null;
+    }
+
+    /** Il già versato di un'unità su una voce che il piano toglie, con la quota del preventivo che il piano chiede (`QuotaDellaChiamata::giaVersatoApplicato`). */
+    private function giaVersatoSullUnita(int $pianoRateId, int $contoId, int $immobileId): int
+    {
+        $parti = ContributoVersato::perImmobileESoggetto(Conto::class, $contoId, QuotaDellaChiamata::esercizioDelPiano($pianoRateId))[$immobileId] ?? [];
+        if (array_sum($parti) <= 0) {
+            return 0;
+        }
+        $quota = QuotaDellaChiamata::perConto($pianoRateId, $contoId) ?? 1.0;
+
+        return array_sum(array_map(fn ($v) => $v > 0 ? QuotaDellaChiamata::applica((int) $v, $quota) : 0, $parti));
     }
 
     public function quotePerAnagrafica(PianoRate $pianoRate): Collection
@@ -499,7 +553,8 @@ class PianoRateQuoteService
                         $rata = $q->first()->rata;
                         $importo = $q->sum('importo');
                         $pagato = $q->sum('importo_pagato');
-                        $residuo = max(0, $importo - $pagato);
+                        // Il credito è netto per la persona: sull'unità si sommano i residui di ognuna, e il credito di una non toglie dal debito di un'altra.
+                        $residuo = (int) $q->groupBy('anagrafica_id')->sum(fn ($diUno) => max(0, $diUno->sum('importo') - $diUno->sum('importo_pagato')));
                         
                         $stato = 'da_pagare';
                         if ($q->first()->stato === 'annullata') $stato = 'annullata';

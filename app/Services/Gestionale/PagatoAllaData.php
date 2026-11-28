@@ -23,7 +23,8 @@ use Illuminate\Support\Facades\DB;
  *   al pagamento; per un pagamento su più fatture la ritenuta di ciascuna è la sua quota, con la regola della ritenuta del pagamento
  *   (`PagamentoFornitoreService::ritenutaDellaQuota`). Fino ad allora sta nel «da pagare», e la colonna «di cui ritenute da versare» la dice.
  * - Le parti del costo: le righe della scrittura di competenza fuori dai debiti verso fornitori e verso l'Erario, per voce; senza voce, su un
- *   conto di costo (le «Spese bancarie» di sistema a parte) o su un altro conto (la parte di una sola unità, le passate gestioni). Il pagato di
+ *   conto di costo (le «Spese bancarie» di sistema a parte) o su un altro conto (la parte di una sola unità, le passate gestioni). Con le scritture legate
+ *   alla fattura come `rettifica`, che spostano il costo dopo la registrazione (il ripianamento del debito ereditato, Coda 743). Il pagato di
  *   una fattura su più parti, pagata in parte, si divide fra le parti in proporzione al loro costo, con il centesimo di `MoneyHelper::ripartisciPerQuote`:
  *   un pagamento non dice quale voce paga, e la pagina lo scrive.
  * - Il residuo verso il fornitore (la situazione patrimoniale): il netto a pagare, in valore assoluto, meno le stesse allocazioni entro D; è il
@@ -76,6 +77,7 @@ final class PagatoAllaData
         $ids = $fatture->pluck('id')->map(fn ($id) => (int) $id)->all();
 
         $parti = $this->partiDelCosto($fatture->pluck('competenza_id')->map(fn ($id) => (int) $id)->all());
+        $rettifiche = $this->partiDelleRettifiche($fatture, $esercizioId, $dopo);
         $allocato = DB::table('fattura_scrittura as fs')
             ->join('scritture_contabili as sc', fn ($j) => $j->on('sc.id', '=', 'fs.scrittura_contabile_id')->whereNull('sc.deleted_at'))
             ->whereIn('fs.fattura_passiva_id', $ids)->whereIn('fs.tipo', ['pagamento', 'compensazione'])->where('sc.data_competenza', '<', $dopo)
@@ -88,6 +90,13 @@ final class PagatoAllaData
             $id = (int) $f->id;
             $segno = (int) $f->netto_a_pagare < 0 ? -1 : 1;
             $partiF = $parti[(int) $f->competenza_id] ?? [];
+            if (isset($rettifiche[$id])) {
+                foreach ($rettifiche[$id] as $chiave => $importo) {
+                    $partiF[$chiave] = ($partiF[$chiave] ?? 0) + $importo;
+                }
+                // Una parte che il ripianamento ha spostato tutta (le passate gestioni a zero) non è più una parte del costo.
+                $partiF = array_filter($partiF, fn ($importo) => $importo !== 0);
+            }
             $totale = (int) array_sum($partiF);
             $versata = $ritenute[$id] ?? 0;
             $pagato = $segno * (int) ($allocato[$id] ?? 0) + $versata;
@@ -136,6 +145,36 @@ final class PagatoAllaData
             ->get(['rs.scrittura_id', 'rs.voce_spesa_id', 'rs.tipo_riga', 'rs.importo', 'cc.tipo', 'cc.ruolo']) as $r) {
             $chiave = self::parte($r->voce_spesa_id, $r->tipo instanceof \BackedEnum ? $r->tipo->value : $r->tipo, $r->ruolo);
             $esito[(int) $r->scrittura_id][$chiave] = ($esito[(int) $r->scrittura_id][$chiave] ?? 0) + ($r->tipo_riga === 'dare' ? (int) $r->importo : -(int) $r->importo);
+        }
+
+        return $esito;
+    }
+
+    /**
+     * Coda 743 (1.12.0-beta.14): le scritture legate alla fattura con il legame `rettifica` (il ripianamento del debito ereditato, e il suo storno) spostano una
+     * parte del suo costo da un conto all'altro dopo la registrazione: dalle passate gestioni alla voce del ripianamento. Sono parti del costo della fattura,
+     * e il pagato della fattura si divide anche su di loro: la voce del ripianamento è «da pagare» finché il fornitore non è pagato. Lette come movimenti a sé,
+     * erano «pagate» alla loro data, con la fattura aperta. Nel perimetro di un esercizio, quelle dell'esercizio; senza, quelle datate entro la data.
+     *
+     * @return array<int, array<int|string, int>> fattura => parte => centesimi
+     */
+    private function partiDelleRettifiche(\Illuminate\Support\Collection $fatture, ?int $esercizioId, string $dopo): array
+    {
+        $legami = DB::table('fattura_scrittura as fs')
+            ->join('scritture_contabili as sc', fn ($j) => $j->on('sc.id', '=', 'fs.scrittura_contabile_id')->whereNull('sc.deleted_at'))
+            ->whereIn('fs.fattura_passiva_id', $fatture->pluck('id')->map(fn ($id) => (int) $id)->all())
+            ->where('fs.tipo', \App\Enums\TipoAllocazioneFattura::RETTIFICA->value)
+            ->when($esercizioId !== null, fn ($q) => $q->where('sc.esercizio_id', $esercizioId), fn ($q) => $q->where('sc.data_competenza', '<', $dopo))
+            ->get(['fs.fattura_passiva_id', 'fs.scrittura_contabile_id']);
+        if ($legami->isEmpty()) {
+            return [];
+        }
+        $parti = $this->partiDelCosto($legami->pluck('scrittura_contabile_id')->map(fn ($id) => (int) $id)->unique()->values()->all());
+        $esito = [];
+        foreach ($legami as $l) {
+            foreach ($parti[(int) $l->scrittura_contabile_id] ?? [] as $chiave => $importo) {
+                $esito[(int) $l->fattura_passiva_id][$chiave] = ($esito[(int) $l->fattura_passiva_id][$chiave] ?? 0) + $importo;
+            }
         }
 
         return $esito;

@@ -52,6 +52,7 @@ const casi: Caso[] = [
             '«Per quale assemblea»',
             '«In assemblea il 15/12, punto 1 · convocazione spedita il 03/12»',
             'Una versione allegata a una convocazione già partita non si elimina',
+            'si toglie in questo esercizio: non è una quota chiesta qui, quindi sta in una riga sua, e il risultato la conta.',
         ],
         sorgenti: [`${PAGINE}/Sintesi.vue`, 'resources/js/components/gestionale/movimenti/rendiconto/RendicontoPerLAssemblea.vue', SCHEDE,
             `${SERVIZI}/VersioniDelRendiconto.php`, `${SERVIZI}/ConfrontoDelRendiconto.php`, `${SERVIZI}/SintesiDelRendiconto.php`, `${SERVIZI}/ControlliDelRendiconto.php`],
@@ -66,6 +67,7 @@ const casi: Caso[] = [
             'sono del condominio da quando sono versati, e riducono le spese da dividere',
             'Queste due righe non hanno un deliberato.',
             'le cinque voci con lo scostamento più grande',
+            'si toglie in questo esercizio: non è una quota chiesta qui, quindi sta in una riga sua, e il risultato la conta.',
         ],
         sorgenti: [`${PAGINE}/RiepilogoFinanziario.vue`, SCHEDE, `${SERVIZI}/RiepilogoPerCompetenza.php`, `${SERVIZI}/ControlliDelRendiconto.php`],
     },
@@ -78,6 +80,7 @@ const casi: Caso[] = [
             'I costi non ancora conguagliati stanno fra le attività',
             'compare qui sotto la riga, fuori dal giornale e dai totali',
             'Non confronta con l\'estratto conto della banca movimento per movimento.',
+            'si toglie in questo esercizio: non è una quota chiesta qui, quindi sta in una riga sua, e il risultato la conta.',
         ],
         sorgenti: ['resources/js/pages/gestionale/movimenti/statoPatrimoniale/Show.vue', SCHEDE, `${SERVIZI}/StatoPatrimonialePaginaService.php`],
     },
@@ -115,6 +118,8 @@ const casi: Caso[] = [
             // Il giro delle correzioni della beta.12: per le persone di una successione i due scaduti non sono lo stesso, e la guida dice perché.
             'qui e nelle posizioni resta a nome del defunto, come nel giornale e nella situazione patrimoniale',
             'Lo scaduto di questa pagina segue il giornale; quello di «Rate scadute», chi deve pagare.',
+            // Il debito di prima nelle rate: il versamento lo paga per primo nella sua rata, non sulla posizione intera.
+            'un versamento lo paga per primo dentro la rata a cui è imputato, non nelle altre rate.',
         ],
         sorgenti: [`${PAGINE}/Condomini.vue`, SCHEDE, `${SERVIZI}/PosizioniDeiCondomini.php`, `${SERVIZI}/ControlliDelRendiconto.php`, `${PAGINE}/Sintesi.vue`],
     },

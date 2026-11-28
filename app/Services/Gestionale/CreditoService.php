@@ -71,6 +71,75 @@ class CreditoService
 
 
     /**
+     * Il credito della persona come lo dice il suo estratto conto: il **netto** sulle rate emesse, con il lordo accanto.
+     *
+     * `perAnagrafica()` somma il credito di tutte le quote a credito, anche delle rate in bozza, e non toglie il debito delle altre quote: è la
+     * fotografia di dove il credito sta, e la usano il «compensabile» e lo spaccato per gestione. Accanto a un saldo da versare però diceva
+     * «Credito disponibile € 120,00» a chi doveva ancora € 60,00. Qui il credito delle quote delle rate emesse meno il debito aperto delle
+     * rate emesse della stessa persona, in tutte le sue unità, **gestione per gestione**: il credito di una gestione copre da sé solo le rate della
+     * sua, quindi € 120,00 di credito sull'ordinaria e € 200,00 da pagare sui lavori restano «€ 120,00 di credito» e «€ 200,00 da versare», non
+     * «€ 80,00 da versare». Il «Credito disponibile» è la somma dei crediti che restano nelle gestioni, il «da versare» la somma dei debiti.
+     * Il credito di un'altra persona non entra mai: le quote sono tutte di questa anagrafica. Una rata in bozza non è ancora a giornale, e
+     * non pesa né da una parte né dall'altra; il suo credito resta nel lordo. La rata 0 conta anche in bozza: porta il pregresso degli
+     * esercizi passati, debito o credito che c'è già.
+     *
+     * @return array<string,mixed> le chiavi di `perAnagrafica()`, più `lordo_cents`, `netto_cents` (il credito netto, mai negativo),
+     *                             `da_versare_cents` (il debito netto, mai negativo), in centesimi, e `netto_per_gestione` (una riga per gestione
+     *                             con `credito_cents`, `da_versare_cents` e la `frase`)
+     */
+    public function nettoDellaPersona(int $condominioId, int $anagraficaId): array
+    {
+        $credito = $this->perAnagrafica($condominioId, $anagraficaId);
+
+        // Il netto per gestione: il credito di una gestione copre da sé solo le rate della sua (decide l'amministratore se usarlo su un'altra),
+        // quindi il credito dell'ordinaria non toglie dal debito dei lavori. La chiave 0 raccoglie una quota di un piano senza gestione.
+        $gestioni = [];
+        $quoteACredito = $this->queryCreditoBase($condominioId)
+            ->where('anagrafica_id', $anagraficaId)
+            ->whereHas('rata', fn ($r) => $r->where(fn ($w) => $w->where('stato', '!=', 'bozza')->orWhere('numero_rata', 0)))
+            ->get();
+        foreach ($quoteACredito as $q) {
+            $id = (int) ($q->rata->pianoRate->gestione_id ?? 0);
+            $gestioni[$id] ??= ['nome' => $q->rata->pianoRate->gestione->nome ?? null, 'credito' => 0, 'debito' => 0];
+            $gestioni[$id]['credito'] += (int) $q->credito_disponibile;
+        }
+        $debiti = $this->debitiAperti($condominioId, [$anagraficaId])->get($anagraficaId, collect())
+            ->filter(fn (array $d) => $d['emessa'] || (int) $d['numero_rata'] === 0);
+        foreach ($debiti as $d) {
+            $id = (int) ($d['gestione_id'] ?? 0);
+            $gestioni[$id] ??= ['nome' => $d['gestione_id'] === null ? null : $d['gestione_nome'], 'credito' => 0, 'debito' => 0];
+            $gestioni[$id]['debito'] += (int) $d['residuo_cents'];
+        }
+
+        $perGestione = [];
+        foreach ($gestioni as $id => $g) {
+            $netto = $g['credito'] - $g['debito'];
+            if ($netto === 0) {
+                continue;
+            }
+            $perGestione[] = [
+                'gestione_id'      => $id === 0 ? null : $id,
+                'gestione_nome'    => $g['nome'] ?? 'Senza gestione',
+                'credito_cents'    => max(0, $netto),
+                'da_versare_cents' => max(0, -$netto),
+                // Compatibile con lo spaccato di `perAnagrafica()`: l'importo è il credito della gestione, zero se lì resta da versare.
+                'importo_cents'    => max(0, $netto),
+                'importo_formatted' => MoneyHelper::format(max(0, $netto)),
+                'frase'            => $netto > 0 ? MoneyHelper::format($netto) . ' di credito' : MoneyHelper::format(-$netto) . ' da versare',
+            ];
+        }
+        // Prima le gestioni con qualcosa da versare, poi quelle a credito; dentro, per nome.
+        usort($perGestione, fn (array $a, array $b) => [$a['da_versare_cents'] === 0, $a['gestione_nome']] <=> [$b['da_versare_cents'] === 0, $b['gestione_nome']]);
+
+        return $credito + [
+            'lordo_cents'        => (int) $credito['totale_cents'],
+            'netto_cents'        => (int) array_sum(array_column($perGestione, 'credito_cents')),
+            'da_versare_cents'   => (int) array_sum(array_column($perGestione, 'da_versare_cents')),
+            'netto_per_gestione' => $perGestione,
+        ];
+    }
+
+    /**
      * L'aritmetica del credito spendibile di un insieme di quote, in centesimi.
      *
      * Sta qui, statica e minuscola, perché ha **due** chiamanti che partono da collezioni

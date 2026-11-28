@@ -180,6 +180,7 @@ return [
         ],
         'permissions' => [
             'not_allowed' => 'You cannot grant a permission you do not have yourself.',
+            'admin_panel_only_admin' => '«Accesso pannello amministratore» opens the management area of every building: only an administrator can grant it.',
             'privileged_target' => 'Only an administrator can change the additional permissions of this account: it has a role other than «utente» and «fornitore», or additional permissions you do not have.',
         ],
         'default_user_role' => [
@@ -253,6 +254,9 @@ return [
     */
 
     'attributes' => [
+        // Gli allegati di segnalazioni, comunicazioni e commenti: il messaggio nomina l'allegato, non il campo «allegati.0».
+        'allegati' => 'attachments',
+        'allegati.*' => 'attachment',
         'email' => 'email address',
         'emails' => 'email addresses',
         'buildings' => 'buildings',

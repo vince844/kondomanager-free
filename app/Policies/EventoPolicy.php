@@ -80,7 +80,7 @@ class EventoPolicy
         }
 
         if ($user->hasPermissionTo(Permission::EDIT_OWN_EVENTS->value)) {
-            if ($evento->created_by === $user->id) {
+            if (self::eDAgenda($evento) && $evento->created_by === $user->id) {
                 return Response::allow();
             }
         }
@@ -165,7 +165,7 @@ class EventoPolicy
         
         if ($user->hasPermissionTo(Permission::DELETE_OWN_EVENTS->value)) {
 
-            if ($evento->created_by === $user->id) {
+            if (self::eDAgenda($evento) && $evento->created_by === $user->id) {
                 return Response::allow();
             }
             
@@ -175,23 +175,29 @@ class EventoPolicy
     }
 
     /**
-     * Fin dove arriva un permesso largo (`EDIT_EVENTS`, `DELETE_EVENTS`) concesso fuori dal pannello:
-     * mai un evento di sistema. Lo è ogni evento con un `tipo` diverso da AGENDA (rate, compiti di
-     * `InboxService`), ma anche quelli che il `tipo` non l'hanno e portano `meta.type`: i compiti di
-     * `SyncScadenziarioWithFattura` (pagamento fornitore, convocazione, ratifica dello sforo,
-     * sopravvenienza, deficit) e di `SyncF24WithPagamento` (F24). Lo è anche ogni evento con un
-     * `eventable`. Gli eventi d'agenda, dell'amministratore e del condòmino, nascono senza `meta.type`
-     * e senza `eventable`. Per il resto valgono le regole comuni di `PerimetroFuoriPannello`.
+     * Fin dove arriva un permesso largo (`EDIT_EVENTS`, `DELETE_EVENTS`) concesso fuori dal pannello: solo un appuntamento d'agenda
+     * ({@see eDAgenda()}), e per il resto le regole comuni di `PerimetroFuoriPannello`.
      */
     private function nelPerimetroFuoriPannello(User $user, Evento $evento): bool
     {
-        if (! in_array($evento->tipo, [null, EventoTipo::AGENDA], true)
-            || data_get($evento->meta, 'type') !== null
-            || $evento->eventable_type !== null) {
-            return false;
-        }
+        return self::eDAgenda($evento) && $this->nelPerimetroDellUtente($user, $evento);
+    }
 
-        return $this->nelPerimetroDellUtente($user, $evento);
+    /**
+     * Un appuntamento d'agenda, non una cosa di sistema. Di sistema è ogni evento con un `tipo` diverso da AGENDA (rate, compiti di `InboxService`,
+     * compiti di una segnalazione o di un bonifico segnalato), ma anche quelli che il `tipo` non l'hanno e portano `meta.type`: i compiti di
+     * `SyncScadenziarioWithFattura` (pagamento fornitore, convocazione, ratifica dello sforo, sopravvenienza, deficit) e di
+     * `SyncF24WithPagamento` (F24). Lo è anche ogni evento con un `eventable`. Gli appuntamenti, dell'amministratore e del condòmino, nascono
+     * senza `meta.type` e senza `eventable`.
+     *
+     * Vale per il permesso largo fuori dal pannello e per i permessi «proprie»: il compito che nasce da una segnalazione o da un bonifico ha
+     * `created_by` di chi l'ha fatto nascere, ma è del lavoro dello studio.
+     */
+    private static function eDAgenda(Evento $evento): bool
+    {
+        return in_array($evento->tipo, [null, EventoTipo::AGENDA], true)
+            && data_get($evento->meta, 'type') === null
+            && $evento->eventable_type === null;
     }
 
     /**

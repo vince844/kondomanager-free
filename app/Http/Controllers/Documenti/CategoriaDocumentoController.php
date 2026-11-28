@@ -19,6 +19,7 @@ use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 
 class CategoriaDocumentoController extends Controller
@@ -38,6 +39,9 @@ class CategoriaDocumentoController extends Controller
      */
     public function index(CategoriaDocumentoIndexRequest $request): Response
     {
+        // L'elenco delle categorie dei documenti si apre con «Visualizza documenti archivio», come l'archivio.
+        Gate::allowIf((bool) request()->user()?->hasPermissionTo(\App\Enums\Permission::VIEW_ARCHIVE_DOCUMENTS->value), __('policies.view_archive_documents'));
+
 
         $validated = $request->validated();
 
@@ -94,7 +98,10 @@ class CategoriaDocumentoController extends Controller
      * @return \Illuminate\Http\RedirectResponse|\Illuminate\Http\JsonResponse
      */
     public function store(CreateCategoriaRequest $request)
-    {   
+    {
+        // Anche dal «+» della finestra di caricamento: «Crea documenti archivio» (CategoriaDocumentoPolicy).
+        Gate::authorize('create', CategoriaDocumento::class);
+
         try {
 
             $validated = $request->validated();
@@ -133,6 +140,7 @@ class CategoriaDocumentoController extends Controller
      */
     public function update(UpdateCategoriaRequest $request, CategoriaDocumento $categoria): RedirectResponse
     {
+        Gate::authorize('update', $categoria);
 
         $validated = $request->validated(); 
 
@@ -164,6 +172,8 @@ class CategoriaDocumentoController extends Controller
      */
     public function destroy(CategoriaDocumento $categoria)
     {
+        Gate::authorize('delete', $categoria);
+
         try {
             
             // Check if category has document and avoid delete

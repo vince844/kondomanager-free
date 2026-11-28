@@ -214,7 +214,10 @@ it('l\'estratto conto mostra il rimborso come addebito pieno, e il box del credi
     $pagina = fn () => $this->actingAs($this->user)->get(route('admin.gestionale.anagrafiche.estratto-conto', [$s->condominio, $s->persona]))->assertOk()->viewData('page')['props'];
 
     $prima = $pagina();
-    expect($prima['stats']['credito_disponibile_raw'])->toBe(5000)
+    // Il riquadro dice il netto della persona (decisione 732 (2)): € 50,00 di credito sulla rata 0 contro € 100,00 della rata 1 da pagare, € 50,00 da
+    // versare; il credito lordo di € 50,00 sta sotto, e la quota si rimborsa lo stesso.
+    expect($prima['stats']['credito_disponibile_raw'])->toBe(0)
+        ->and($prima['stats']['credito_lordo_raw'])->toBe(5000)->and($prima['stats']['credito_da_versare_raw'])->toBe(5000)
         ->and($prima['rimborso']['quote'])->toHaveCount(1)->and($prima['rimborso']['quote'][0]['origine'])->toBe('saldi')->and($prima['rimborso']['quote'][0]['credito_euro'])->toBe('50,00')
         ->and($prima['rimborso']['casse'])->toHaveCount(1)->and($prima['rimborso']['casse'][0]['saldo_cents'])->toBe(10000);
 

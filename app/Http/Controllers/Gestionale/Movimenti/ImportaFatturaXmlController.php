@@ -13,9 +13,11 @@ use App\Helpers\MoneyHelper;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Gestionale\Movimenti\ImportaFatturaXmlRequest;
 use App\Models\Condominio;
+use App\Models\Documento;
 use App\Services\FatturaElettronica\FatturaPaParser;
 use App\Services\FatturaElettronica\RicercaFornitoreXml;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -39,6 +41,9 @@ class ImportaFatturaXmlController extends Controller
         FatturaPaParser $parser,
         RicercaFornitoreXml $ricercaFornitore,
     ): JsonResponse {
+        // Il file letto qui diventa il documento della fattura registrata: chiede «Crea documenti archivio», come «Allega» della fattura.
+        Gate::authorize('create', Documento::class);
+
         try {
             $fatture = $parser->parse(
                 $request->file('file')->get(),

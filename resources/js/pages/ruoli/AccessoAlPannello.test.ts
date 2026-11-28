@@ -10,7 +10,8 @@
  * L'accesso al pannello non è solo il menù: alcune pagine del pannello non hanno permessi propri e si aprono con il
  * solo accesso (il gestionale di ogni condominio, con i fornitori delle sue fatture e dei suoi pagamenti: Coda 110),
  * altre chiedono anche i loro permessi, e fra queste i fornitori, con i permessi delle anagrafiche (Coda 402): la
- * scheda, l'elenco e i moduli del fornitore. La frase lo dice nelle due pagine; che sia vera lo fissa dalla rotta
+ * scheda, l'elenco e i moduli del fornitore. Nel gestionale le unità e i loro documenti chiedono anche «Modifica condomini», i caricamenti
+ * delle altre schede «Crea documenti archivio». La frase lo dice nelle due pagine; che sia vera lo fissa dalla rotta
  * `tests/Feature/Users/AccessoAlPannelloDelRuoloTest.php`.
  *
  * Le due pagine sono scritte in italiano nel codice, e la frase con loro. I test cercano i pezzi della frase, non la
@@ -72,6 +73,12 @@ describe.each(['NuovoRuolo', 'ModificaRuolo'] as const)('%s — che cosa apre l\
         expect(testo).toContain('(per i fornitori quelli delle anagrafiche)');
         expect(testo).toContain('da scegliere in «Permessi»');
         expect(testo).toContain('Permessi');
+    });
+
+    test('dice che nel gestionale le unità, la struttura, le tabelle e i millesimi chiedono anche «Modifica condomini» e caricare un file «Crea documenti archivio»', () => {
+        expect(testoDi(pagina)).toContain(
+            'Nel gestionale, creare, modificare ed eliminare le unità e i loro documenti, le palazzine, le scale e le tabelle millesimali, e salvare i millesimi, chiede anche «Modifica condomini»; caricare un file nelle altre schede (fatture, lettere, dispense, accordi di rientro, rendiconto) chiede «Crea documenti archivio».',
+        );
     });
 
     test('non dice più che la casella mostra soltanto il layout', () => {

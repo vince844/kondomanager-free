@@ -338,10 +338,13 @@ it('lo storno senza voce nel 2027 non si assegna a una voce che non è un\'ordin
     'l\'incasso, una voce di entrata di un\'ordinaria del 2027 spenta' => ['incasso', 'spenta'],
 ]);
 
-it('lo storno di un incasso da terzi non va su una voce di entrata sotto un capitolo di spesa (il riepilogo la legge nel capitolo, fra le spese, e l\'incassato non starebbe in nessuna riga): il menu della pagina non la propone e la rotta la rifiuta con la regola; sotto un capitolo di entrata sì, e il controllo dei costi quadra', function () {
+it('lo storno di un incasso da terzi non va su una voce di entrata sotto un capitolo di spesa (una voce delle versioni di prima): il menu della pagina non la propone e la rotta la rifiuta con la regola; sotto un capitolo di entrata sì, e il controllo dei costi quadra', function () {
     $s = sadScenario($this);
     $riga = sadElenco($s, sadStorna($this, $s, 'incasso'))['riga'];
-    $sottoSpesa = sadVoceSottoCapitolo($this, $s, 'Servizi comuni', 'spesa', 'Rimborso antenna', 'entrata');
+    // Una voce di entrata sotto un capitolo di spesa il modale non la crea più: è un dato delle versioni di prima, scritto qui sotto la voce di spesa.
+    $sottoSpesa = sadVoceSottoCapitolo($this, $s, 'Servizi comuni', 'spesa', 'Rimborso antenna', 'spesa');
+    DB::table('conti')->where('id', $sottoSpesa->id)->update(['tipo' => 'entrata']);
+    $sottoSpesa->refresh();
     $sottoEntrata = sadVoceSottoCapitolo($this, $s, 'Entrate da terzi', 'entrata', 'Affitto antenna 2027', 'entrata');
     $assegna = fn (Conto $voce) => $this->actingAs($this->user)->post(route('admin.gestionale.esercizi.commissioni-senza-voce.assegna', [$s['c'], $s['e27']]),
         ['commissioni' => [(int) $riga->id], 'voce_id' => $voce->id]);

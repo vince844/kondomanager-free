@@ -481,7 +481,7 @@ function confermaElimina() {
             <!-- Senza la linea sopra, come il fondo del riquadro dei commenti (decisione 464) -->
             <div v-if="config.puo_caricare" data-caricamento>
                 <p v-if="config.rimasti <= 0" class="text-xs text-muted-foreground tabular-nums">
-                    {{ trans('allegati.upload.no_slots', { massimo: String(config.massimo) }) }}
+                    {{ transChoice('allegati.upload.no_slots', config.massimo, { massimo: String(config.massimo) }) }}
                 </p>
 
                 <form v-else class="space-y-3" @submit.prevent="inviaCaricamento">

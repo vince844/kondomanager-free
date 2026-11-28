@@ -147,12 +147,18 @@ if (! function_exists('b59apAdmin')) {
     /**
      * La fattura dal modulo (`fatture.store`), come la manda la pagina. Con una riga di spesa comune (`is_sopravvenienza` senza
      * unità) il modulo manda anche il «log legale», e il servizio crea la voce imprevista sulla tabella «Proprietà».
+     *
+     * `$data` è il giorno della fattura (scadenza un mese dopo). Conta nei passaggi (Coda 610, decisione 329 (2)): su una gestione
+     * ordinaria la riga sull'unità senza competenza è di chi era titolare quel giorno, e le bozze seguono la decisione 26.4 — una
+     * fattura del 10/03 con la vendita dal 1° maggio è di chi vende e le sue bozze restano a lui; per farle passare a chi compra la
+     * fattura è di un giorno dalla decorrenza in poi.
      */
-    function b59apFattura($test, array $s, array $righe, string $numero = 'FT-313'): FatturaPassiva
+    function b59apFattura($test, array $s, array $righe, string $numero = 'FT-313', string $data = '2026-03-10'): FatturaPassiva
     {
+        $scadenza = \Carbon\CarbonImmutable::parse($data)->addMonth()->toDateString();
         $comune = collect($righe)->contains(fn ($r) => ($r['is_sopravvenienza'] ?? false) && empty($r['immobile_id']));
         $test->actingAs($test->user)->post(route('admin.gestionale.fatture.store', $s['c']->id), datiBase([$s['c'], $s['e'], $s['g'], $s['fornitore']], [
-            'numero_documento' => $numero, 'data_documento' => '2026-03-10', 'data_scadenza' => '2026-04-10', 'stato_approvazione' => 'approvata',
+            'numero_documento' => $numero, 'data_documento' => $data, 'data_scadenza' => $scadenza, 'stato_approvazione' => 'approvata',
             'applica_ritenuta' => false, 'righe' => $righe,
             'dati_extra' => ['fiscal' => ['motivo_esclusione_ritenuta' => 'fuori_campo'], 'competenza' => null, 'override_budget' => null,
                 'log_legale_sopravvenienza' => $comune ? [

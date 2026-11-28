@@ -15,6 +15,7 @@ use App\Models\TitolaritaImmobile;
 use App\Services\Subentro\NudiDellEstinzione;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
@@ -183,6 +184,9 @@ class AnteprimaPassaggioRequest extends FormRequest
             'voci_da_tenere.*' => ['integer'],
             // Rilievo S1: l'impronta dell'elenco delle voci che il pannello ha mostrato (`VociDaSpostare::impronta()`).
             'ordinaria_impronta' => ['nullable', 'string', 'max:64'],
+            // Chi vende e va tolto dalle persone del condominio con la registrazione (`chiEsceDallaVendita`): solo nella vendita, solo fra chi esce.
+            'togli_dal_condominio' => ['nullable', 'array', Rule::prohibitedIf(fn () => $tipo !== 'vendita')],
+            'togli_dal_condominio.*' => ['integer', 'distinct'],
         ];
     }
 
@@ -210,6 +214,17 @@ class AnteprimaPassaggioRequest extends FormRequest
 
     public function withValidator(Validator $validator): void
     {
+        // Chi si toglie dal condominio è fra chi vende con questo passaggio: un id che arriva dal browser non toglie nessun altro.
+        $validator->after(function (Validator $v) {
+            $ids = array_map('intval', array_filter((array) $this->input('togli_dal_condominio', []), 'is_numeric'));
+            if ($ids === [] || $v->errors()->has('togli_dal_condominio') || $v->errors()->has('decorrenza')) {
+                return;
+            }
+            $venditori = array_column($this->chiEsceDallaVendita(), 'id');
+            if (array_diff($ids, $venditori) !== []) {
+                $v->errors()->add('togli_dal_condominio', 'Si toglie dal condominio solo chi vende con questo passaggio.');
+            }
+        });
         $validator->after(function (Validator $v) {
             // Fase 1 della 1.11.0-beta.48: una data già rifiutata dalla regola `date` non si legge — `CarbonImmutable::parse` su
             // «pippo» faceva una pagina 500 al posto del messaggio. I controlli qui sotto aspettano una data vera.
@@ -1077,6 +1092,39 @@ class AnteprimaPassaggioRequest extends FormRequest
     }
 
     /**
+     * Gli avvisi del pannello sui decessi che la richiesta non ferma: un erede con un'estinzione dell'usufrutto non annullata del condominio con la
+     * data fino al giorno del decesso del defunto. La morte dell'usufruttuario si registra così, ma l'estinzione non dice la causa (l'usufrutto finisce
+     * anche per rinuncia o per termine): fermare come per una successione (`controllaIDecessi`) fermerebbe anche una persona viva. «Ada ha
+     * un'estinzione dell'usufrutto registrata il 1 marzo 2026 su Interno 2. Se l'usufrutto si è estinto per la sua morte, non può essere fra gli eredi
+     * di Ugo: indica gli eredi come li dice la dichiarazione di successione.» Vuoto fuori dalla successione o senza i dati per leggerlo.
+     *
+     * @return list<string>
+     */
+    public function avvisiDeiDecessi(): array
+    {
+        /** @var Immobile $immobile */
+        $immobile = $this->route('immobile');
+        $uscente = $this->rigaUscente();
+        $decorrenza = $this->input('decorrenza');
+        $eredi = array_values(array_filter(array_map(fn ($e) => is_array($e) && is_numeric($e['anagrafica_id'] ?? null) ? (int) $e['anagrafica_id'] : null, (array) $this->input('eredi', []))));
+        if ($this->testo('tipo') !== 'successione' || $immobile === null || $uscente === null || $eredi === [] || ! is_string($decorrenza) || strtotime($decorrenza) === false) {
+            return [];
+        }
+        $il = CarbonImmutable::parse($decorrenza)->toDateString();
+        $defunto = (string) ($uscente->anagrafica?->nome ?? 'il defunto');
+        $avvisi = [];
+        $estinzioni = Subentro::with(['uscente', 'immobile'])->where('condominio_id', $immobile->condominio_id)->where('tipo_passaggio', 'usufrutto')
+            ->whereNull('subentro_padre_id')->whereIn('anagrafica_uscente_id', $eredi)->whereDate('decorrenza', '<=', $il)->orderBy('decorrenza')->orderBy('id')->get()
+            ->filter(fn (Subentro $s) => $s->estinzioneUsufrutto() && (int) $s->anagrafica_uscente_id !== (int) $uscente->anagrafica_id);
+        foreach ($estinzioni->unique('anagrafica_uscente_id') as $s) {
+            $avvisi[] = sprintf('%s ha un\'estinzione dell\'usufrutto registrata il %s su %s. Se l\'usufrutto si è estinto per la sua morte, non può essere fra gli eredi di %s: indica gli eredi come li dice la dichiarazione di successione.',
+                (string) ($s->uscente?->nome ?? ($s->registro['nomi']['uscente'] ?? 'Un erede')), $s->decorrenza->locale('it')->translatedFormat('j F Y'), (string) ($s->immobile?->nome ?? 'un\'altra unità'), $defunto);
+        }
+
+        return $avvisi;
+    }
+
+    /**
      * Giro sulle correzioni (G25) e ultima revisione (UD1, UE4): la riga di chi esce che un passaggio registrato dopo ha già chiuso. In
      * minuscolo, per la pertinenza con il suo nome davanti.
      */
@@ -1149,6 +1197,61 @@ class AnteprimaPassaggioRequest extends FormRequest
     private function successione(): bool
     {
         return $this->input('tipo') === 'successione';
+    }
+
+    /**
+     * Chi vende con questo passaggio e che cosa gli resta nel condominio dopo l'atto, per la scelta «Togli Mario Rossi dal condominio» del modulo:
+     * spuntata di serie se non gli resta niente (`resta` vuoto), e la decide l'amministratore. Gli resta un'unità dove ha un'altra riga in corso il
+     * giorno dell'atto o dopo (una sua riga di questa unità che il passaggio non chiude, un'altra unità, una pertinenza che non vende), e quest'unità
+     * se tiene l'usufrutto (la riserva). Solo chi oggi è fra le persone del condominio: per gli altri non c'è
+     * niente da togliere. Il debito rimasto si incassa lo stesso (`Anagrafica::delCondominio`). Vuoto se il passaggio non è una vendita.
+     *
+     * @return list<array{id: int, nome: string, resta: list<string>}>
+     */
+    public function chiEsceDallaVendita(): array
+    {
+        /** @var Immobile $immobile */
+        $immobile = $this->route('immobile');
+        if ($this->testo('tipo') !== 'vendita' || $immobile === null) {
+            return [];
+        }
+        $righe = array_values(array_filter($this->insieme() ? $this->righeUscenti() : [$this->rigaUscente()]));
+        $decorrenza = $this->input('decorrenza');
+        if ($righe === [] || ! is_string($decorrenza) || strtotime($decorrenza) === false) {
+            return [];
+        }
+        $giorno = CarbonImmutable::parse($decorrenza)->startOfDay()->toDateString();
+        $riserva = $this->testo('sottotipo') === Subentro::RISERVA_USUFRUTTO;
+        $pertinenze = array_map('intval', (array) $this->input('pertinenze', []));
+        $nelCondominio = DB::table('anagrafica_condominio')->where('condominio_id', $immobile->condominio_id)
+            ->whereIn('anagrafica_id', array_map(fn (TitolaritaImmobile $r) => (int) $r->anagrafica_id, $righe))->pluck('anagrafica_id')->map(fn ($id) => (int) $id)->all();
+        $chi = [];
+        foreach ($righe as $riga) {
+            $id = (int) $riga->anagrafica_id;
+            if (! in_array($id, $nelCondominio, true) || isset($chi[$id])) {
+                continue;
+            }
+            $resta = [];
+            if ($riserva) {
+                $resta[] = (string) $immobile->nome;
+            }
+            // Le altre righe della persona nel condominio, in corso il giorno dell'atto o dopo, tranne quelle che questa vendita chiude: la sua riga
+            // di quest'unità e, con lo stesso ruolo, quelle delle pertinenze spuntate.
+            $altre = DB::table('anagrafica_immobile')->join('immobili', 'immobili.id', '=', 'anagrafica_immobile.immobile_id')
+                ->where('immobili.condominio_id', $immobile->condominio_id)->where('anagrafica_immobile.anagrafica_id', $id)->where('anagrafica_immobile.attivo', true)
+                ->where('anagrafica_immobile.id', '!=', (int) $riga->id)
+                ->where(fn ($q) => $q->whereNull('anagrafica_immobile.data_fine')->orWhere('anagrafica_immobile.data_fine', '>=', $giorno))
+                ->get(['immobili.id as immobile_id', 'immobili.nome', 'anagrafica_immobile.tipologia']);
+            foreach ($altre as $a) {
+                if (in_array((int) $a->immobile_id, $pertinenze, true) && (string) $a->tipologia === (string) $riga->tipologia) {
+                    continue;
+                }
+                $resta[] = (string) $a->nome;
+            }
+            $chi[$id] = ['id' => $id, 'nome' => (string) ($riga->anagrafica?->nome ?? ''), 'resta' => array_values(array_unique($resta))];
+        }
+
+        return array_values($chi);
     }
 
     /** La riga di chi esce, solo se è di questa unità: l'`id` arriva dal browser e non si fida di nessuno. */

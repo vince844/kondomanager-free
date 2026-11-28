@@ -244,7 +244,7 @@ it('il credito riportato rimborsato con la rata 0 in bozza: la lettura non mette
     lcdAccetta($this, $s);
 });
 
-it('una rata emessa con una data futura non è dovuta prima di quella data; la morosità del passaggio la conta (eccezione dichiarata)', function () {
+it('una rata emessa con una data futura non è dovuta prima di quella data, nemmeno per la morosità del passaggio', function () {
     // La rata 1 scade il 05/01/2026; l'emissione ha data 01/06/2026; oggi è il 20/03/2026.
     $this->travelTo('2026-03-20 10:00:00');
     $s = lcdScenario(['A' => ['ugo', 1000]], 12, 'rata_zero');
@@ -262,8 +262,9 @@ it('una rata emessa con una data futura non è dovuta prima di quella data; la m
     $m = new ReflectionMethod(AnteprimaPassaggio::class, 'morosita');
     $m->setAccessible(true);
     $morosita = $m->invoke(app(AnteprimaPassaggio::class), $s['immobili']['A'], $s['persone']['ugo']->id, [$s['immobili']['A']->id]);
-    // La morosità del passaggio guarda la rata a giornale e la sua scadenza, non la data dell'emissione: 10000 − 3000 scaduti, contro 0.
-    expect($morosita['importo'] ?? 0)->toBe(7000)->and($l['totali']['scaduto'])->toBe(0);
+    // La morosità del passaggio è lo scaduto della lettura comune (dalla 1.12.0-beta.15): fino alla data dell'emissione niente. Prima guardava
+    // la rata a giornale e la sua scadenza, non la data dell'emissione, e diceva 10000 − 3000 = 7000.
+    expect($morosita)->toBeNull()->and($l['totali']['scaduto'])->toBe(0);
 });
 
 it('il rimborso di un credito delle entrate con la rata in bozza sta fra le righe su rate non ancora emesse, mai nel residuo', function () {

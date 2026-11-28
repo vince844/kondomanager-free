@@ -43,6 +43,7 @@ use App\Http\Controllers\Gestionale\PianiConti\Conti\AssociaTabellaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\ContoController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\DissociaTabellaController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\AggiornaTabellaController;
+use App\Http\Controllers\Gestionale\PianiConti\Conti\LettureDiFineAnnoController;
 use App\Http\Controllers\Gestionale\PianiConti\Conti\FetchCapitoliContiController;
 use App\Http\Controllers\Gestionale\PianiConti\MovimentiPerVoceController;
 use App\Http\Controllers\Gestionale\PianiConti\PianoContiController;
@@ -349,6 +350,14 @@ Route::prefix('/gestionale/{condominio}')
     Route::put('esercizi/{esercizio}/piani-conti/{pianoConto}/conti/{conto}/aggiorna-tabella/{tabella}', AggiornaTabellaController::class)
         ->name('esercizi.piani-conti.conti.aggiorna-tabella');
 
+    // Le letture di fine anno dei sottocontatori di una voce (`LettureDiFineAnno`): si leggono aprendo la voce, si scrivono e si tolgono.
+    Route::get('esercizi/{esercizio}/piani-conti/{pianoConto}/conti/{conto}/letture-di-fine-anno', [LettureDiFineAnnoController::class, 'show'])
+        ->name('esercizi.piani-conti.conti.letture-di-fine-anno.show');
+    Route::put('esercizi/{esercizio}/piani-conti/{pianoConto}/conti/{conto}/letture-di-fine-anno', [LettureDiFineAnnoController::class, 'update'])
+        ->name('esercizi.piani-conti.conti.letture-di-fine-anno.update');
+    Route::delete('esercizi/{esercizio}/piani-conti/{pianoConto}/conti/{conto}/letture-di-fine-anno', [LettureDiFineAnnoController::class, 'destroy'])
+        ->name('esercizi.piani-conti.conti.letture-di-fine-anno.destroy');
+
     // `only()` e non un `resource` intero: `PianoRateController` non implementa `edit` né
     // `update` — un piano rate non si modifica in quel modo, si rigenera (`regenerate`) o se ne
     // cambia lo stato (`update-stato`). Le due rotte generate rispondevano **500**. Rimosse nella
@@ -372,6 +381,10 @@ Route::prefix('/gestionale/{condominio}')
     Route::put('/esercizi/{esercizio}/piani-rate/{pianoRate}/stato', [PianoRateController::class, 'updateStato'])
     ->name('piani-rate.update-stato');
 
+    // «Esercizio: 2026 · Cambia» nella pagina del piano: l'esercizio di un piano senza rate emesse né incassi.
+    Route::put('/esercizi/{esercizio}/piani-rate/{pianoRate}/esercizio', [PianoRateController::class, 'updateEsercizio'])
+        ->name('esercizi.piani-rate.update-esercizio');
+
     Route::post('esercizi/{esercizio}/piani-rate/{pianoRate}/publish-silent', [EmissioneRateController::class, 'publishSilent'])
         ->name('piani-rate.publish-silent');
 
@@ -394,24 +407,34 @@ Route::prefix('/gestionale/{condominio}')
     Route::post('/piani-rate/{pianoRate}/budget-movements/{budgetMovement}/reverse', [BudgetMovementController::class, 'reverse'])
         ->name('piani-rate.budget-movements.reverse');
     
-    // Rotta per vedere l'estratto conto (accessibile dal piano rate)
+    // Rotta per vedere l'estratto conto (accessibile dal piano rate). Senza vincolo sul figlio: la persona si cerca con la regola del pagante
+    // (`Anagrafica::delCondominio`, anche chi è stato tolto dal condominio con rate ancora sue), e la guardia è nel controller (`personaDelCondominio`).
     Route::get('/anagrafiche/{anagrafica}/estratto-conto', [EstrattoContoAnagraficaController::class, 'show'])
+        ->withoutScopedBindings()
         ->name('anagrafiche.estratto-conto');
     
     Route::get('/anagrafiche/{anagrafica}/estratto-conto/print', [EstrattoContoAnagraficaController::class, 'print'])
+        ->withoutScopedBindings()
         ->name('anagrafiche.estratto-conto.print');
 
     // Il fascicolo per il legale di una persona. L'anteprima per la finestra (un GET: non scrive niente), l'archivio .zip con la riga del
     // registro della persona, e l'indice e il prospetto conservati, riaperti dalla sua pagina. Solo nel pannello, mai fra le rotte del portale.
+    // Come l'estratto conto, senza vincolo sul figlio: chi è stato tolto dal condominio con rate ancora sue ha ancora il suo fascicolo, e la guardia è nel
+    // controller (`Anagrafica::delCondominio`).
     Route::get('/anagrafiche/{anagrafica}/fascicolo-legale', [\App\Http\Controllers\Gestionale\Movimenti\FascicoloLegaleController::class, 'anteprima'])
+        ->withoutScopedBindings()
         ->name('anagrafiche.fascicolo-legale');
     Route::post('/anagrafiche/{anagrafica}/fascicolo-legale', [\App\Http\Controllers\Gestionale\Movimenti\FascicoloLegaleController::class, 'prepara'])
+        ->withoutScopedBindings()
         ->name('anagrafiche.fascicolo-legale.prepara');
     Route::get('/anagrafiche/{anagrafica}/fascicolo-legale/documenti/{documento}', [\App\Http\Controllers\Gestionale\Movimenti\FascicoloLegaleController::class, 'documento'])
+        ->withoutScopedBindings()
         ->whereNumber('documento')->name('anagrafiche.fascicolo-legale.documento');
 
-    // B2, S6: il rimborso del credito dall'estratto conto — denaro che esce a fronte di una quota a credito.
+    // B2, S6: il rimborso del credito dall'estratto conto — denaro che esce a fronte di una quota a credito. Senza vincolo sul figlio, come l'estratto
+    // conto da cui parte: la guardia è nel controller (`Anagrafica::delCondominio`).
     Route::post('/anagrafiche/{anagrafica}/rimborsi', [\App\Http\Controllers\Gestionale\Rimborsi\RimborsoCreditoController::class, 'store'])
+        ->withoutScopedBindings()
         ->name('anagrafiche.rimborsi.store');
     
     Route::post('/esercizi/{esercizio}/piani-rate/{pianoRate}/regenerate', PianoRateGenerationController::class)

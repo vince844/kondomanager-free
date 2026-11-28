@@ -23,6 +23,9 @@ use Illuminate\Support\Facades\Notification;
 
 class PubblicazioneProgrammata
 {
+    /** La frase per chi non può pubblicare: sotto la tendina della visibilità e come rifiuto del salvataggio. */
+    public const SOLO_CHI_PUBBLICA = 'Resta in bozza: la pubblica chi ha il permesso «Pubblica comunicazioni». Chi l\'ha scritta può farlo con «Pubblica proprie comunicazioni».';
+
     public static function fuso(): string
     {
         return (string) config('app.user_timezone', 'Europe/Rome');
@@ -70,6 +73,30 @@ class PubblicazioneProgrammata
         }
 
         return true;
+    }
+
+    /**
+     * Una bozza approvata: pubblicarla la mostra ai condòmini e fa partire l'avviso. Una comunicazione in attesa di approvazione non si vede in nessun
+     * caso: la mostra l'approvazione, che ha il suo permesso.
+     */
+    public static function eBozzaApprovata(Comunicazione $comunicazione): bool
+    {
+        return (bool) $comunicazione->is_approved && ! (bool) $comunicazione->is_published;
+    }
+
+    /**
+     * Chi pubblica una bozza approvata dalla modifica (Coda 695): «Pubblica comunicazioni», oppure «Pubblica proprie comunicazioni» sulla propria.
+     * La programmazione ha la sua regola ({@see puoProgrammare()}): «Pubblica comunicazioni».
+     */
+    public static function puoPubblicare(User $user, Comunicazione $comunicazione): bool
+    {
+        if ($user->checkPermissionTo(Permission::PUBLISH_COMUNICAZIONI->value)) {
+            return true;
+        }
+
+        return $user->checkPermissionTo(Permission::PUBLISH_OWN_COMUNICAZIONI->value)
+            && $comunicazione->created_by !== null
+            && (int) $comunicazione->created_by === (int) $user->id;
     }
 
     public static function pianificatoreAttivo(): bool

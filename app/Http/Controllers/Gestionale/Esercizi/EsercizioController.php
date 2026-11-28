@@ -13,7 +13,10 @@ use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Gestionale\Esercizi\EsercizioResource;
 use App\Models\Condominio;
 use App\Models\Esercizio;
+use App\Models\Gestione;
 use App\Models\Gestionale\ScritturaContabile;
+use App\Services\CondominioService;
+use App\Services\RegistroModifiche\RegistroModifiche;
 use App\Traits\HandleFlashMessages;
 use App\Traits\OrdinaElenco;
 use App\Traits\PaginaElenco;
@@ -144,6 +147,7 @@ class EsercizioController extends Controller
      * 
      * @uses CreateEsercizioRequest::validated() Gets validated exercise data
      * @uses Esercizio::create() Persists the new exercise record
+     * @uses CondominioService::createDefaultGestione() Attaches the ordinary management to the new exercise
      * 
      * @flashMessages
      * - Success: 'gestionale.success_create_esercizio'
@@ -159,10 +163,24 @@ class EsercizioController extends Controller
         try {
             
             $data = $request->validated();
-            Esercizio::create($data);
+
+            // L'esercizio nasce con la gestione ordinaria agganciata, come alla creazione del condominio: senza, l'anno nuovo non aveva nessuna
+            // gestione. In una transazione: se l'aggancio non riesce, l'esercizio non resta creato a metà.
+            // Con più gestioni ordinarie si aggancia la prima attiva (`CondominioService::gestioneDaAgganciare`), e il messaggio dice quale.
+            $agganciata = DB::transaction(function () use ($data, $condominio) {
+                $esercizio = Esercizio::create($data);
+                $servizio = app(CondominioService::class);
+                $aggancia = fn () => $servizio->createDefaultGestione($condominio, $esercizio);
+
+                // Il legame di una gestione che c'era già va nel registro delle modifiche, come dalla pagina della gestione; una gestione
+                // nuova scrive la sua «Creata».
+                $ordinaria = $servizio->gestioneDaAgganciare($condominio);
+
+                return $ordinaria === null ? $aggancia() : RegistroModifiche::legame($ordinaria, 'esercizi', 'Esercizi', $aggancia);
+            });
 
             return to_route('admin.gestionale.esercizi.index', $condominio)
-                ->with($this->flashSuccess(__('gestionale.success_create_esercizio')));
+                ->with($this->flashSuccess(__('gestionale.success_create_esercizio') . ' ' . $this->fraseDellaGestione($condominio, $agganciata)));
 
         } catch (\Throwable $e) {
             Log::error('Error creating esercizio', [
@@ -176,6 +194,23 @@ class EsercizioController extends Controller
         }
     }
 
+
+    /**
+     * Quale gestione ordinaria l'esercizio nuovo ha ricevuto; con più di una, che è la prima attiva e quali restano fuori.
+     */
+    private function fraseDellaGestione(Condominio $condominio, Gestione $agganciata): string
+    {
+        $frase = sprintf('La gestione «%s» è agganciata all\'esercizio nuovo', $agganciata->nome);
+        $altre = $condominio->gestioni()->where('tipo', 'ordinaria')->whereKeyNot($agganciata->id)->orderBy('id')->pluck('nome')->map(fn ($n) => '«' . $n . '»')->all();
+        if ($altre === []) {
+            return $frase . '.';
+        }
+        $ultima = array_pop($altre);
+        $elenco = $altre === [] ? $ultima : implode(', ', $altre) . ' e ' . $ultima;
+
+        return $frase . ($agganciata->attiva ? ': è la prima gestione ordinaria attiva. ' : ': nessuna gestione ordinaria è attiva, ed è la prima. ')
+            . $elenco . (count($altre) > 0 ? ' non sono agganciate: se serve, le agganci dalla loro pagina.' : ' non è agganciata: se serve, la agganci dalla sua pagina.');
+    }
 
     /**
      * Display the form for editing an existing exercise.

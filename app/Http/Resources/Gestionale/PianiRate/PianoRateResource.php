@@ -139,6 +139,11 @@ class PianoRateResource extends JsonResource
                         $isParent = $c->sottoconti->isNotEmpty();
 
                         $importoEffettivo = !is_null($c->pivot->importo) ? $c->pivot->importo : $c->importo;
+                        // Un capitolo senza cifra nel piano vale ciò che ne chiede il motore: il suo importo e i sottoconti, ognuno con il suo.
+                        if (is_null($c->pivot->importo) && $isParent) {
+                            $parti = PianoRateQuoteService::partiSenzaCifra($c, array_fill_keys($this->capitoli->pluck('id')->map(fn ($id) => (int) $id)->all(), true));
+                            $importoEffettivo = $c->segno($this->created_at) < 0 ? $parti['entrate'] - $parti['spese'] : $parti['spese'] - $parti['entrate'];
+                        }
 
                         $sottocontiSnapshot = $c->sottoconti->filter(
                             fn($s) => $s->created_at->lte($this->created_at)

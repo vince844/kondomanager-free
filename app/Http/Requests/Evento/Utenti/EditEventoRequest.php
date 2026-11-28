@@ -6,15 +6,14 @@
 namespace App\Http\Requests\Evento\Utenti;
 
 use App\Enums\Permission;
-use App\Enums\VisibilityStatus;
 use App\Models\Evento;
 use App\Rules\CondominioDellUtente;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 
 /**
- * @method bool merge(string $key)
+ * La modifica di un evento dal portale. L'autore (`created_by`) e l'approvazione (`is_approved`) si scrivono solo alla creazione (Coda 396): qui non hanno
+ * una regola e non entrano in `validated()`. La visibilità si cambia solo con «Pubblica scadenze in agenda»: senza, resta quella che l'evento ha.
  */
 class EditEventoRequest extends FormRequest
 {
@@ -39,15 +38,13 @@ class EditEventoRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [
+        $regole = [
             'title'                   => 'required|string|max:255',
             'description'             => 'nullable|string',
             'start_time'              => 'required|date',
             'end_time'                => 'required|date|after:start_time',
             'note'                    => 'nullable|string',
             'category_id'             => 'required|exists:categorie_evento,id',
-            'visibility'              => 'required|in:public,private,hidden',
-            'is_approved'             => 'required|boolean',
             'recurrence_frequency'    => 'nullable|in:daily,weekly,monthly,yearly',
             'recurrence_interval'     => 'nullable|integer',
             'recurrence_by_day'       => 'nullable|array',
@@ -67,8 +64,13 @@ class EditEventoRequest extends FormRequest
             ],
             'mode'                    => 'nullable|string',
             'occurrence_date'         => 'nullable|date',
-            'created_by'              => 'required|exists:users,id',
         ];
+
+        if ($this->user()->hasPermissionTo(Permission::PUBLISH_EVENTS->value)) {
+            $regole['visibility'] = 'required|in:public,private,hidden';
+        }
+
+        return $regole;
     }
 
     /**
@@ -81,25 +83,6 @@ class EditEventoRequest extends FormRequest
         return $evento instanceof Evento
             ? $evento->condomini()->pluck('condomini.id')->map(fn ($id) => (int) $id)->all()
             : [];
-    }
-
-    /**
-     * Prepare the data for validation.
-     *
-     * @return void
-     */
-    public function prepareForValidation(): void
-    {
-
-        $user = Auth::user();
-
-        $this->merge([
-            'created_by' => $user->id,
-            'visibility' => $user->hasPermissionTo(Permission::PUBLISH_EVENTS->value)
-                ? VisibilityStatus::PUBLIC->value
-                : VisibilityStatus::HIDDEN->value,
-            'is_approved' => $user->hasPermissionTo(Permission::APPROVE_EVENTS->value)
-        ]);
     }
 
     public function messages()

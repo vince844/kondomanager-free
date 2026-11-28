@@ -10,6 +10,10 @@
  * un'altra persona", che riapre la nuova associazione della stessa unità, e "Salva e crea un nuovo
  * immobile", che apre il nuovo immobile dello stesso condominio. Il modulo sceglie la destinazione
  * con il campo `next_route`. Qui si verificano il redirect, il messaggio e l'associazione salvata.
+ *
+ * «Nuovo immobile» chiede «Modifica condomini» (`ImmobileController::create`), l'associazione no: a chi
+ * non ce l'ha il salvataggio torna all'elenco, come con il pulsante principale. Il rimando si segue: la
+ * pagina dopo deve rispondere 200.
  */
 
 use App\Models\Anagrafica;
@@ -32,6 +36,8 @@ beforeEach(function () {
 
     $this->user = User::factory()->create();
     $this->user->assignRole($ruolo);
+    // Esiste ma l'utente non ce l'ha: la danno le prove che ne hanno bisogno.
+    Permission::firstOrCreate(['name' => 'Modifica condomini', 'guard_name' => 'web']);
 
     $this->condominio = Condominio::factory()->create();
     Esercizio::factory()->create(['condominio_id' => $this->condominio->id]);
@@ -83,13 +89,37 @@ it('con "Salva e aggiungi un\'altra persona" riapre la nuova associazione della 
     expect(spaAssociazioneSalvata($this))->toBeTrue();
 });
 
+/** La pagina a cui il salvataggio rimanda, aperta davvero: deve rispondere 200, con il messaggio di conferma. */
+function spaSegui($test, $risposta, string $pagina): void
+{
+    $test->actingAs($test->user)->get($risposta->headers->get('Location'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->component($pagina)->where('flash.message.type', 'success'));
+}
+
 it('con "Salva e crea un nuovo immobile" apre il nuovo immobile dello stesso condominio', function () {
-    spaSalva($this, ['next_route' => 'nuovo_immobile'])
+    $this->user->givePermissionTo('Modifica condomini');
+
+    $risposta = spaSalva($this, ['next_route' => 'nuovo_immobile'])
         ->assertSessionHasNoErrors()
         ->assertSessionHas('message', fn ($m) => $m['type'] === 'success')
         ->assertRedirect(route('admin.gestionale.immobili.create', ['condominio' => $this->condominio->id]));
 
     expect(spaAssociazioneSalvata($this))->toBeTrue();
+    spaSegui($this, $risposta, 'gestionale/immobili/ImmobiliNew');
+});
+
+it('senza «Modifica condomini», "Salva e crea un nuovo immobile" salva e torna all\'elenco, non a una pagina che risponde 403', function () {
+    $risposta = spaSalva($this, ['next_route' => 'nuovo_immobile'])
+        ->assertSessionHasNoErrors()
+        ->assertSessionHas('message', fn ($m) => $m['type'] === 'success')
+        ->assertRedirect(route('admin.gestionale.immobili.anagrafiche.index', [
+            'condominio' => $this->condominio->id,
+            'immobile'   => $this->immobile->id,
+        ]));
+
+    expect(spaAssociazioneSalvata($this))->toBeTrue();
+    spaSegui($this, $risposta, 'gestionale/immobili/anagrafiche/AnagraficheList');
 });
 
 it('rifiuta una destinazione non ammessa e non salva l\'associazione', function () {

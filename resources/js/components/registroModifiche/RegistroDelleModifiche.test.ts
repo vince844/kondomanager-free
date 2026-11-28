@@ -439,6 +439,9 @@ describe('le pagine del registro', () => {
         expect(struttura).toContain('Permission.VIEW_REGISTRO_MODIFICHE');
         const impostazioni = leggi('resources/js/pages/impostazioni/impostazioni.vue');
         expect(impostazioni).toContain('href: "/impostazioni/registro-modifiche"');
-        expect(impostazioni).toContain('Permission.VIEW_REGISTRO_MODIFICHE');
+        // La card c'è per chi vede il registro: lo decide il server, nell'elenco delle schede della pagina.
+        expect(impostazioni).toMatch(/mostra\('registro'\)[\s\S]*?\/impostazioni\/registro-modifiche/);
+        const schede = leggi('app/Http/Controllers/Impostazioni/ImpostazioniController.php');
+        expect(schede).toContain("'registro'      => Permission::VIEW_REGISTRO_MODIFICHE");
     });
 });

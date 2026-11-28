@@ -323,6 +323,215 @@ class AnagraficaController extends Controller
         return $cambiata && filled($giorno) && substr((string) $giorno, 0, 10) === $prima;
     }
 
+    /** Quante unità si nominano in una frase prima di dire «e altre»: l'elenco di un condominio grande non deve riempire il messaggio. */
+    private const UNITA_NELLA_FRASE = 5;
+
+    /**
+     * I condomini che il salvataggio toglie dalla scheda: quelli di adesso che nel campo mandato non ci sono più. Il campo vuoto (o mancante) li toglie tutti.
+     *
+     * @param  mixed  $mandati  il campo «Condomini» come l'ha validato la richiesta
+     * @return list<int>
+     */
+    private static function condominiTolti(Anagrafica $anagrafica, mixed $mandati): array
+    {
+        $restano = array_map('intval', \Illuminate\Support\Arr::wrap($mandati));
+
+        return $anagrafica->condomini()->pluck('condomini.id')->map(fn ($id) => (int) $id)->reject(fn (int $id) => in_array($id, $restano, true))->values()->all();
+    }
+
+    /**
+     * Che cosa ha la persona nei condomini dati (tutti, se `null`), letto dalle cinque tabelle che la cascata dell'eliminazione svuoterebbe: le quote
+     * delle rate, le righe di titolarità, i saldi, i crediti residui e le righe di riparto dei piani. Per condominio: il nome, le unità nominate, le quote
+     * (le annullate non si contano) con quante hanno ancora un debito o un credito da usare (le stesse letture di `RataQuote::importo_residuo` e
+     * `credito_disponibile`), le unità dove la titolarità non è chiusa (attiva e senza una data di fine passata), i saldi che nessun piano ha ancora assorbito.
+     *
+     * @param  list<int>|null  $soloQuesti
+     * @return array<int, array{nome: string, unita: list<string>, righe_di_rate: bool, quote: int, unita_quote: list<string>, da_pagare: int, a_credito: int, unita_titolarita: list<string>, saldi_aperti: int, unita_saldi: list<string>}>
+     */
+    private static function cheCosaHaNeiCondomini(Anagrafica $anagrafica, ?array $soloQuesti): array
+    {
+        $id = (int) $anagrafica->id;
+        $oggi = \App\Helpers\DateHelper::oggiUtente();
+        $dati = [];
+        $nuovo = fn (): array => ['nome' => '', 'unita_ids' => [], 'righe_di_rate' => false, 'quote' => 0, 'unita_quote' => [], 'da_pagare' => 0, 'a_credito' => 0,
+            'unita_titolarita' => [], 'saldi_aperti' => 0, 'unita_saldi' => []];
+        $vedi = function (int $condominioId, ?int $immobileId, ?string $sezione = null) use (&$dati, $nuovo): void {
+            $dati[$condominioId] ??= $nuovo();
+            if ($immobileId !== null) {
+                $dati[$condominioId]['unita_ids'][$immobileId] = $immobileId;
+                if ($sezione !== null) {
+                    $dati[$condominioId][$sezione][$immobileId] = $immobileId;
+                }
+            }
+        };
+        $limita = fn ($query, string $colonna) => $soloQuesti === null ? $query : $query->whereIn($colonna, $soloQuesti);
+
+        $quote = $limita(DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->join('piani_rate', 'piani_rate.id', '=', 'rate.piano_rate_id')
+            ->where('rate_quote.anagrafica_id', $id), 'piani_rate.condominio_id')
+            ->get(['piani_rate.condominio_id', 'rate_quote.immobile_id', 'rate_quote.importo', 'rate_quote.importo_pagato', 'rate_quote.stato']);
+        foreach ($quote as $q) {
+            $c = (int) $q->condominio_id;
+            $unita = $q->immobile_id === null ? null : (int) $q->immobile_id;
+            $vedi($c, $unita);
+            $dati[$c]['righe_di_rate'] = true;
+            if ($q->stato === 'annullata') {
+                continue;
+            }
+            $dati[$c]['quote']++;
+            if ($unita !== null) {
+                $dati[$c]['unita_quote'][$unita] = $unita;
+            }
+            $quota = (new \App\Models\Gestionale\RataQuote())->forceFill(['importo' => (int) $q->importo, 'importo_pagato' => (int) $q->importo_pagato]);
+            if ($quota->importo_residuo > 0) {
+                $dati[$c]['da_pagare']++;
+            }
+            if ($quota->credito_disponibile > 0) {
+                $dati[$c]['a_credito']++;
+            }
+        }
+
+        $titolarita = $limita(DB::table('anagrafica_immobile')->join('immobili', 'immobili.id', '=', 'anagrafica_immobile.immobile_id')
+            ->where('anagrafica_immobile.anagrafica_id', $id), 'immobili.condominio_id')
+            ->get(['immobili.condominio_id', 'anagrafica_immobile.immobile_id', 'anagrafica_immobile.attivo', 'anagrafica_immobile.data_fine']);
+        foreach ($titolarita as $t) {
+            $nonChiusa = (bool) $t->attivo && ($t->data_fine === null || substr((string) $t->data_fine, 0, 10) >= $oggi);
+            $vedi((int) $t->condominio_id, (int) $t->immobile_id, $nonChiusa ? 'unita_titolarita' : null);
+        }
+
+        $saldi = $limita(DB::table('saldi')->where('anagrafica_id', $id), 'condominio_id')->get(['condominio_id', 'immobile_id', 'saldo_iniziale', 'is_applicato', 'piano_rate_id']);
+        foreach ($saldi as $x) {
+            $fuoriDaUnPiano = ! (bool) $x->is_applicato && $x->piano_rate_id === null && (int) $x->saldo_iniziale !== 0;
+            $vedi((int) $x->condominio_id, $x->immobile_id === null ? null : (int) $x->immobile_id, $fuoriDaUnPiano ? 'unita_saldi' : null);
+            if ($fuoriDaUnPiano) {
+                $dati[(int) $x->condominio_id]['saldi_aperti']++;
+            }
+        }
+
+        foreach ($limita(DB::table('crediti_residui')->where('anagrafica_id', $id), 'condominio_id')->pluck('condominio_id') as $condominioId) {
+            $vedi((int) $condominioId, null);
+        }
+        $righeDiRiparto = $limita(DB::table('righe_riparto')->join('piani_rate', 'piani_rate.id', '=', 'righe_riparto.piano_rate_id')
+            ->where('righe_riparto.anagrafica_id', $id), 'piani_rate.condominio_id')->get(['piani_rate.condominio_id', 'righe_riparto.immobile_id']);
+        foreach ($righeDiRiparto as $r) {
+            $vedi((int) $r->condominio_id, $r->immobile_id === null ? null : (int) $r->immobile_id);
+        }
+
+        $nomiCondomini = DB::table('condomini')->whereIn('id', array_keys($dati))->pluck('nome', 'id');
+        $tutteLeUnita = collect($dati)->flatMap(fn (array $d) => $d['unita_ids'])->unique()->values()->all();
+        $nomiUnita = DB::table('immobili')->whereIn('id', $tutteLeUnita)->pluck('nome', 'id');
+        $inNomi = fn (array $ids): array => collect($ids)->map(fn ($i) => (string) ($nomiUnita[$i] ?? ('unità ' . $i)))->unique()->sort(SORT_NATURAL)->values()->all();
+
+        ksort($dati);
+        $esito = [];
+        foreach ($dati as $condominioId => $d) {
+            $esito[$condominioId] = [
+                'nome' => (string) ($nomiCondomini[$condominioId] ?? ('condominio ' . $condominioId)),
+                'unita' => $inNomi($d['unita_ids']),
+                'righe_di_rate' => $d['righe_di_rate'],
+                'quote' => $d['quote'],
+                'unita_quote' => $inNomi($d['unita_quote']),
+                'da_pagare' => $d['da_pagare'],
+                'a_credito' => $d['a_credito'],
+                'unita_titolarita' => $inNomi($d['unita_titolarita']),
+                'saldi_aperti' => $d['saldi_aperti'],
+                'unita_saldi' => $inNomi($d['unita_saldi']),
+            ];
+        }
+
+        return $esito;
+    }
+
+    /**
+     * Le unità in una frase: «Interno 4», «Interno 4 e Interno 7», «Interno 1, Interno 2 e Interno 3»; oltre cinque, le prime cinque e «altre N».
+     *
+     * @param list<string> $nomi
+     */
+    private static function unitaInParole(array $nomi): string
+    {
+        if (count($nomi) > self::UNITA_NELLA_FRASE) {
+            $altre = count($nomi) - self::UNITA_NELLA_FRASE;
+
+            return implode(', ', array_slice($nomi, 0, self::UNITA_NELLA_FRASE)) . ' e altre ' . $altre;
+        }
+
+        return count($nomi) > 1 ? implode(', ', array_slice($nomi, 0, -1)) . ' e ' . end($nomi) : (string) ($nomi[0] ?? '');
+    }
+
+    /** Il condominio con le sue unità fra parentesi: «Condominio Aurora» (Interno 4). Senza unità, il solo nome. */
+    private static function condominioConUnita(string $nome, array $unita): string
+    {
+        return '«' . $nome . '»' . ($unita === [] ? '' : ' (' . self::unitaInParole($unita) . ')');
+    }
+
+    /**
+     * La frase che rifiuta di togliere dalla scheda i condomini dati, o `null` se non c'è niente che li tenga. Per ogni condominio il motivo più forte:
+     * le quote che hanno ancora un debito o un credito da usare, poi la titolarità non chiusa, poi un saldo che nessun piano ha assorbito. Con la titolarità
+     * chiusa e tutto pagato passa: chi ha venduto può uscire dal condominio. Chi ha venduto con il passaggio registrato e ha ancora quote non si
+     * manda a registrarlo di nuovo: la frase dice che le rate rimaste si incassano lo stesso e che cosa lo libera (saldare o annullare le quote).
+     *
+     * @param list<int> $condominiTolti
+     */
+    private static function fraseDelCondominioConDati(Anagrafica $anagrafica, array $condominiTolti): ?string
+    {
+        if ($condominiTolti === []) {
+            return null;
+        }
+        $frasi = [];
+        $dellaVendita = false;
+        $giaVenduto = false;
+        // I condomini dove la persona è uscita con un passaggio registrato (non annullato).
+        $conUscita = DB::table('subentri')->where('anagrafica_uscente_id', $anagrafica->id)->whereNull('annullato_il')->whereIn('condominio_id', $condominiTolti)
+            ->pluck('condominio_id')->map(fn ($id) => (int) $id)->flip()->all();
+        foreach (self::cheCosaHaNeiCondomini($anagrafica, $condominiTolti) as $condominioId => $d) {
+            $perChe = null;
+            if ($d['da_pagare'] > 0 || $d['a_credito'] > 0) {
+                $diCui = array_filter([
+                    $d['da_pagare'] > 0 ? $d['da_pagare'] . ' da pagare' : null,
+                    $d['a_credito'] > 0 ? $d['a_credito'] . ($d['a_credito'] === 1 ? ' con un credito da usare' : ' con crediti da usare') : null,
+                ]);
+                $perChe = sprintf('ha %s nelle rate di %s, di cui %s', $d['quote'] === 1 ? '1 quota' : $d['quote'] . ' quote', self::condominioConUnita($d['nome'], $d['unita_quote']), implode(' e ', $diCui));
+                if (isset($conUscita[(int) $condominioId]) && $d['unita_titolarita'] === []) {
+                    $giaVenduto = true;
+                } else {
+                    $dellaVendita = true;
+                }
+            } elseif ($d['unita_titolarita'] !== []) {
+                $perChe = sprintf('è titolare di %s in «%s»', self::unitaInParole($d['unita_titolarita']), $d['nome']);
+                $dellaVendita = true;
+            } elseif ($d['saldi_aperti'] > 0) {
+                $perChe = sprintf('ha %s non ancora in un piano in %s', $d['saldi_aperti'] === 1 ? 'un saldo' : $d['saldi_aperti'] . ' saldi', self::condominioConUnita($d['nome'], $d['unita_saldi']));
+            }
+            if ($perChe !== null) {
+                $frasi[] = sprintf('%s %s: non si può togliere quel condominio dalla sua scheda.', $anagrafica->nome, $perChe);
+            }
+        }
+        if ($frasi === []) {
+            return null;
+        }
+
+        return implode(' ', $frasi)
+            . ($giaVenduto ? ' Il passaggio della sua uscita è già registrato: le sue rate rimaste si incassano anche se resta fra le persone del condominio. Per togliere la persona dal condominio, salda o annulla le quote rimaste.' : '')
+            . ($dellaVendita ? ' Se ha venduto, registra il passaggio dalla pagina dei titolari dell\'unità.' : '');
+    }
+
+    /**
+     * La frase che rifiuta l'eliminazione di chi ha righe in una delle cinque tabelle in cascata, in qualunque condominio, o `null`. Dice dove, e che cosa
+     * sparirebbe.
+     */
+    private static function fraseDellEliminazioneConDati(Anagrafica $anagrafica): ?string
+    {
+        $dove = self::cheCosaHaNeiCondomini($anagrafica, null);
+        if ($dove === []) {
+            return null;
+        }
+        $elenco = array_map(fn (array $d) => self::condominioConUnita($d['nome'], $d['unita']), array_values($dove));
+        $inParole = count($elenco) > 1 ? implode(', ', array_slice($elenco, 0, -1)) . ' e ' . end($elenco) : $elenco[0];
+        $contaLeRate = collect($dove)->contains(fn (array $d) => $d['righe_di_rate']);
+
+        return sprintf('%s non si può eliminare: ha quote, saldi o righe di titolarità in %s. %s', $anagrafica->nome, $inParole,
+            $contaLeRate ? 'Eliminandola sparirebbero anche le sue rate.' : 'Eliminandola sparirebbero anche i suoi saldi e le sue righe di titolarità.');
+    }
+
     public function update(UpdateAnagraficaRequest $request, Anagrafica $anagrafica): RedirectResponse
     {
         Gate::authorize('update', $anagrafica);
@@ -332,6 +541,12 @@ class AnagraficaController extends Controller
         $giornoTolto = self::giornoDellaPecDiPrima($anagrafica, $validated);
         if ($giornoTolto) {
             $validated['pec_comunicata_il'] = null;
+        }
+
+        // Un condominio che si toglie dalla scheda non porta via niente di una persona che lì ha ancora qualcosa da fare: lo dice la frase, e non si salva nulla.
+        $frase = self::fraseDelCondominioConDati($anagrafica, self::condominiTolti($anagrafica, $validated['condomini'] ?? null));
+        if ($frase !== null) {
+            return back()->with($this->flashError($frase));
         }
 
         try {
@@ -443,6 +658,13 @@ class AnagraficaController extends Controller
             return back()->with(
                 $this->flashError('Questa anagrafica compare come «chi ha versato» in un incasso da terzi: non si può eliminare, perché il registro di contabilità la nomina.')
             );
+        }
+
+        // Le chiavi esterne di quote, titolarità, saldi, crediti e righe di riparto sono in cascata: chi ha righe in una di quelle tabelle, in qualunque
+        // condominio, anche staccata a mano da tutti, non si elimina. Ultima guardia: le frasi di sopra dicono motivi più precisi.
+        $frase = self::fraseDellEliminazioneConDati($anagrafica);
+        if ($frase !== null) {
+            return back()->with($this->flashError($frase));
         }
 
         try {

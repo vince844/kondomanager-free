@@ -12,6 +12,7 @@ import ImmobileLayout from '@/layouts/gestionale/ImmobileLayout.vue';
 import Alert from "@/components/Alert.vue";
 import PageHeaderGuide from '@/components/PageHeaderGuide.vue';
 import { usePermission } from "@/composables/permissions";
+import { Permission } from "@/enums/Permission";
 import { misuraLeggibile } from '@/lib/gestionale/misure';
 import { List, Pencil, Building2, Map, FileText, Ruler, History, UsersRound } from 'lucide-vue-next';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -39,7 +40,9 @@ const occupantiOggi = computed(() => props.storico.righe.filter(r => r.in_corso 
 
 /** La superficie come la scrivono l'elenco e la scheda di modifica: vedi `lib/gestionale/misure.ts`. */
 const superficieLeggibile = computed(() => misuraLeggibile(props.immobile.superficie));
-const { generatePath } = usePermission();
+const { generatePath, hasPermission } = usePermission();
+// L'unità e i suoi documenti si modificano con «Modifica condomini» (ImmobileController, ImmobileDocumentoController): senza, i pulsanti non ci sono.
+const puoModificare = hasPermission([Permission.EDIT_CONDOMINI]);
 
 const page = usePage<{ flash: { message?: Flash } }>();
 const flashMessage = computed(() => page.props.flash.message);
@@ -97,6 +100,7 @@ const pageGuides = computed(() => [
             </Link>
 
             <Link
+              v-if="puoModificare"
               :href="generatePath('gestionale/:condominio/immobili/:immobile/edit', { condominio: props.condominio.id, immobile: props.immobile.id })"
               class="inline-flex h-8 items-center justify-center gap-2 rounded-md shadow px-4 bg-primary text-[10px] font-bold uppercase tracking-widest text-primary-foreground hover:bg-primary/90 transition-colors"
             >

@@ -122,9 +122,9 @@ it('Coda 438 — il piano del 2026 aperto dall\'elenco del 2027 e ricalcolato da
     expect(g112eErrore(g112eCrea($this, $s, '2026', 'P26', ['spesa' => '1.200,00', 'pulizie' => '200,00'])))->toBeNull();
     expect(g112eErrore(g112eCrea($this, $s, '2027', 'P27', ['spesa' => '1.200,00', 'pulizie' => '200,00'])))->toBeNull();
     $p26 = PianoRate::where('nome', 'P26')->first();
-    // L'elenco dei piani del 2027 mostra anche P26 (la gestione è agganciata al 2027) e lo collega con l'esercizio del 2027.
+    // L'elenco dei piani del 2027 non mostra più P26 (la gestione è agganciata al 2027, ma il piano è del 2026); l'indirizzo con il 2027 resta possibile.
     $elenco = $this->actingAs($this->user)->get(route('admin.gestionale.esercizi.piani-rate.index', [$s['c'], $s['es']['2027']]));
-    expect(collect($elenco->viewData('page')['props']['pianiRate'])->pluck('nome')->all())->toContain('P26');
+    expect(collect($elenco->viewData('page')['props']['pianiRate'])->pluck('nome')->all())->not->toContain('P26');
 
     $r = $this->actingAs($this->user)->from('/piano')->post(route('admin.gestionale.esercizi.piani-rate.regenerate', [$s['c'], $s['es']['2027'], $p26]));
     // A mano (decisione 183.1): P26 è il piano del 2026, e il già versato del 2026 vale lì: Ugo 600 − 300 + 100 = 400, Bice 600 + 100 = 700.

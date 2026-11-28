@@ -348,6 +348,15 @@ return [
             'line_1'    => 'On :data at :ora new two-factor recovery codes were generated for your :appName account: the previous ones no longer work.',
             'consiglio' => 'If you did not make this change, change your password right away and tell the administrator.',
         ],
+        'accesso_da_dispositivo_nuovo' => [
+            'subject'   => "New sign-in to your account",
+            'line_1'    => "On :data at :ora someone signed in to your account on :appName from a device we did not know: :dispositivo.",
+            'consiglio' => "If it was you, there is nothing to do. Otherwise change your password right away and tell the administrator.",
+            'cookie'    => "If you use private browsing, or your browser deletes cookies, this alert arrives at every sign-in.",
+        ],
+        'indirizzo' => "The network address was :indirizzo.",
+        'dispositivo' => ":browser on :sistema",
+        'dispositivo_sconosciuto' => "a browser we do not recognise",
     ],
 
     'errore_avvisato' => [

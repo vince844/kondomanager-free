@@ -217,10 +217,10 @@ class SyncScadenziarioWithFattura implements ShouldQueue
                         'start_time'  => $scadenzaDeficit,
                         'end_time'    => $scadenzaDeficit->copy()->addHour(),
                         'created_by'  => $userId,
-                        // FORMATTAZIONE CORRETTA: Passiamo i centesimi al MoneyHelper
                         // Lo scoperto è la parte del debito che i pregressi chiesti ai condòmini non coprono: nessuna rata la chiede, e sollecitare le rate scadute
-                        // non la porta. La descrizione dice ciò che il compito chiede; i compiti già scritti restano come sono.
-                        'description' => "Il debito ereditato ({$fornitore->ragione_sociale}) è scoperto per " . MoneyHelper::format($bucoCents) . ": è la parte che i pregressi chiesti ai condòmini non coprono, e nessuna rata la chiede. Poiché non hai creato sopravvenienze, questi soldi mancheranno dal conto corrente ordinario. Si ripiana con un piano rate che chieda ai condòmini la cifra che manca: «Prepara il piano di ripianamento».",
+                        // non la porta. La descrizione dice ciò che il compito chiede, senza la cifra: lo scoperto cambia con i pregressi e i piani, e la cifra di oggi
+                        // la dice la riga sotto il titolo (`importo_buco`, allineato da `RipianamentoDelDeficit`). I compiti già scritti la perdono al primo allineamento.
+                        'description' => "Il debito ereditato ({$fornitore->ragione_sociale}) ha una parte scoperta: è quella che i pregressi chiesti ai condòmini non coprono, e nessuna rata la chiede. Poiché non hai creato sopravvenienze, questi soldi mancheranno dal conto corrente ordinario. Si ripiana con un piano rate che chieda ai condòmini la cifra che manca: «Prepara il piano di ripianamento».",
                         'category_id' => $catAdmin->id,
                         'visibility'  => VisibilityStatus::HIDDEN->value ?? 'hidden',
                         'is_approved' => true,

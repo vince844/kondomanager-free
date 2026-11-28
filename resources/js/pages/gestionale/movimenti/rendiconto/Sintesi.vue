@@ -56,6 +56,8 @@ interface Sintesi {
     prospetto: {
         preventivo: number | null; preventivo_solo_ordinarie?: boolean; deliberato: number | null; avvertenza_deliberato: string | null; avvertenza_deliberato_piani?: string[]; avvertenza_deliberato_ricostruito?: string | null; quote_piani: number; quote_pagate: number; quote_non_pagate: number; costi: number;
         quote_giornale: number; risultato: number; in_fondi: number;
+        /** La rettifica di esercizi precedenti: fuori dalle quote registrate in questo esercizio, dentro il risultato. */
+        rettifica_esercizi_precedenti?: number;
         raccordo_quote: { quote_piani: number; contributi_addebitati?: number; quote_giornale: number; piani_emesse_altrove: number; altri_emesse_qui: number; altre_differenze: number };
         /** I contributi addebitati a singole persone registrati nell'esercizio: fra le quote registrate, non fra le quote dei piani. */
         contributi_addebitati?: number;
@@ -284,8 +286,12 @@ const pageGuides = [
                                     <tr v-if="s.prospetto.contributi_addebitati" class="border-b border-slate-100 dark:border-slate-800" data-test="contributi-addebitati"><td class="py-2 px-4">Contributi addebitati a singole persone</td><td class="py-2 px-4 text-right tabular-nums">{{ euro(s.prospetto.contributi_addebitati) }}</td></tr>
                                     <tr class="border-b border-slate-100 dark:border-slate-800"><td class="py-2 px-4">Quote pagate</td><td class="py-2 px-4 text-right tabular-nums">{{ euro(s.prospetto.quote_pagate) }}</td></tr>
                                     <tr class="border-b border-slate-100 dark:border-slate-800"><td class="py-2 px-4">Costi dell'esercizio</td><td class="py-2 px-4 text-right tabular-nums">{{ euro(s.prospetto.costi) }}</td></tr>
+                                    <tr v-if="s.prospetto.rettifica_esercizi_precedenti" class="border-b border-slate-100 dark:border-slate-800" data-test="rettifica-esercizi-precedenti">
+                                        <td class="py-2 px-4">Rettifica di esercizi precedenti<div class="text-xs text-slate-500 dark:text-slate-400">La spesa di una sola unità contata due volte nelle rate emesse in un esercizio chiuso, tolta in questo: non è una quota chiesta in questo esercizio.</div></td>
+                                        <td class="py-2 px-4 text-right tabular-nums align-top">{{ euro(s.prospetto.rettifica_esercizi_precedenti) }}</td>
+                                    </tr>
                                     <tr class="font-semibold" data-test="risultato">
-                                        <td class="py-2 px-4">Risultato: quote registrate in questo esercizio {{ euro(s.prospetto.quote_giornale) }} − costi {{ euro(s.prospetto.costi) }}</td>
+                                        <td class="py-2 px-4">Risultato: quote registrate in questo esercizio {{ euro(s.prospetto.quote_giornale) }}<template v-if="s.prospetto.rettifica_esercizi_precedenti">{{ ` ${s.prospetto.rettifica_esercizi_precedenti < 0 ? '−' : '+'} rettifica di esercizi precedenti ${euro(Math.abs(s.prospetto.rettifica_esercizi_precedenti))}` }}</template> − costi {{ euro(s.prospetto.costi) }}</td>
                                         <td class="py-2 px-4 text-right tabular-nums" :class="s.prospetto.risultato < 0 ? 'text-rose-700 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'">{{ euro(s.prospetto.risultato) }} ({{ comeRisultato(s.prospetto.risultato) }})</td>
                                     </tr>
                                 </tbody>

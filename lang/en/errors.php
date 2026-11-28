@@ -101,4 +101,6 @@ return [
     '5xx_title' => 'The program is not responding',
     '5xx_heading' => 'The program is not responding',
     '5xx_message' => 'The server cannot respond right now. Try again in a few minutes.',
+    // Il messaggio in pagina per un guasto raccolto da un `catch` generico (`MessaggioPerLaPagina`).
+    'guasto_con_riferimento' => 'The operation did not go through because of a problem in the program. If it happens again, give support the reference :riferimento.',
 ];

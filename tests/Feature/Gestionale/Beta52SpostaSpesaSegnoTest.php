@@ -130,7 +130,14 @@ it('dalla pagina: il capitolo «Proventi» nato dopo il piano (tipo spesa, il de
     expect($prima)->toBe(120000);
     sleep(1);
     $padre = b52tVoce($this, $s, 'Proventi', 'spesa', '0,00', $s['tabella'], null, ['isCapitolo' => true, 'tabella_millesimale_id' => null, 'percentuale_proprietario' => null, 'percentuale_inquilino' => null, 'percentuale_usufruttuario' => null]);
-    b52tVoce($this, $s, 'Affitto antenna', 'entrata', '240,00', $s['box'], $padre->id, ['isSottoConto' => true]);
+    // Oggi la pagina non crea più l'entrata sotto il capitolo di spesa; il capitolo così esiste nei database di prima, e lo si scrive sul modello.
+    $this->actingAs($this->user)->post(route('admin.gestionale.esercizi.piani-conti.conti.store', [$s['c'], $s['e'], $s['pc']]), [
+        'nome' => 'Affitto antenna', 'codice' => '', 'default_fornitore_id' => null, 'tipo_spesa' => 'standard', 'tipo' => 'entrata', 'importo' => '240,00', 'descrizione' => '', 'note' => '',
+        'parent_id' => $padre->id, 'tabella_millesimale_id' => $s['box']->id, 'percentuale_proprietario' => 100, 'percentuale_inquilino' => 0, 'percentuale_usufruttuario' => 0,
+        'isCapitolo' => false, 'isSottoConto' => true, 'richiedeGiaVersato' => false,
+    ])->assertSessionHasErrors(['tipo' => 'Una voce di entrata va sotto un capitolo di entrata, e «Proventi» è un capitolo di spesa: cambia il tipo del capitolo in «Entrata» con «Modifica» dalla sua scheda, o crea la voce fuori dal capitolo.']);
+    expect(Conto::where('piano_conto_id', $s['pc']->id)->where('nome', 'Affitto antenna')->exists())->toBeFalse();
+    b52tVoceDiPrima($s, 'Affitto antenna', 'entrata', 24000, $s['box'], $padre->id);
 
     $props = b52sPagina($this, $s, $piano);
     expect(b52sTipi($props['sources']))->toBe(['Spese generali' => 'spesa'])
@@ -183,7 +190,8 @@ it('due capitoli misti: la frase li nomina tutti e due', function () {
     $this->freezeSecond();
     $altro = b52tVoce($this, $s, 'Antenna', 'spesa', '0,00', $s['tabella'], null, ['isCapitolo' => true, 'tabella_millesimale_id' => null, 'percentuale_proprietario' => null, 'percentuale_inquilino' => null, 'percentuale_usufruttuario' => null]);
     b52tVoce($this, $s, 'Manutenzione antenna', 'spesa', '100,00', $s['tabella'], $altro->id, ['isSottoConto' => true]);
-    b52tVoce($this, $s, 'Affitto antenna', 'entrata', '500,00', $s['box'] ?? $s['tabella'], $altro->id, ['isSottoConto' => true]);
+    // L'entrata sotto il capitolo di spesa: un dato di prima della regola della pagina, scritto sul modello.
+    b52tVoceDiPrima($s, 'Affitto antenna', 'entrata', 50000, $s['box'] ?? $s['tabella'], $altro->id);
     DB::table('piano_rate_capitoli')->insert(['piano_rate_id' => $piano->id, 'conto_id' => $altro->id, 'importo' => 10000, 'created_at' => now(), 'updated_at' => now()]);
 
     b52sSposta($this, $s, $piano, $s['padre']->id, $altro->id, '50.00');

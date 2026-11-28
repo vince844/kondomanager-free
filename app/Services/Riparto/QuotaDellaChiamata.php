@@ -16,9 +16,8 @@ use Illuminate\Support\Facades\DB;
  *
  * Un capitolo può essere finanziato da più chiamate indipendenti (un acconto e un saldo): la copertura storica del già versato è dell'intera voce, e
  * `CalcoloQuoteService::nettingGiaVersato` ne toglie a ogni chiamata solo la frazione che quella chiamata rappresenta. Questa classe rifà quel conto da fuori il
- * motore, sui dati che il piano ha già scritto, per chi deve dire che cosa il piano ha tolto o toglierebbe senza ricalcolarlo: la frase del conguaglio di un
- * passaggio (`ConguaglioPassaggio`) e l'atteso del badge «Disallineato» (`PianoRateQuoteService`). Il motore non cambia: è una seconda fonte dichiarata, e un
- * test confronta le due.
+ * motore, sui dati che il piano ha già scritto, per chi deve dire che cosa il piano ha tolto senza ricalcolarlo: l'atteso del badge «Disallineato»
+ * (`PianoRateQuoteService`). Il motore non cambia: è una seconda fonte dichiarata, e un test confronta le due.
  */
 final class QuotaDellaChiamata
 {

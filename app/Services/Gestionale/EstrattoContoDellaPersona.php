@@ -721,9 +721,11 @@ final class EstrattoContoDellaPersona
 
         // Credito disponibile (saldo iniziale a credito, entrate dell'anno, strapagamenti), non
         // riusa $quoteMap perché quella contiene solo le quote delle rate che hanno
-        // righe nella timeline: qui serve la fotografia completa dell'anagrafica. È lordo:
-        // conta le quote a credito anche delle rate in bozza e non sottrae il debito delle
-        // altre quote, quindi può stare accanto a un saldo finale «da versare».
+        // righe nella timeline: qui serve la fotografia completa dell'anagrafica. Il riquadro dice
+        // il netto della persona sulle rate emesse (`CreditoService::nettoDellaPersona`): il credito
+        // se ne resta, altrimenti quanto ha da versare; il lordo, che conta anche le quote a credito
+        // delle rate in bozza, sta sotto in piccolo. Il netto è gestione per gestione, e lo spaccato
+        // per gestione lo dice: il credito di una gestione non toglie dal debito di un'altra.
         //
         // Lo scarto di perimetro vale anche per il `compensabile` qui sotto, ed è più visibile
         // lì: la frase nomina una RATA, e quella rata può appartenere a un esercizio diverso da
@@ -731,7 +733,7 @@ final class EstrattoContoDellaPersona
         // posizione del condòmino non si interrompe al 31 dicembre — ma va saputo. Vale anche
         // per il PDF: `estratto_conto_anagrafica.blade.php` stampa `credito_disponibile` e
         // `compensabile_frase` (verificato l'11/10/2026; il 06/08 non le stampava ancora).
-        $credito = app(CreditoService::class)->perAnagrafica($condominio->id, $anagrafica->id);
+        $credito = app(CreditoService::class)->nettoDellaPersona($condominio->id, $anagrafica->id);
 
         // COMPILAZIONE STATISTICHE CENTESIMALI FINALI
         // Decisione 75.5 (1.11.0-beta.49): una scrittura stornata e la sua rettifica restano nell'elenco — spiegano il saldo riga
@@ -748,9 +750,13 @@ final class EstrattoContoDellaPersona
             'saldo_raw'               => $runningBalance,
             'saldo_iniziale'          => MoneyHelper::format($saldoInizialeCents),
             'saldo_iniziale_raw'      => $saldoInizialeCents,
-            'credito_disponibile'     => $credito['totale_formatted'],
-            'credito_disponibile_raw' => $credito['totale_cents'],
-            'credito_per_gestione'    => $credito['per_gestione'],
+            'credito_disponibile'     => MoneyHelper::format($credito['netto_cents']),
+            'credito_disponibile_raw' => $credito['netto_cents'],
+            'credito_da_versare'      => MoneyHelper::format($credito['da_versare_cents']),
+            'credito_da_versare_raw'  => $credito['da_versare_cents'],
+            'credito_lordo'           => MoneyHelper::format($credito['lordo_cents']),
+            'credito_lordo_raw'       => $credito['lordo_cents'],
+            'credito_per_gestione'    => $credito['netto_per_gestione'],
             // Non solo quanto credito c'è, ma quale rata copre e dove si va a usarlo.
             'compensabile'            => $credito['compensabile']['importo_formatted'],
             'compensabile_raw'        => $credito['compensabile']['importo_cents'],

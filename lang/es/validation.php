@@ -178,6 +178,7 @@ return [
         ],
         'permissions' => [
             'not_allowed' => 'No puedes conceder un permiso que tú mismo no tienes.',
+            'admin_panel_only_admin' => '«Accesso pannello amministratore» abre la gestión de todos los edificios: solo un administrador puede concederlo.',
             'privileged_target' => 'Solo un administrador puede cambiar los permisos adicionales de esta cuenta: tiene un rol distinto de «utente» y «fornitore», o permisos adicionales que tú no tienes.',
         ],
         'default_user_role' => [
@@ -251,6 +252,9 @@ return [
     */
 
     'attributes' => [
+        // Gli allegati di segnalazioni, comunicazioni e commenti: il messaggio nomina l'allegato, non il campo «allegati.0».
+        'allegati' => 'adjuntos',
+        'allegati.*' => 'adjunto',
         'email' => 'email address',
         'emails' => 'direcciones de correo electrónico',
         'buildings' => 'condominios',

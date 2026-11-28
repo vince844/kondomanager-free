@@ -1454,7 +1454,7 @@ it('rilievo gemelle senza chi ha pagato in origine, T3 — unità mista, il 1/7 
 
 // Rilievo «già versato della persona e dell'unità insieme su una voce con due gruppi» (basso, lente denaro), T4. NON copre: il
 // ripiego di Ugo in aprile e maggio (il rilievo del ripiego al lordo), la stampa, due cambi di fila.
-it('rilievo versato della persona e dell\'unità, T4 — € 120,00 versati dall\'unità e € 10,09 da Ines, Ines inquilina fino al 31/3 e di nuovo dal 1/6, cambio d\'inquilino a Luca il 1/9: Luca € 361,05 come la sua riga del conguaglio, Ines € 528,54', function () {
+it('rilievo versato della persona e dell\'unità, T4 — € 120,00 versati dall\'unità e € 10,09 da Ines, Ines inquilina fino al 31/3 e di nuovo dal 1/6, cambio d\'inquilino a Luca il 1/9: Luca € 360,98 come la sua riga del conguaglio, Ines € 528,44', function () {
     $s = pciScenario(['inquilino' => 100]);
     $ines = pciPersona($s, 'Ines Inquilina');
     pciTitolare($s, $ines, 'inquilino');
@@ -1467,23 +1467,24 @@ it('rilievo versato della persona e dell\'unità, T4 — € 120,00 versati dall
     $cambio = pciFine($this, $s, $ines, pciPersona($s, 'Luca Nuovo'), '2026-09-01');
 
     // Il riparto: Ines 1/1–31/3 (31 + 28 + 31 = 90 giorni) 120000 × 90/365 = 29589,04; Ugo per ripiego 1/4–31/5 (30 + 31 = 61)
-    // 20054,79; Ines 1/6–31/12 (214) 70356,16; resti maggiori: 29589 + 20055 + 70356 = 120000. Il versato: 1009 della persona a
-    // Ines; quello dell'unità sui lordi al netto di quello della persona, 12000 × 98936/118991 = 9977,49 a Ines e × 20055/118991
-    // = 2022,51 a Ugo; resti maggiori: 9977 + 2023 = 12000. Ines −(1009 + 9977) = −10986.
-    expect(pciVersatoNelRiparto($s))->toBe(['Ines Inquilina' => -10986, 'Venditore Ugo' => -2023]);
-    // Il conguaglio, gruppo per gruppo: il totale R(10986) sui lordi [29589, 70356] = [3252,44 → 3252, 7733,56 → 7734], meno la
-    // parte della persona R(1009) = [298,72 → 299, 710,28 → 710]: la parte dell'unità del secondo gruppo è 7734 − 710 = 7024.
-    // Luca: (70356 − 7024) × 122/214 = 63332 × 122/214 = 36105,16 → 36105.
-    expect(pciSaldiDi($cambio))->toBe(['Ines Inquilina' => -36105, 'Luca Nuovo' => 36105]);
-    // Netti: Ines 29589 + 70356 − 10986 − 36105 = 52854, Luca 36105, Ugo 20055 − 2023 = 18032.
-    // Somma: 52854 + 36105 + 18032 = 106991 = 120000 − 12000 − 1009.
-    expect(pciNetti($s))->toBe(['Ines Inquilina' => 52854, 'Luca Nuovo' => 36105, 'Venditore Ugo' => 18032]);
+    // 20054,79; Ines 1/6–31/12 (214) 70356,16; resti maggiori: 29589 + 20055 + 70356 = 120000. Il versato: prima quello dell'unità,
+    // 12000 sui lordi per persona [Ines 99945, Ugo 20055]: 12000 × 99945/120000 = 9994,5 e × 20055/120000 = 2005,5; a parità di resto
+    // il centesimo va alla riga che il motore ha per prima, quella di Ugo: 9994 e 2006. Poi i 1009 della persona sulla riga di Ines:
+    // Ines −(9994 + 1009) = −11003.
+    expect(pciVersatoNelRiparto($s))->toBe(['Ines Inquilina' => -11003, 'Venditore Ugo' => -2006]);
+    // Il conguaglio, gruppo per gruppo: il totale R(11003) sui lordi [29589, 70356] = [3257,47 → 3257, 7745,53 → 7746], meno la
+    // parte della persona R(1009) = [298,72 → 299, 710,28 → 710]: la parte dell'unità del secondo gruppo è 7746 − 710 = 7036.
+    // Luca: (70356 − 7036) × 122/214 = 63320 × 122/214 = 36098,32 → 36098.
+    expect(pciSaldiDi($cambio))->toBe(['Ines Inquilina' => -36098, 'Luca Nuovo' => 36098]);
+    // Netti: Ines 29589 + 70356 − 11003 − 36098 = 52844, Luca 36098, Ugo 20055 − 2006 = 18049.
+    // Somma: 52844 + 36098 + 18049 = 106991 = 120000 − 12000 − 1009.
+    expect(pciNetti($s))->toBe(['Ines Inquilina' => 52844, 'Luca Nuovo' => 36098, 'Venditore Ugo' => 18049]);
 
     $p = pciProspetto($s);
-    // Il prospetto deve dire lo stesso: Luca 36105, la sua riga del conguaglio (non R(9977) = [2953,72 → 2954, 7023,28 → 7023] e
-    // 63333 × 122/214 = 36105,73 → 36106); Ines 52854 (non 52853). 36105 + 52854 = 88959 = 29589 + 70356 − 10986.
-    expect(pciSezione($p, 'Luca Nuovo')['totale'] ?? null)->toBe(36105)
-        ->and(pciSezione($p, 'Ines Inquilina')['totale'] ?? null)->toBe(52854);
+    // Il prospetto deve dire lo stesso: Luca 36098, la sua riga del conguaglio (non R(9994) = [2958,75 → 2959, 7035,25 → 7035] e
+    // 63321 × 122/214 = 36098,89 → 36099); Ines 52844 (non 52843). 36098 + 52844 = 88942 = 29589 + 70356 − 11003.
+    expect(pciSezione($p, 'Luca Nuovo')['totale'] ?? null)->toBe(36098)
+        ->and(pciSezione($p, 'Ines Inquilina')['totale'] ?? null)->toBe(52844);
 });
 
 /*
@@ -1615,11 +1616,12 @@ it('rilievo gemelle con catene diverse, sonda 3t — la stessa unità con Ines f
 
 // Rilievo «gemelle con già versato della persona e dell'unità insieme» (basso, lente denaro): il prospetto divide la parte dell'unità
 // fra le gemelle in due passi, il conguaglio in uno. NON copre: le gemelle diverse (mista 30/70 o 45/55: lì torna già), la voce divisa
-// fra i ruoli, il già versato della sola persona, la stampa.
-it('rilievo gemelle con versato della persona e dell\'unità — il P9 con € 120,00 versati dall\'unità e € 10,09 da Ugo: Ivo rimborsa a Elsa € 272,34, quanto il suo conguaglio, e a Ugo € 272,35', function () {
+// fra i ruoli, il già versato della sola persona, la stampa. Il versato dell'unità è € 120,10 perché la parte di Ugo sia dispari
+// (7963): con una parte pari, dividerla fra le due gemelle in un passo o in due dà la stessa cifra, e la prova non distinguerebbe.
+it('rilievo gemelle con versato della persona e dell\'unità — il P9 con € 120,10 versati dall\'unità e € 10,09 da Ugo: Ivo rimborsa a Elsa € 272,19, quanto il suo conguaglio, e a Ugo € 272,20', function () {
     $s = pciScenario(['inquilino' => 100]);
     pciMista($s);
-    pciVersato($s, 12000);
+    pciVersato($s, 12010);
     pciVersato($s, 1009, $s['v']);
     pciLocazioneDl5($this, $s);
     pciGenera($s);
@@ -1627,30 +1629,28 @@ it('rilievo gemelle con versato della persona e dell\'unità — il P9 con € 1
     $vendita = pciRegistra($this, $s, ruPassaggio('vendita', $s['rigaV'], $s['a'], '2026-07-01', 50), 'Rogito letto: Ugo vende a Elsa la sua metà piena');
     pciInizio($this, $s, pciPersona($s, 'Ivo Ultimo'), '2026-07-01');
 
-    // Il riparto del P9: Ines 10192, Luca 30246, Ugo due gemelle da 39781 (79562). Il versato: prima quello della persona, 1009,
-    // sul lordo di Ugo (79562 − 1009 = 78553); poi quello dell'unità sui lordi così scontati, 10192 + 30246 + 78553 = 118991:
-    // 12000 × 10192/118991 = 1027,84, × 30246/118991 = 3050,25, × 78553/118991 = 7921,91; 1027 + 3050 + 7921 = 11998, e il resto, 2,
-    // il motore lo dà alla riga con il resto più alto finché ha capienza: tutto a Ugo, 7923. 1027 + 3050 + 7923 = 12000; Ugo
-    // 1009 + 7923 = 8932.
-    expect(pciVersatoNelRiparto($s))->toBe(['Ines Inquilina' => -1027, 'Luca Secondo' => -3050, 'Venditore Ugo' => -8932]);
-    // Il conguaglio, gemella per gemella: il totale R(8932) su [39781, 39781] = [4466, 4466], meno la parte della persona R(1009) =
-    // [504,5 → 505, 504,5 → 504] (a parità di resto vince la prima: qui l'usufrutto, come dice il saldo di Elsa sotto): le parti dell'unità sono 3961 per l'usufrutto e
-    // 3962 per il pieno. Elsa, la riga del pieno dal 1/7: (39781 − 3962) × 184/242 = 35819 × 184/242 = 27234,28 e × 58/242 =
-    // 8584,72; resti maggiori: 27234 + 8585 = 35819. (Il rilievo scrive 27233,95: il conto è 27234,28, l'esito è lo stesso.)
-    expect(pciSaldiDi($vendita))->toBe(['Acquirente Elsa' => 27234, 'Venditore Ugo' => -27234]);
+    // Il riparto del P9: Ines 10192, Luca 30246, Ugo due gemelle da 39781 (79562). Il versato: prima quello dell'unità, 12010 sui
+    // lordi su 120000: 12010 × 10192/120000 = 1020,05, × 30246/120000 = 3027,12, × 79562/120000 = 7962,83; 1020 + 3027 + 7962 =
+    // 12009, e il centesimo va al resto più alto, Ugo: 7963. Poi i 1009 della persona sulla riga di Ugo: Ugo −(7963 + 1009) = −8972.
+    expect(pciVersatoNelRiparto($s))->toBe(['Ines Inquilina' => -1020, 'Luca Secondo' => -3027, 'Venditore Ugo' => -8972]);
+    // Il conguaglio, gemella per gemella: il totale R(8972) su [39781, 39781] = [4486, 4486], meno la parte della persona R(1009) =
+    // [504,5 → 505, 504,5 → 504] (a parità di resto vince la prima: qui l'usufrutto, come dice il saldo di Elsa sotto): le parti dell'unità sono 3981 per l'usufrutto e
+    // 3982 per il pieno. Elsa, la riga del pieno dal 1/7: (39781 − 3982) × 184/242 = 35799 × 184/242 = 27219,07 e × 58/242 =
+    // 8579,93; resti maggiori: 27219 + 8580 = 35799.
+    expect(pciSaldiDi($vendita))->toBe(['Acquirente Elsa' => 27219, 'Venditore Ugo' => -27219]);
 
     $p = pciProspetto($s);
-    // Il ripiego di Ugo al netto della parte dell'unità: 79562 − 7923 = 71639 (i 1009 della persona restano dentro: li ha pagati
-    // lui). Senza conduttore, febbraio e giugno: 71639 × 58/242 = 17169,68 e × 184/242 = 54469,32 → 17170 + 54469 = 71639.
-    // Il totale dell'inquilino: Ines 10192 − 1027 = 9165, Luca 30246 − 3050 = 27196, il ripiego 71639; 9165 + 27196 + 71639 = 108000.
-    expect(pciSenza($p))->toBe([['Venditore Ugo', 17170, 58]])
-        ->and($p['totale_inquilino'])->toBe(108000);
-    // Ivo, i 184 giorni: 54469. A Elsa quanto il suo saldo, 27234 (non 27235: il prospetto divide i 7923 fra le gemelle in un
-    // passo solo, R(7923) = [3962, 3961], e al pieno toccano 3961: (39781 − 3961) × 184/242 = 35820 × 184/242 = 27235,04 → 27235);
-    // a Ugo, l'usufrutto che resta suo, 54469 − 27234 = 27235. Somma: 27234 + 27235 = 54469. Dal secondo giro sulle correzioni il
+    // Il ripiego di Ugo al netto della parte dell'unità: 79562 − 7963 = 71599 (i 1009 della persona restano dentro: li ha pagati
+    // lui). Senza conduttore, febbraio e giugno: 71599 × 58/242 = 17160,09 e × 184/242 = 54438,91 → 17160 + 54439 = 71599.
+    // Il totale dell'inquilino: Ines 10192 − 1020 = 9172, Luca 30246 − 3027 = 27219, il ripiego 71599; 9172 + 27219 + 71599 = 107990.
+    expect(pciSenza($p))->toBe([['Venditore Ugo', 17160, 58]])
+        ->and($p['totale_inquilino'])->toBe(107990);
+    // Ivo, i 184 giorni: 54439. A Elsa quanto il suo saldo, 27219 (non 27220: dividendo i 7963 fra le gemelle in un passo solo,
+    // R(7963) = [3982, 3981], al pieno toccherebbero 3981: (39781 − 3981) × 184/242 = 35800 × 184/242 = 27219,83 → 27220);
+    // a Ugo, l'usufrutto che resta suo, 54439 − 27219 = 27220. Somma: 27219 + 27220 = 54439. Dal secondo giro sulle correzioni il
     // conduttore vede la voce al lordo e accanto la riga del già versato «dell'unità» che la sconta (stampa, art. 9): qui conta il
     // netto per chi ha pagato, cioè la somma delle due righe.
-    expect(pciPerPagatore(pciSezione($p, 'Ivo Ultimo')['voci'] ?? []))->toBe(['Acquirente Elsa' => 27234, 'Venditore Ugo' => 27235]);
+    expect(pciPerPagatore(pciSezione($p, 'Ivo Ultimo')['voci'] ?? []))->toBe(['Acquirente Elsa' => 27219, 'Venditore Ugo' => 27220]);
 });
 
 // --- 10. Il ripiego su due tabelle -----------------------------------------------------------------------------------------

@@ -47,7 +47,11 @@ const props = defineProps<{
   // «Commenti in moderazione» la cambia solo chi può approvare i commenti: per gli altri resta com'è, e la casella non c'è.
   puo_scegliere_moderazione?: boolean;
   programmazione?: ProgrammazioneProp | null;
+  // Chi non può togliere la bozza a una comunicazione approvata non ha «Pubblicata» nella tendina; la frase la manda il server.
+  pubblicazione?: { puo_pubblicare: boolean; nota: string | null } | null;
 }>();  
+
+const puoPubblicare = computed(() => props.pubblicazione?.puo_pubblicare !== false);
 
 const anagraficheOptions = ref<Anagrafica[]>(props.anagrafiche);
 
@@ -111,7 +115,7 @@ const form = useForm({
 });
 
 const optionsStato = computed(() => {
-    const options = [...publishedConstants];
+    const options = publishedConstants.filter((voce) => puoPubblicare.value || voce.value !== true);
     if (props.programmazione?.puo_programmare) {
         options.push({
             value: 'scheduled' as unknown as boolean,
@@ -426,6 +430,7 @@ const submit = () => {
                                 </template>
                             </v-select>
                             <InputError :message="form.errors.is_published" />
+                            <p v-if="!puoPubblicare && !form.errors.is_published" data-avviso="non-puoi-pubblicare" class="mt-1.5 text-xs text-muted-foreground leading-relaxed">{{ props.pubblicazione?.nota }}</p>
                             <p v-if="rigaApprovazione" class="mt-1.5 text-xs text-amber-700 dark:text-amber-400 leading-relaxed">{{ trans(rigaApprovazione) }}</p>
 
                             <div v-if="statoSelezionato === 'scheduled'" class="mt-4 space-y-2">

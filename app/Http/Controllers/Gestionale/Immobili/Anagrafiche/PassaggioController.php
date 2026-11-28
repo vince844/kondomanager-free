@@ -122,11 +122,17 @@ class PassaggioController extends Controller
         $dati = $request->datiPassaggio();
 
         // Decisione 705: più persone che escono insieme, il pannello dalla prova a secco (`AnteprimaDelGruppo`).
-        if (isset($dati['membri'])) {
-            return response()->json(app(AnteprimaDelGruppo::class)->calcola($condominio, $immobile, $dati, $request->user()));
+        $pannello = isset($dati['membri'])
+            ? app(AnteprimaDelGruppo::class)->calcola($condominio, $immobile, $dati, $request->user())
+            : $anteprima->calcola($condominio, $immobile, $dati);
+        // Chi vende e che cosa gli resta nel condominio: la scelta «Togli … dal condominio» del modulo. E gli avvisi sui decessi che la richiesta legge
+        // senza fermare il passaggio (l'erede con un'estinzione dell'usufrutto prima della successione).
+        $pannello['esce_dal_condominio'] = $request->chiEsceDallaVendita();
+        if (isset($pannello['cancello']) && is_array($pannello['cancello'])) {
+            $pannello['cancello']['avvisi'] = [...($pannello['cancello']['avvisi'] ?? []), ...$request->avvisiDeiDecessi()];
         }
 
-        return response()->json($anteprima->calcola($condominio, $immobile, $dati));
+        return response()->json($pannello);
     }
 
     /**
@@ -151,14 +157,19 @@ class PassaggioController extends Controller
             return $this->registraLInsieme($request, $condominio, $immobile, $dati);
         }
 
+        // Chi vende si toglie dal condominio nella stessa transazione del passaggio: se non riesce, non resta niente a metà.
         try {
-            $esito = $action->execute($condominio, $immobile, $dati, $request->user());
+            [$esito, $tolti] = DB::transaction(function () use ($action, $condominio, $immobile, $dati, $request) {
+                $esito = $action->execute($condominio, $immobile, $dati, $request->user());
+
+                return [$esito, $this->togliDalCondominio($request, $condominio, [$esito['subentro']])];
+            });
         } catch (\Illuminate\Validation\ValidationException $e) {
             throw $e;
         } catch (\Throwable $e) {
             \App\Support\ErroriDiagnosticabili::registra($e, 'Registra passaggio', ['condominio_id' => $condominio->id, 'immobile_id' => $immobile->id]);
 
-            return back()->withErrors(['passaggio' => 'La registrazione non è riuscita e niente è stato scritto. ' . $e->getMessage()]);
+            return back()->withErrors(['passaggio' => 'La registrazione non è riuscita e niente è stato scritto. ' . \App\Support\Errori\MessaggioPerLaPagina::di($e, 'PassaggioController@store')]);
         }
 
         $subentro = $esito['subentro'];
@@ -221,7 +232,7 @@ class PassaggioController extends Controller
         }
 
         return to_route('admin.gestionale.immobili.anagrafiche.index', ['condominio' => $condominio->id, 'immobile' => $immobile->id])
-            ->with($this->flashSuccess('Passaggio registrato. ' . $frase))
+            ->with($this->flashSuccess('Passaggio registrato. ' . $frase . $tolti))
             ->with('passaggio_registrato', [
                 'subentro_id' => $subentro->id,
                 'frase'       => $frase,
@@ -255,6 +266,45 @@ class PassaggioController extends Controller
     }
 
     /**
+     * Dopo la vendita scritta: chi vende e l'amministratore ha scelto di togliere dal condominio (la casella «Togli … dal condominio» del modulo,
+     * `AnteprimaPassaggioRequest::chiEsceDallaVendita`) non è più fra le persone del condominio. Le righe di titolarità e le rate restano: il debito
+     * rimasto si incassa lo stesso (`Anagrafica::delCondominio`), e il registro delle modifiche tiene il legame tolto. Chi è stato tolto si scrive anche
+     * nel registro del passaggio di chi vende (`tolti_dal_condominio`): l'annullamento del passaggio lo rimette (`AnnullaPassaggioAction::rimetti`). La
+     * frase per il messaggio, vuota se nessuno.
+     *
+     * @param list<Subentro> $passaggi i passaggi appena scritti (uno, o quelli registrati insieme)
+     */
+    private function togliDalCondominio(AnteprimaPassaggioRequest $request, Condominio $condominio, array $passaggi): string
+    {
+        $ids = array_values(array_unique(array_map('intval', (array) ($request->validated()['togli_dal_condominio'] ?? []))));
+        if ($ids === []) {
+            return '';
+        }
+        $persone = Anagrafica::whereIn('id', $ids)->orderBy('nome')->get();
+        $tabella = (new Subentro())->getTable();
+        foreach ($persone as $persona) {
+            $prima = $persona->condomini()->whereKey($condominio->id)->exists();
+            // Il passaggio di chi vende; con un passaggio solo, quello. Il suo registro tiene chi è stato tolto, nello stesso lavoro del legame.
+            $suo = collect($passaggi)->first(fn (Subentro $p) => (int) $p->anagrafica_uscente_id === (int) $persona->id) ?? $passaggi[0];
+            RegistroModifiche::legame($persona, 'condomini', 'Condomini', function () use ($persona, $condominio, $prima, $suo, $tabella) {
+                $persona->condomini()->detach($condominio->id);
+                if ($prima) {
+                    $registro = json_decode((string) DB::table($tabella)->where('id', $suo->id)->value('registro'), true) ?: [];
+                    $registro['tolti_dal_condominio'] = array_values(array_unique([...(array) ($registro['tolti_dal_condominio'] ?? []), (int) $persona->id]));
+                    DB::table($tabella)->where('id', $suo->id)->update(['registro' => json_encode($registro)]);
+                }
+            });
+        }
+        $nomi = $persone->pluck('nome')->map(fn ($n) => (string) $n)->all();
+        $ultimo = array_pop($nomi);
+        $chi = $nomi === [] ? $ultimo : implode(', ', $nomi) . ' e ' . $ultimo;
+
+        return $persone->count() > 1
+            ? sprintf(' %s non sono più fra le persone del condominio: le loro rate rimaste si incassano lo stesso.', $chi)
+            : sprintf(' %s non è più fra le persone del condominio: le sue rate rimaste si incassano lo stesso.', $chi);
+    }
+
+    /**
      * Decisione 705: la scrittura dei passaggi registrati insieme (`RegistraPassaggiInsiemeAction`), poi l'elenco dei titolari con il riquadro verde
      * dell'insieme: la frase per tutte, la coppia di ciascuna di chi esce con il suo estratto conto, il totale di chi entra. Il compito del nuovo titolare
      * non convocato nasce una volta, con l'ultimo passaggio.
@@ -263,14 +313,19 @@ class PassaggioController extends Controller
      */
     private function registraLInsieme(AnteprimaPassaggioRequest $request, Condominio $condominio, Immobile $immobile, array $dati): RedirectResponse
     {
+        // Come per un passaggio solo: chi vende si toglie dal condominio nella stessa transazione dei passaggi.
         try {
-            $esito = app(RegistraPassaggiInsiemeAction::class)->execute($condominio, $immobile, $dati, $request->user());
+            [$esito, $tolti] = DB::transaction(function () use ($condominio, $immobile, $dati, $request) {
+                $esito = app(RegistraPassaggiInsiemeAction::class)->execute($condominio, $immobile, $dati, $request->user());
+
+                return [$esito, $this->togliDalCondominio($request, $condominio, $esito['passaggi'])];
+            });
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Throwable $e) {
             \App\Support\ErroriDiagnosticabili::registra($e, 'Registra passaggi insieme', ['condominio_id' => $condominio->id, 'immobile_id' => $immobile->id]);
 
-            return back()->withErrors(['passaggio' => 'La registrazione non è riuscita e niente è stato scritto. ' . $e->getMessage()]);
+            return back()->withErrors(['passaggio' => 'La registrazione non è riuscita e niente è stato scritto. ' . \App\Support\Errori\MessaggioPerLaPagina::di($e, 'PassaggioController@registraLInsieme')]);
         }
 
         try {
@@ -306,7 +361,7 @@ class PassaggioController extends Controller
         }
 
         return to_route('admin.gestionale.immobili.anagrafiche.index', ['condominio' => $condominio->id, 'immobile' => $immobile->id])
-            ->with($this->flashSuccess(sprintf('%d passaggi registrati insieme. %s', count($passaggi), $frase)))
+            ->with($this->flashSuccess(sprintf('%d passaggi registrati insieme. %s', count($passaggi), $frase) . $tolti))
             ->with('passaggio_registrato', [
                 'subentro_id' => $primo->id,
                 'frase'       => $frase,

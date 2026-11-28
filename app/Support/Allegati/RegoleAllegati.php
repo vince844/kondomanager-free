@@ -381,7 +381,7 @@ final class RegoleAllegati
 
         $rimasti = max(0, $massimo - $esistenti);
         if ($rimasti === 0) {
-            return 'È stato raggiunto il limite di ' . $massimo . ' allegati: non se ne possono aggiungere altri.';
+            return 'È stato raggiunto il limite di ' . $massimo . ($massimo === 1 ? ' allegato' : ' allegati') . ': non se ne possono aggiungere altri.';
         }
 
         return $rimasti === 1

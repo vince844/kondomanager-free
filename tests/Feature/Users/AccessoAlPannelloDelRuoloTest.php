@@ -13,7 +13,8 @@
  * propri e si aprono con il solo accesso, fra queste il gestionale di ogni condominio (contabilità, unità, titolari e
  * i loro dati) e i fornitori delle fatture e dei pagamenti, con i loro dati (Coda 110); altre sezioni, come
  * comunicazioni, segnalazioni, agenda, le anagrafiche e i fornitori, chiedono anche i loro permessi (per i fornitori
- * quelli delle anagrafiche, Coda 402). Questo file fissa dalla rotta ogni pezzo della
+ * quelli delle anagrafiche, Coda 402). Nel gestionale le unità e i loro documenti chiedono anche «Modifica condomini», e caricare un
+ * file nelle altre schede «Crea documenti archivio». Questo file fissa dalla rotta ogni pezzo della
  * frase, con un ruolo creato come lo manda la pagina: se una di queste pagine cambia regola, la frase va cambiata con
  * lei.
  *
@@ -189,4 +190,41 @@ it('decisione 138 — comunicazioni, segnalazioni, agenda, le anagrafiche e i fo
     foreach ($schede as $url) {
         $this->actingAs($socio->fresh())->get($url)->assertOk();
     }
+});
+
+it('nel gestionale le unità e i loro documenti chiedono anche «Modifica condomini», caricare un file «Crea documenti archivio»: con il solo accesso 403, con il permesso si apre', function () {
+    $ruolo = apdCreaRuolo($this, $this->amministratore, 'Segreteria «Aurora»');
+    $socio = User::factory()->create(['email_verified_at' => now()]);
+    $socio->assignRole($ruolo);
+    [$aurora, $unita] = apdCondominio();
+    $xml = fn () => \Illuminate\Http\UploadedFile::fake()->createWithContent('fattura.xml', file_get_contents(base_path('tests/Fixtures/fatturapa/reale_anonimizzata_cassa_previdenziale.xml')));
+
+    $this->actingAs($socio->fresh())->get(route('admin.gestionale.immobili.edit', [$aurora, $unita]))->assertForbidden();
+    $this->actingAs($socio->fresh())->get(route('admin.gestionale.immobili.documenti.create', [$aurora, $unita]))->assertForbidden();
+    $this->actingAs($socio->fresh())->postJson(route('admin.gestionale.fatture.importa-xml', $aurora), ['file' => $xml()])->assertForbidden();
+
+    $this->actingAs($this->amministratore)->withSession(['auth.password_confirmed_at' => time()])
+        ->from(route('ruoli.edit', ['ruoli' => $ruolo->id]))
+        ->put(route('ruoli.update', ['ruoli' => $ruolo->id]), [
+            'name'        => 'Segreteria «Aurora»',
+            'description' => 'Ruolo su misura',
+            'permissions' => Permission::whereIn('name', [PermissionEnum::EDIT_CONDOMINI->value, PermissionEnum::CREATE_ARCHIVE_DOCUMENTS->value])->pluck('id')->all(),
+            'accessAdmin' => true,
+        ])
+        ->assertSessionHasNoErrors();
+
+    $this->actingAs($socio->fresh())->get(route('admin.gestionale.immobili.edit', [$aurora, $unita]))->assertOk();
+    $this->actingAs($socio->fresh())->get(route('admin.gestionale.immobili.documenti.create', [$aurora, $unita]))->assertOk();
+    $this->actingAs($socio->fresh())->postJson(route('admin.gestionale.fatture.importa-xml', $aurora), ['file' => $xml()])->assertOk();
+});
+
+it('la descrizione del permesso del pannello dice che fa entrare nel pannello e che alcune pagine chiedono anche i loro permessi', function () {
+    $descrizione = PermissionEnum::ACCESS_ADMIN_PANEL->description();
+
+    expect($descrizione)->toStartWith('Permette di entrare nel pannello amministratore')
+        ->and($descrizione)->toContain('«Modifica condomini»')
+        ->and($descrizione)->toContain('«Crea documenti archivio»')
+        ->and($descrizione)->not->toContain('layout');
+    // La riga in `permissions` la riscrive il seeder dei ruoli, che gira anche all'aggiornamento.
+    expect(Permission::findByName(PermissionEnum::ACCESS_ADMIN_PANEL->value, 'web')->description)->toBe($descrizione);
 });

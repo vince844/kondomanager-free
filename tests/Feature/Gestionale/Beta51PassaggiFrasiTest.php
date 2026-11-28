@@ -7,23 +7,18 @@
  * 1.11.0-beta.51 — le frasi del conguaglio: la Coda 160 (il già versato della persona e dell'unità sullo stesso conto) e la Coda
  * 251-c (le frasi con un netto negativo).
  *
- * CODA 160. Dove il già versato è sia della persona sia dell'unità sullo stesso conto, il conguaglio della vendita e il piano generato
- * DOPO il passaggio danno due cifre diverse, e nessuno lo dice. La frase del conguaglio deve dire le due cifre (quella del conguaglio e quella
- * che darebbe un piano generato dopo il passaggio) e la differenza. Con una parte sola (solo la persona, solo l'unità) le due strade
- * coincidono al centesimo e la frase non c'è. Le frasi di confronto, oltre al caso base: il già versato di Ugo maggiore della sua parte lorda
- * (il conguaglio gli dà un credito e il piano dopo si ferma alla sua parte, O-160-PERSONA); la voce divisa fra proprietario e inquilino, con e
- * senza un inquilino (O-160-MISTA); il già versato dell'unità maggiore della spesa che resta, con una seconda voce che fa nascere delle rate
- * (O-160-ECCESSO). Con l'unità che copre da sola l'intera spesa non nasce nessuna rata e non c'è niente da confrontare.
- *   Scenario (misurato su TEST 591b2c11): «Spese generali» € 1.200,00 sul 100 % della tabella, tutto al proprietario; Ugo; piano generato ed
- *   emesso fino al 31/12; già versato sul conto: Ugo € 300,00 e l'unità (senza persona) € 200,00; vendita Ugo → Elsa l'1/5.
+ * CODA 160. Con il già versato della persona **e** dell'unità sullo stesso conto il piano toglie prima la parte dell'unità, sui lordi, e poi quella di ciascuna
+ * persona dalla sua riga già ridotta, come il conguaglio del passaggio: il conguaglio della vendita (piano generato ed emesso prima) e il piano generato DOPO la
+ * vendita danno le stesse cifre, e il pannello non confronta le due strade.
+ *   Il confronto, persona per persona: il netto (le quote pure del piano più le righe in saldi del passaggio) meno il già versato che avanza a suo nome
+ *   (`getEccedenzeCopertura`). Dove il piano dopo si ferma a zero con un'eccedenza, il conguaglio dà un credito: è la stessa cifra.
+ *   Scenario: «Spese generali» € 1.200,00 sul 100 % della tabella, tutto al proprietario; Ugo; già versato sul conto: Ugo € 300,00 e l'unità (senza persona)
+ *   € 200,00; vendita Ugo → Elsa l'1/5.
  *   Conto a mano: giorni Ugo 120 (1/1–30/4), Elsa 245 (365 in tutto): lordi 120000 × 120/365 = 39452 e 80548.
- *   - conguaglio: l'unità si toglie dal totale prima dei giorni (120000 − 20000 = 100000): Ugo 32877, Elsa 67123; poi la persona dalla parte
- *     di Ugo: 32877 − 30000 = 2877. Elsa € 671,23, Ugo € 28,77.
- *   - piano generato dopo: prima la persona sulla sua riga (Ugo 39452 − 30000 = 9452; Elsa 80548), poi l'unità in proporzione alle righe già
- *     ridotte: 20000 su [9452, 80548] (somma 90000): Ugo 2100,4 → 2100, Elsa 17899,6 → 17900 (il resto): Ugo 9452 − 2100 = 7352, Elsa
- *     80548 − 17900 = 62648. Elsa € 626,48, Ugo € 73,52. Differenza 67123 − 62648 = 4475 = € 44,75.
- *   Il programma `CalcoloQuoteService::nettingGiaVersato` fa il secondo conto (privato): la frase ne è una SECONDA FONTE dichiarata, e il
- *   test differenziale qui sotto la confronta con il piano generato davvero dopo la vendita (entro un centesimo).
+ *   - conguaglio (piano emesso: 120000 − 20000 − 30000 = 70000 a Ugo): l'unità si toglie dal totale prima dei giorni (120000 − 20000 = 100000): Ugo 32877,
+ *     Elsa 67123; poi la persona dalla parte di Ugo: 32877 − 30000 = 2877. Elsa € 671,23, Ugo € 28,77.
+ *   - piano generato dopo: prima l'unità sui lordi, 20000 su [39452, 80548]: 6575,3 → 6575 e 13424,7 → 13425 (il resto): Ugo 32877, Elsa 67123; poi la
+ *     persona sulla sua riga: Ugo 32877 − 30000 = 2877. Le stesse cifre.
  *
  * CODA 251-c. Una cifra negativa si dice con le parole («un credito di € 1.208,22»), mai «€ -1.208,22»; e «coprono più dei suoi giorni» si dice solo
  * se parte e bozze hanno lo stesso segno e le bozze superano la parte in valore assoluto.
@@ -34,15 +29,17 @@
  *   (€ 1.208,22) in valore assoluto: «coprono più dei suoi giorni» è falso.
  *
  * Con la chiamata che è una parte della voce (acconto e saldo su due chiamate: il capitolo del piano forzato sotto l'importo del conto) il piano applica
- * una frazione del già versato, e la frase applica la stessa (O-160-ACCONTO). Se la frazione non si può dire, la frase tace.
+ * una frazione del già versato, e le due strade la applicano uguale (O-160-ACCONTO).
  *
- * Che cosa NON copre: la vendita di una parte della quota, dove le due strade non sono quelle qui descritte e la frase di confronto non le riconosce;
- * la pagina Vue.
+ * Che cosa NON copre: la vendita di una parte della quota di chi vende; la pagina Vue.
  */
 
 use App\Models\Gestionale\Conto;
 use App\Models\Gestionale\PianoConto;
 use App\Models\Gestionale\Subentro;
+use App\Services\CalcoloQuoteService;
+use App\Services\Riparto\CompetenzaDelPiano;
+use App\Services\Riparto\QuotaDellaChiamata;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 
@@ -99,26 +96,77 @@ function b51aNettiDelPianoDopo($test, ?int $persona, ?int $unita, array $riparti
     return fclNetti($s);
 }
 
-function b51aEuro(int $centesimi): string
+/** Il già versato che avanza a nome di ciascuno (le persone e «unità») sul piano dello scenario, come lo dice il motore, in centesimi. */
+function b51aAvanzi(array $s): array
 {
-    return '€ ' . number_format(abs($centesimi) / 100, 2, ',', '.');
+    $motore = new CalcoloQuoteService();
+    $motore->calcolaPerGestione($s['g'], $s['piano']->fresh(), false, app(CompetenzaDelPiano::class)->perPiano($s['piano']->fresh(), $s['e']));
+    $nomi = fclNomi($s);
+    $out = [];
+    foreach ($motore->getEccedenzeCopertura() as $e) {
+        $chi = isset($e['anagrafica_id']) ? $nomi[(int) $e['anagrafica_id']] : 'unità';
+        $out[$chi] = ($out[$chi] ?? 0) + (int) $e['eccedenza'];
+    }
+    ksort($out);
+
+    return $out;
+}
+
+/**
+ * Le due strade sullo stesso scenario (`$scenario` lo crea daccapo): il conguaglio (piano generato ed emesso, poi la vendita registrata) e il piano generato
+ * dopo la vendita registrata. Per ognuna i netti per persona e il già versato avanzato; e l'anteprima della prima, con le coppie e le frasi del pannello.
+ *
+ * @return array{coppie: list<array>, frasi: list<string>, conguaglio: array<string,int>, avanzo_conguaglio: array<string,int>, dopo: array<string,int>, avanzo_dopo: array<string,int>}
+ */
+function b51aDueStrade($test, Closure $scenario, string $compra = 'Elsa', float|int $quota = 100): array
+{
+    $s = $scenario();
+    fclGenera($s);
+    fclEmetti($test, $s, '2026-12-31');
+    $avanzoEmesso = b51aAvanzi($s);
+    $modulo = fds50ModuloVendita($s, 'Ugo', $compra, '2026-05-01', $quota);
+    $anteprima = fclAnteprima($test, $s, $modulo);
+    fds50Registra($test, $s, $modulo);
+
+    $poi = $scenario();
+    fds50Registra($test, $poi, fds50ModuloVendita($poi, 'Ugo', $compra, '2026-05-01', $quota));
+    fclGenera($poi);
+
+    return ['coppie' => fclCoppie($anteprima), 'frasi' => $anteprima['rate']['conguaglio']['frasi'], 'unita' => (int) $s['unita']->id,
+        'conguaglio' => fclNetti($s), 'avanzo_conguaglio' => $avanzoEmesso, 'dopo' => fclNetti($poi), 'avanzo_dopo' => b51aAvanzi($poi)];
+}
+
+/** Il conguaglio e il piano dopo danno a ciascuno la stessa cifra (netto meno il già versato avanzato a suo nome), entro il centesimo dell'arrotondamento. */
+function b51aCoincidono(array $d): void
+{
+    $nomi = array_unique(array_merge(array_keys($d['conguaglio']), array_keys($d['avanzo_conguaglio']), array_keys($d['dopo']), array_keys($d['avanzo_dopo'])));
+    foreach ($nomi as $nome) {
+        $conguaglio = ($d['conguaglio'][$nome] ?? 0) - ($d['avanzo_conguaglio'][$nome] ?? 0);
+        $dopo = ($d['dopo'][$nome] ?? 0) - ($d['avanzo_dopo'][$nome] ?? 0);
+        expect(abs($conguaglio - $dopo))->toBeLessThanOrEqual(1, "Le due strade non coincidono per {$nome}: conguaglio {$conguaglio}, piano dopo {$dopo}.");
+    }
+}
+
+/** Il pannello non confronta il conguaglio con un piano generato dopo il passaggio. */
+function b51aNessunConfronto(array $frasi): void
+{
+    $confronti = array_values(array_filter($frasi, fn (string $t) => str_contains($t, 'differenza') || str_contains($t, 'piano generato dopo') || str_contains($t, 'vale il conguaglio')));
+    expect($confronti)->toBe([], 'Il pannello confronta il conguaglio con un piano generato dopo: ' . implode(' | ', $confronti));
 }
 
 // --- Coda 160 ---------------------------------------------------------------------------------------------------------------------------------------
 
-it('O-160 — con € 300,00 versati da Ugo e € 200,00 dall\'unità la frase del conguaglio dice le due cifre (Elsa € 671,23 e Ugo € 28,77; con un piano generato dopo € 626,48 e € 73,52) e la differenza (€ 44,75)', function () {
-    [$s, $a] = b51aVendita160($this, 30000, 20000);
+it('O-160 — con € 300,00 versati da Ugo e € 200,00 dall\'unità il conguaglio (Elsa € 671,23, Ugo € 28,77) e il piano generato dopo la vendita danno le stesse cifre, e il pannello non le confronta', function () {
+    // Il conto a mano è in testa al file.
+    $d = b51aDueStrade($this, fn () => b51aVersato(30000, 20000));
 
-    // Il conguaglio non cambia: Elsa € 671,23 (credito a Ugo, debito a Elsa).
-    expect(fclCoppie($a))->toBe([[(int) $s['unita']->id, 'Elsa', 67123]]);
-    $frasi = collect($a['rate']['conguaglio']['frasi'])->filter(fn ($t) => str_contains($t, '44,75'))->values();
-    expect($frasi)->toHaveCount(1, 'Nessuna frase del conguaglio dice la differenza (€ 44,75): ' . implode(' | ', $a['rate']['conguaglio']['frasi']));
-    $frase = $frasi[0];
-    foreach (['Spese generali', '€ 300,00', '€ 200,00', '€ 671,23', '€ 28,77', '€ 626,48', '€ 73,52', 'Ugo', 'Elsa'] as $pezzo) {
-        expect(str_contains($frase, $pezzo))->toBeTrue("La frase non dice «{$pezzo}»: {$frase}");
-    }
-    // Comincia con due spazi come la riga del già versato: `dividiLeFrasiDelConguaglio` la tiene nel calcolo (si nasconde con «Non scriverlo»).
-    expect(str_starts_with($frase, '  '))->toBeTrue('La frase non comincia con due spazi (resterebbe fra i fatti): «' . $frase . '»');
+    expect($d['coppie'])->toBe([[$d['unita'], 'Elsa', 67123]])
+        ->and($d['conguaglio'])->toBe(['Elsa' => 67123, 'Ugo' => 2877])
+        ->and($d['dopo'])->toBe(['Elsa' => 67123, 'Ugo' => 2877])
+        ->and($d['avanzo_conguaglio'])->toBe([])
+        ->and($d['avanzo_dopo'])->toBe([]);
+    b51aCoincidono($d);
+    b51aNessunConfronto($d['frasi']);
 });
 
 /** Il conguaglio e il piano generato dopo la vendita, per un caso della 160: [anteprima, netti del piano dopo, Elsa nel conguaglio, frasi del conguaglio]. */
@@ -142,78 +190,48 @@ it('sentinella — O-160-uno: con una parte sola del già versato (nessuno, solo
     'solo l\'unità (€ 200,00)' => [null, 20000],
 ]);
 
-it('O-160 — differenziale: con la persona e l\'unità la frase dice le cifre del piano generato davvero dopo la vendita (entro un centesimo) e quella del conguaglio', function () {
-    // Seconda fonte (SF6): `nettingGiaVersato` si confronta con il piano generato dopo il passaggio, non con un conto rifatto a parte.
-    [, $nettiDopo, $elsaConguaglio, $frasi] = b51aConfrontoDelVersato($this, 30000, 20000);
+it('O-160-PERSONA — il già versato di Ugo (€ 500,00) supera la sua parte: il conguaglio gli dà un credito di € 171,23 e il piano dopo lo lascia a zero con € 171,23 avanzati a suo nome; Elsa € 671,23 in tutti e due', function () {
+    // Conto a mano. Piano emesso: l'unità 20000 (120000 → 100000), poi Ugo 50000: rate di 50000.
+    //   - conguaglio: (120000 − 20000) × 245/365 = 67123,3 → Elsa 67123; Ugo 50000 − 67123 = −17123.
+    //   - piano dopo: l'unità sui lordi [39452, 80548] → 6575 e 13425: Ugo 32877, Elsa 67123; Ugo 32877 − 50000 → 0, e 17123 avanzano a suo nome.
+    $d = b51aDueStrade($this, fn () => b51aVersato(50000, 20000));
 
-    $frase = collect($frasi)->first(fn ($t) => str_contains($t, 'differenza'));
-    expect($frase)->not->toBeNull('Nessuna frase del conguaglio dice la differenza fra conguaglio e piano generato dopo: ' . implode(' | ', $frasi));
-    foreach (['Elsa', 'Ugo'] as $nome) {
-        $cent = $nettiDopo[$nome] ?? 0;
-        $ok = false;
-        foreach ([$cent - 1, $cent, $cent + 1] as $c) {
-            $ok = $ok || str_contains($frase, b51aEuro($c));
-        }
-        expect($ok)->toBeTrue("La frase non dice la cifra di {$nome} del piano generato dopo (" . b51aEuro($cent) . '): ' . $frase);
-    }
-    expect(str_contains($frase, b51aEuro($elsaConguaglio)))->toBeTrue('La frase non dice la cifra del conguaglio per Elsa: ' . $frase);
+    expect($d['coppie'])->toBe([[$d['unita'], 'Elsa', 67123]])
+        ->and($d['conguaglio'])->toBe(['Elsa' => 67123, 'Ugo' => -17123])
+        ->and($d['dopo'])->toBe(['Elsa' => 67123])
+        ->and($d['avanzo_conguaglio'])->toBe([])
+        ->and($d['avanzo_dopo'])->toBe(['Ugo' => 17123]);
+    b51aCoincidono($d);
+    b51aNessunConfronto($d['frasi']);
 });
 
-/** La frase del conguaglio che confronta le due strade (quella che dice «la differenza»), o null se non c'è. */
-function b51aFraseDelConfronto(array $anteprima): ?string
-{
-    return collect($anteprima['rate']['conguaglio']['frasi'] ?? [])->first(fn ($t) => str_contains($t, 'differenza'));
-}
-
-/** La frase contiene tutti i pezzi, e nessuna cifra negativa detta con «€ -». */
-function b51aDiceTutto(?string $frase, array $pezzi): void
-{
-    expect($frase)->not->toBeNull('La frase di confronto non c\'è.');
-    foreach ($pezzi as $pezzo) {
-        expect(str_contains($frase, $pezzo))->toBeTrue("La frase non dice «{$pezzo}»: {$frase}");
-    }
-    expect(str_contains($frase, '€ -'))->toBeFalse("La frase dice una cifra con «€ -»: {$frase}");
-}
-
-it('O-160-PERSONA — il già versato di Ugo (€ 500,00) supera la sua parte lorda (€ 394,52): il conguaglio gli dà un credito di € 171,23, il piano dopo si ferma alla sua parte e Elsa passa da € 671,23 a € 605,48', function () {
-    // Conto a mano (Spese generali € 1.200,00, tutto al proprietario; vendita Ugo → Elsa l'1/5: 120 giorni a Ugo, 245 a Elsa): lordi 120000 × 120/365 =
-    // 39452 e 80548. Alla generazione la persona toglie 50000 dalla riga di Ugo (120000 → 70000) e l'unità 20000: rate di 50000, «€ 500,00 su 12 quote».
-    //   - conguaglio: l'unità si toglie dal totale (120000 − 20000 = 100000): Ugo 32877, Elsa 67123; poi la persona dalla parte di Ugo:
-    //     32877 − 50000 = −17123, cioè un credito di € 171,23. Le due cifre sommano alle rate emesse: 67123 − 17123 = 50000.
-    //   - piano dopo: la persona toglie al più la parte lorda di Ugo (39452 → 0, e 50000 − 39452 = 10548 restano suoi), l'unità 20000 va tutta sulla riga
-    //     di Elsa (80548 → 60548). Elsa € 605,48 e Ugo € 0,00. Differenza per Elsa 67123 − 60548 = 6575 = € 65,75.
-    [$s, $a] = b51aVendita160($this, 50000, 20000);
-
-    expect(fclCoppie($a))->toBe([[(int) $s['unita']->id, 'Elsa', 67123]]);
-    b51aDiceTutto(b51aFraseDelConfronto($a), ['Spese generali', 'di Ugo (€ 500,00) e dell\'unità (€ 200,00)', 'il conguaglio dà € 671,23 a Elsa e un credito di € 171,23 a Ugo',
-        'fino alla sua parte lorda di € 394,52', 'i restanti € 105,48 restano suoi', 'darebbe € 605,48 a Elsa e € 0,00 a Ugo', 'la differenza è € 65,75, e vale il conguaglio']);
-    // Il piano generato davvero dopo la vendita dà a Elsa la stessa cifra (Ugo è a zero e non compare).
-    expect(b51aNettiDelPianoDopo($this, 50000, 20000))->toBe(['Elsa' => 60548]);
-});
-
-it('O-160-MISTA — la voce divisa 30 % inquilino e 70 % proprietario, senza un inquilino: le due righe cadono su Ugo e poi su Elsa, e la frase dice le stesse cifre della voce tutta al proprietario (Elsa € 671,23 contro € 626,48, differenza € 44,75)', function () {
+it('O-160-MISTA — la voce divisa 30 % inquilino e 70 % proprietario, senza un inquilino: le due strade danno le cifre della voce tutta al proprietario (Elsa € 671,23, Ugo € 28,77)', function () {
     // Conto a mano: senza un inquilino la parte del 30 % ricade sul proprietario di quei giorni (ripiego), quindi le righe di Ugo e di Elsa sommano come
-    // nella voce tutta al proprietario (39452 e 80548) e il piano dopo dà Ugo € 73,52 ed Elsa € 626,48. Il conguaglio somma le due righe: Elsa
-    // 20137 + 46986 = 67123, Ugo 863 + 2014 = 2877. Differenza 67123 − 62648 = 4475.
-    [, $a] = b51aVendita160($this, 30000, 20000, ['inquilino' => 30, 'proprietario' => 70], []);
+    // nella voce tutta al proprietario: 39452 e 80548 nel piano dopo; nel conguaglio 30000 × 245/365 + 70000 × 245/365 = 20137 + 46986 = 67123.
+    $d = b51aDueStrade($this, fn () => b51aVersato(30000, 20000, ['inquilino' => 30, 'proprietario' => 70], []));
 
-    b51aDiceTutto(b51aFraseDelConfronto($a), ['di Ugo (€ 300,00) e dell\'unità (€ 200,00)', 'il conguaglio dà € 671,23 a Elsa e € 28,77 a Ugo',
-        'darebbe € 626,48 a Elsa e € 73,52 a Ugo', 'la differenza è € 44,75, e vale il conguaglio']);
-    expect(b51aNettiDelPianoDopo($this, 30000, 20000, ['inquilino' => 30, 'proprietario' => 70], []))->toBe(['Elsa' => 62648, 'Ugo' => 7352]);
+    expect($d['coppie'])->toBe([[$d['unita'], 'Elsa', 67123]])
+        ->and($d['conguaglio'])->toBe(['Elsa' => 67123, 'Ugo' => 2877])
+        ->and($d['dopo'])->toBe(['Elsa' => 67123, 'Ugo' => 2877])
+        ->and($d['avanzo_dopo'])->toBe([]);
+    b51aCoincidono($d);
+    b51aNessunConfronto($d['frasi']);
 });
 
-it('O-160-MISTA — con Ines inquilina per tutto l\'anno: il conguaglio dà a Elsa € 483,29 e a Ugo un credito di € 63,29, il piano dopo € 441,78 e € 0,00 (differenza € 41,51)', function () {
-    // Conto a mano (voce 30 % inquilino = 36000 a Ines, 70 % proprietario = 84000): alla generazione la persona toglie 30000 dalla riga di Ugo (84000 →
-    // 54000) e l'unità 20000 in proporzione a [Ugo 54000, Ines 36000]: Ugo 12000, Ines 8000. Il conguaglio toglie l'unità dalla riga di Ugo (84000 −
-    // 12000 = 72000): Elsa 72000 × 245/365 = 48329, Ugo 23671 − 30000 = −6329, un credito di € 63,29 (48329 − 6329 = 42000, le rate emesse).
-    //   Il piano dopo: Ugo 84000 × 120/365 = 27616 → la persona ne toglie 27616 (restano suoi 2384 = € 23,84), Elsa 84000 × 245/365 = 56384, Ines 36000;
-    //   l'unità 20000 sulle righe [0, 56384, 36000] (somma 92384): Elsa 12206,45 → 12206, Ines 7793,55 → 7793, il resto di un centesimo a Ines (il
-    //   resto maggiore): Elsa 56384 − 12206 = 44178, Ines 36000 − 7794 = 28206. Differenza per Elsa 48329 − 44178 = 4151 = € 41,51.
-    [, $a] = b51aVendita160($this, 30000, 20000, ['inquilino' => 30, 'proprietario' => 70], [['Ines', 100]]);
+it('O-160-MISTA — con Ines inquilina per tutto l\'anno: Elsa € 469,86 nel conguaglio e € 469,87 nel piano dopo, Ugo a credito di € 69,86 (avanzo di € 69,87), e Ines paga € 300,00 in tutti e due', function () {
+    // Conto a mano (voce 30 % inquilino = 36000 a Ines, 70 % proprietario = 84000).
+    //   Piano emesso: l'unità 20000 sui lordi [84000, 36000] → 14000 e 6000: Ugo 70000, Ines 30000; poi Ugo 70000 − 30000 = 40000.
+    //   - conguaglio: 70000 × 245/365 = 46986,3 → Elsa 46986; Ugo 40000 − 46986 = −6986.
+    //   - piano dopo: lordi Ugo 84000 × 120/365 = 27616, Elsa 56384, Ines 36000. L'unità 20000: 4602,7, 9397,3 e 6000, il resto a Ugo → 4603, 9397, 6000:
+    //     Ugo 23013, Elsa 46987, Ines 30000; Ugo 23013 − 30000 → 0, e 6987 avanzano. Il centesimo di scarto è dell'arrotondamento.
+    $d = b51aDueStrade($this, fn () => b51aVersato(30000, 20000, ['inquilino' => 30, 'proprietario' => 70], [['Ines', 100]]));
 
-    b51aDiceTutto(b51aFraseDelConfronto($a), ['di Ugo (€ 300,00) e dell\'unità (€ 200,00)', 'il conguaglio dà € 483,29 a Elsa e un credito di € 63,29 a Ugo',
-        'fino alla sua parte lorda di € 276,16', 'i restanti € 23,84 restano suoi', 'darebbe € 441,78 a Elsa e € 0,00 a Ugo', 'la differenza è € 41,51, e vale il conguaglio']);
-    expect(b51aNettiDelPianoDopo($this, 30000, 20000, ['inquilino' => 30, 'proprietario' => 70], [['Ines', 100]]))->toBe(['Elsa' => 44178, 'Ines' => 28206]);
+    expect($d['coppie'])->toBe([[$d['unita'], 'Elsa', 46986]])
+        ->and($d['conguaglio'])->toBe(['Elsa' => 46986, 'Ines' => 30000, 'Ugo' => -6986])
+        ->and($d['dopo'])->toBe(['Elsa' => 46987, 'Ines' => 30000])
+        ->and($d['avanzo_dopo'])->toBe(['Ugo' => 6987]);
+    b51aCoincidono($d);
+    b51aNessunConfronto($d['frasi']);
 });
 
 /** Lo scenario dell'acconto: la voce da € 1.200,00 con il capitolo del piano forzato a `$capitolo` (una chiamata che ne chiede una parte), già versato Ugo € 300,00 e l'unità € 200,00. */
@@ -227,49 +245,36 @@ function b51aVersatoAcconto(int $capitolo = 60000): array
     return $s;
 }
 
-it('O-160-ACCONTO — il piano chiede metà della voce (capitolo a € 600,00 su € 1.200,00): il già versato che applica è la metà (Ugo € 150,00, unità € 100,00), e la frase dice le cifre del piano generato dopo (Elsa € 313,24 e Ugo € 36,76) e la differenza (€ 22,38)', function () {
-    // Conto a mano: la quota della chiamata è 60000/120000 = 0,5: il piano applica 15000 della persona e 10000 dell'unità. Emesso fino al 31/12: 60000 − 15000 − 10000 = 35000.
+it('O-160-ACCONTO — il piano chiede metà della voce (capitolo a € 600,00 su € 1.200,00): il già versato che applica è la metà (Ugo € 150,00, unità € 100,00), e le due strade danno Elsa € 335,62 e Ugo € 14,38', function () {
+    // Conto a mano: la quota della chiamata è 60000/120000 = 0,5: il piano applica 10000 dell'unità e 15000 della persona. Emesso: 60000 − 10000 − 15000 = 35000.
     // Vendita Ugo → Elsa l'1/5, giorni 120 e 245: lordi 60000 × 120/365 = 19726 e 40274.
-    //   - conguaglio: l'unità si toglie dal totale (60000 − 10000 = 50000): Ugo 16438, Elsa 33562; poi la persona dalla parte di Ugo: 16438 − 15000 = 1438.
-    //     Elsa € 335,62, Ugo € 14,38 (sommano alle rate emesse, 35000).
-    //   - piano generato dopo: la persona toglie 15000 dalla riga di Ugo (19726 → 4726), poi l'unità in proporzione alle righe già ridotte: 10000 su
-    //     [4726, 40274] (somma 45000): Ugo 1050,2 → 1050, Elsa 8949,8 → 8950: Ugo 4726 − 1050 = 3676, Elsa 40274 − 8950 = 31324.
-    //   Differenza per Elsa 33562 − 31324 = 2238 = € 22,38. Con il già versato intero (€ 300,00 e € 200,00) la frase diceva € 202,74 e € 0,00, differenza € 132,88.
-    $s = b51aVersatoAcconto();
-    fclGenera($s);
-    fclEmetti($this, $s, '2026-12-31');
-    $a = fclAnteprima($this, $s, fds50ModuloVendita($s, 'Ugo', 'Elsa', '2026-05-01'));
+    //   - conguaglio: (60000 − 10000) × 245/365 = 33561,6 → Elsa 33562; Ugo 35000 − 33562 = 1438.
+    //   - piano dopo: l'unità sui lordi, 10000 su [19726, 40274] → 3287,7 e 6712,3, il resto a Ugo → 3288 e 6712: Ugo 16438, Elsa 33562;
+    //     poi Ugo 16438 − 15000 = 1438.
+    $d = b51aDueStrade($this, fn () => b51aVersatoAcconto());
 
-    $frasi = $a['rate']['conguaglio']['frasi'];
-    $versato = collect($frasi)->first(fn ($t) => str_contains($t, 'già versati da Ugo'));
-    expect(fclCoppie($a))->toBe([[(int) $s['unita']->id, 'Elsa', 33562]])
-        ->and($versato)->toContain('€ 150,00 già versati da Ugo restano suoi');
-    b51aDiceTutto(b51aFraseDelConfronto($a), ['Spese generali', 'di Ugo (€ 150,00) e dell\'unità (€ 100,00)', 'il conguaglio dà € 335,62 a Elsa e € 14,38 a Ugo',
-        'darebbe € 313,24 a Elsa e € 36,76 a Ugo', 'la differenza è € 22,38, e vale il conguaglio']);
-
-    // Il piano generato davvero dopo la vendita dà le stesse cifre: Elsa 31324 e Ugo 3676.
-    $s2 = b51aVersatoAcconto();
-    fds50Registra($this, $s2, fds50ModuloVendita($s2, 'Ugo', 'Elsa', '2026-05-01'));
-    fclGenera($s2);
-    expect(fclNetti($s2))->toBe(['Elsa' => 31324, 'Ugo' => 3676]);
+    expect($d['coppie'])->toBe([[$d['unita'], 'Elsa', 33562]])
+        ->and($d['conguaglio'])->toBe(['Elsa' => 33562, 'Ugo' => 1438])
+        ->and($d['dopo'])->toBe(['Elsa' => 33562, 'Ugo' => 1438])
+        ->and(collect($d['frasi'])->first(fn ($t) => str_contains($t, 'già versati da Ugo')))->toContain('€ 150,00 già versati da Ugo restano suoi');
+    b51aCoincidono($d);
+    b51aNessunConfronto($d['frasi']);
 });
 
-it('O-160-ACCONTO — il capitolo forzato all\'importo del conto è l\'intera voce: la frase è quella di sempre, con il già versato intero (€ 626,48 e € 73,52)', function (int $capitolo) {
-    $s = b51aVersatoAcconto($capitolo);
-    fclGenera($s);
-    fclEmetti($this, $s, '2026-12-31');
-    $a = fclAnteprima($this, $s, fds50ModuloVendita($s, 'Ugo', 'Elsa', '2026-05-01'));
+it('O-160-ACCONTO — il capitolo forzato all\'importo del conto è l\'intera voce: le due strade sono quelle di sempre, con il già versato intero (Elsa € 671,23, Ugo € 28,77)', function (int $capitolo) {
+    $d = b51aDueStrade($this, fn () => b51aVersatoAcconto($capitolo));
 
-    b51aDiceTutto(b51aFraseDelConfronto($a), ['di Ugo (€ 300,00) e dell\'unità (€ 200,00)', 'darebbe € 626,48 a Elsa e € 73,52 a Ugo']);
+    expect($d['conguaglio'])->toBe(['Elsa' => 67123, 'Ugo' => 2877])
+        ->and($d['dopo'])->toBe(['Elsa' => 67123, 'Ugo' => 2877]);
+    b51aCoincidono($d);
+    b51aNessunConfronto($d['frasi']);
 })->with(['uguale' => [120000]]);
 
-it('O-160-ACCONTO — la frazione della chiamata: 1 senza un importo forzato più basso, metà con il capitolo a metà, e nessuna risposta (la frase tace) dove non si può dire: piano non generato, o capitolo padre diviso fra i sottoconti in un modo che non è la loro somma', function () {
+it('O-160-ACCONTO — la frazione della chiamata: 1 senza un importo forzato più basso, metà con il capitolo a metà, e nessuna risposta dove non si può dire: piano non generato, o capitolo padre diviso fra i sottoconti in un modo che non è la loro somma', function () {
     $s = b51aVersato(30000, 20000);
     $pc = PianoConto::where('gestione_id', $s['g']->id)->firstOrFail();
     $conto = Conto::where('nome', 'Spese generali')->where('piano_conto_id', $pc->id)->firstOrFail();
-    $quota = new ReflectionMethod(\App\Services\Subentro\ConguaglioPassaggio::class, 'quotaDellaChiamata');
-    $quota->setAccessible(true);
-    $dellaChiamata = fn (int $contoId) => $quota->invoke(new \App\Services\Subentro\ConguaglioPassaggio(), (int) $s['piano']->id, $contoId);
+    $dellaChiamata = fn (int $contoId) => QuotaDellaChiamata::perConto((int) $s['piano']->id, $contoId);
 
     // Senza un importo forzato diverso: l'intera voce. Con il capitolo a metà: 0 distribuito finché il piano non è generato (non si può dire).
     expect($dellaChiamata((int) $conto->id))->toBe(1.0);
@@ -285,14 +290,14 @@ it('O-160-ACCONTO — la frazione della chiamata: 1 senza un importo forzato pi�
     expect($dellaChiamata((int) $figlio->id))->toBe(1.0);
 });
 
-it('O-160-TERZI — Ugo e Anna al 50 %, Ugo vende la sua metà a Elsa l\'1/5 (€ 300,00 di Ugo, € 200,00 dell\'unità): la frase dice anche la quota di Anna, che nel piano di dopo cambia (€ 480,33 invece di € 466,67)', function () {
-    // Conto a mano: la voce vale 120000, 60000 a testa. Il piano emesso (adesso): la persona toglie 30000 dalla riga di Ugo (60000 → 30000), poi l'unità in
-    // proporzione a [Ugo 30000, Anna 60000] (somma 90000): 20000 × 30000/90000 = 6666,67, × 60000/90000 = 13333,33 → 6666 e 13333, il centesimo che avanza a Ugo
-    // (,67): Ugo 30000 − 6667 = 23333, Anna 60000 − 13333 = 46667.
-    // Il piano di dopo la vendita (120 giorni a Ugo, 245 a Elsa): lordi Ugo 60000 × 120/365 = 19726, Elsa 40274, Anna 60000; la persona toglie al più la parte lorda
-    // di Ugo (30000 → 19726: Ugo 0, restano suoi 10274); l'unità 20000 su [0, 40274, 60000] (somma 100274): Elsa 8033,2 → 8033, Anna 11966,8 → 11966 e il centesimo
-    // che avanza ad Anna (,8) → 11967: Elsa 40274 − 8033 = 32241, Anna 60000 − 11967 = 48033. Anna paga 48033 − 46667 = 1366 in più (€ 13,66).
-    $mk = function (): array {
+it('O-160-TERZI — Ugo e Anna al 50 %, Ugo vende la sua metà a Elsa l\'1/5 (€ 300,00 di Ugo, € 200,00 dell\'unità): Anna paga € 500,00 nelle due strade, Elsa € 335,61 nel conguaglio e € 335,62 nel piano dopo, Ugo è a credito di € 135,61', function () {
+    // Conto a mano: la voce vale 120000, 60000 a testa, divisa 30 % inquilino e 70 % proprietario senza un inquilino (ripiego sul proprietario): due righe a testa,
+    // 18000 e 42000. Piano emesso: l'unità 20000 su [60000, 60000] → 10000 e 10000: Ugo 50000, Anna 50000; poi Ugo 20000.
+    //   - conguaglio: voce per voce, i 10000 dell'unità di Ugo sulle sue due righe (3000 e 7000): 15000 × 245/365 = 10068,5 → 10068 e 35000 × 245/365 =
+    //     23493,2 → 23493: Elsa 33561; Ugo 20000 − 33561 = −13561. Il centesimo di scarto col piano dopo è dell'arrotondamento.
+    //   - piano dopo: lordi Ugo 19726, Elsa 40274, Anna 60000; l'unità 20000: 3287,7, 6712,3 e 10000, il resto a Ugo → 3288, 6712, 10000:
+    //     Ugo 16438, Elsa 33562, Anna 50000; Ugo 16438 − 30000 → 0, e 13562 avanzano a suo nome.
+    $scenario = function (): array {
         $s = fclScenario([['Ugo', 'proprietario', 50], ['Anna', 'proprietario', 50]], ['inquilini' => []]);
         b51aPersone($s, ['Elsa']);
         $pc = PianoConto::where('gestione_id', $s['g']->id)->firstOrFail();
@@ -305,71 +310,68 @@ it('O-160-TERZI — Ugo e Anna al 50 %, Ugo vende la sua metà a Elsa l\'1/5 (�
 
         return $s;
     };
-    $s = $mk();
-    fclGenera($s);
-    fclEmetti($this, $s, '2026-12-31');
-    $a = fclAnteprima($this, $s, fds50ModuloVendita($s, 'Ugo', 'Elsa', '2026-05-01', 50));
+    $d = b51aDueStrade($this, $scenario, 'Elsa', 50);
 
-    $frase = b51aFraseDelConfronto($a);
-    b51aDiceTutto($frase, ['di Ugo (€ 300,00) e dell\'unità (€ 200,00)', 'darebbe € 322,41 a Elsa e € 0,00 a Ugo', 'Nello stesso piano cambia anche la quota di Anna: € 480,33 invece di € 466,67.']);
-
-    // Il piano generato davvero dopo la vendita dà quelle cifre: Elsa 32241 e Anna 48033; il piano emesso aveva Anna a 46667.
-    $s2 = $mk();
-    fds50Registra($this, $s2, fds50ModuloVendita($s2, 'Ugo', 'Elsa', '2026-05-01', 50));
-    fclGenera($s2);
-    expect(fclNetti($s2))->toMatchArray(['Elsa' => 32241, 'Anna' => 48033]);
+    expect($d['coppie'])->toBe([[$d['unita'], 'Elsa', 33561]])
+        ->and($d['conguaglio'])->toBe(['Anna' => 50000, 'Elsa' => 33561, 'Ugo' => -13561])
+        ->and($d['dopo'])->toBe(['Anna' => 50000, 'Elsa' => 33562])
+        ->and($d['avanzo_dopo'])->toBe(['Ugo' => 13562]);
+    b51aCoincidono($d);
+    b51aNessunConfronto($d['frasi']);
 });
 
-it('O-160-TERZI — con Ines inquilina per tutto l\'anno la frase dice anche la sua quota, € 282,06 invece di € 280,00; senza altri titolari, o con la quota che non cambia, non c\'è', function () {
-    [, $a] = b51aVendita160($this, 30000, 20000, ['inquilino' => 30, 'proprietario' => 70], [['Ines', 100]]);
-    b51aDiceTutto(b51aFraseDelConfronto($a), ['Nello stesso piano cambia anche la quota di Ines: € 282,06 invece di € 280,00.']);
-
-    [, $senzaAltri] = b51aVendita160($this, 30000, 20000);
-    expect(b51aFraseDelConfronto($senzaAltri))->not->toContain('Nello stesso piano');
-});
-
-it('sentinella — O-160-ECCESSO: con il già versato dell\'unità (€ 1.300,00) maggiore dell\'intera spesa (€ 1.200,00) la spesa è già coperta, nessuna rata è emessa e il piano dopo non dà niente: non c\'è un conguaglio né una differenza da dire', function (?int $persona) {
+it('sentinella — O-160-ECCESSO: con il già versato dell\'unità (€ 1.300,00) maggiore dell\'intera spesa (€ 1.200,00) la spesa è già coperta, nessuna rata è emessa e il piano dopo non dà niente: non c\'è un conguaglio né un confronto', function (?int $persona) {
     // Conto a mano: la copertura applicata è al più la spesa (120000), le righe vanno a zero e non nasce nessuna quota: né il conguaglio né il piano
-    // generato dopo la vendita hanno una cifra, e le due strade coincidono. L'eccedenza (€ 100,00) è denaro dell'unità, non una differenza fra le strade.
+    // generato dopo la vendita hanno una cifra, e le due strade coincidono. L'eccedenza (€ 100,00) è denaro dell'unità.
     [, $a] = b51aVendita160($this, $persona, 130000);
 
     expect(fclCoppie($a))->toBe([])
-        ->and(b51aFraseDelConfronto($a))->toBeNull()
         ->and(b51aNettiDelPianoDopo($this, $persona, 130000))->toBe([]);
+    b51aNessunConfronto($a['rate']['conguaglio']['frasi'] ?? []);
 })->with(['senza il versato della persona' => [null], 'con € 300,00 della persona' => [30000]]);
 
-it('O-160-ECCESSO — con la spesa coperta dal già versato (Ugo € 300,00, unità € 1.300,00) e una seconda voce da € 600,00: il conguaglio dà a Elsa € 201,37 e a Ugo un credito di € 201,37, il piano dopo € 0,00 a tutti e due su quella voce (differenza € 201,37)', function () {
-    // Conto a mano: alla generazione la persona toglie 30000 dalla riga di Ugo (120000 → 90000) e l'unità ne assorbe al più 90000 (l'eccedenza,
-    // 130000 − 90000, resta all'unità): la voce non ha rata. Il conguaglio divide per giorni quel che l'unità ha coperto in meno della spesa:
-    // 120000 − 90000 = 30000, Elsa 30000 × 245/365 = 20137, Ugo 9863 − 30000 = −20137, un credito di € 201,37 (il versato di Ugo è suo). Il piano dopo
-    // toglie 30000 dalla riga di Ugo (39452 → 9452) e l'unità, che copre tutte le righe (9452 + 80548 = 90000 ≤ 130000), le azzera: Elsa € 0,00 e Ugo
-    // € 0,00. Differenza 20137 − 0. La seconda voce è uguale nelle due strade (Pulizie 60000: Elsa 40274, Ugo 19726).
-    [, $a] = b51aVendita160($this, 30000, 130000, conPulizie: true);
+it('O-160-ECCESSO — con la spesa coperta dal già versato (Ugo € 300,00, unità € 1.300,00) e una seconda voce da € 600,00: le due strade danno Elsa € 402,74 e Ugo € 197,26, con gli stessi avanzi', function () {
+    // Conto a mano: l'unità assorbe tutti i 120000 della prima voce (avanzano 10000 all'unità) e a Ugo non resta niente da togliere: i suoi 30000 avanzano.
+    // La prima voce non ha rata né conguaglio; restano le Pulizie, 60000: Elsa 60000 × 245/365 = 40274, Ugo 19726, nel conguaglio e nel piano dopo.
+    $d = b51aDueStrade($this, fn () => b51aVersato(30000, 130000, conPulizie: true));
 
-    b51aDiceTutto(b51aFraseDelConfronto($a), ['Spese generali', 'di Ugo (€ 300,00) e dell\'unità (€ 1.300,00)', 'il conguaglio dà € 201,37 a Elsa e un credito di € 201,37 a Ugo',
-        'darebbe € 0,00 a Elsa e € 0,00 a Ugo', 'la differenza è € 201,37, e vale il conguaglio']);
-    // Il piano generato davvero dopo la vendita: la voce coperta non dà niente a nessuno, restano le Pulizie (60000 × 245/365 = 40274 a Elsa, 19726 a Ugo).
-    expect(b51aNettiDelPianoDopo($this, 30000, 130000, conPulizie: true))->toBe(['Elsa' => 40274, 'Ugo' => 19726]);
+    expect($d['coppie'])->toBe([[$d['unita'], 'Elsa', 40274]])
+        ->and($d['conguaglio'])->toBe(['Elsa' => 40274, 'Ugo' => 19726])
+        ->and($d['dopo'])->toBe(['Elsa' => 40274, 'Ugo' => 19726])
+        ->and($d['avanzo_conguaglio'])->toBe(['Ugo' => 30000, 'unità' => 10000])
+        ->and($d['avanzo_dopo'])->toBe(['Ugo' => 30000, 'unità' => 10000]);
+    b51aCoincidono($d);
+    b51aNessunConfronto($d['frasi']);
 });
 
-it('O-160-ECCESSO — il già versato di Ugo (€ 500,00) supera la sua parte lorda e quello dell\'unità (€ 1.000,00) la spesa che resta: il conguaglio dà a Elsa € 335,62 e a Ugo un credito di € 335,62, il piano dopo € 0,00 a tutti e due', function () {
-    // Conto a mano: alla generazione la persona toglie 50000 dalla riga di Ugo (120000 → 70000) e l'unità assorbe 70000: la voce non ha rata. Il conguaglio:
-    // 120000 − 70000 = 50000, Elsa 50000 × 245/365 = 33562, Ugo 16438 − 50000 = −33562, un credito di € 335,62. Il piano dopo: la persona toglie al più la parte
-    // lorda di Ugo (39452 → 0; 10548 restano suoi) e l'unità copre la riga di Elsa (80548 ≤ 100000): Elsa € 0,00 e Ugo € 0,00. Differenza 33562.
-    [, $a] = b51aVendita160($this, 50000, 100000, conPulizie: true);
+it('O-160-ECCESSO — il già versato di Ugo (€ 500,00) supera la spesa che l\'unità (€ 1.000,00) lascia: le due strade danno Elsa € 536,99, e il credito di Ugo del conguaglio è l\'avanzo del piano dopo', function () {
+    // Conto a mano. Piano emesso: l'unità 100000 sulla prima voce (120000 → 20000), poi di Ugo se ne applicano 20000 e 30000 avanzano; restano le Pulizie, 60000 a Ugo.
+    //   - conguaglio: prima voce (120000 − 100000) × 245/365 = 13424,7 → Elsa 13425; Pulizie 40274: Elsa 53699, Ugo 60000 − 53699 = 6301 (con 30000 avanzati).
+    //   - piano dopo: l'unità 100000 su [39452, 80548] → 32877 e 67123: Ugo 6575, Elsa 13425; Ugo 6575 − 50000 → 0, e 43425 avanzano. Pulizie: Elsa 40274,
+    //     Ugo 19726. Elsa 53699, Ugo 19726.
+    //   Per Ugo: 6301 − 30000 = −23699 nel conguaglio, 19726 − 43425 = −23699 nel piano dopo.
+    $d = b51aDueStrade($this, fn () => b51aVersato(50000, 100000, conPulizie: true));
 
-    b51aDiceTutto(b51aFraseDelConfronto($a), ['di Ugo (€ 500,00) e dell\'unità (€ 1.000,00)', 'il conguaglio dà € 335,62 a Elsa e un credito di € 335,62 a Ugo',
-        'fino alla sua parte lorda di € 394,52', 'i restanti € 105,48 restano suoi', 'darebbe € 0,00 a Elsa e € 0,00 a Ugo', 'la differenza è € 335,62, e vale il conguaglio']);
-    expect(b51aNettiDelPianoDopo($this, 50000, 100000, conPulizie: true))->toBe(['Elsa' => 40274, 'Ugo' => 19726]);
+    expect($d['coppie'])->toBe([[$d['unita'], 'Elsa', 53699]])
+        ->and($d['conguaglio'])->toBe(['Elsa' => 53699, 'Ugo' => 6301])
+        ->and($d['dopo'])->toBe(['Elsa' => 53699, 'Ugo' => 19726])
+        ->and($d['avanzo_conguaglio'])->toBe(['Ugo' => 30000])
+        ->and($d['avanzo_dopo'])->toBe(['Ugo' => 43425]);
+    b51aCoincidono($d);
+    b51aNessunConfronto($d['frasi']);
 });
 
-it('sentinella — O-160-COMPRA-L-INQUILINO: se chi compra è già sul piano (Ines, inquilina per tutto l\'anno, compra da Ugo) le sue righe di prima e di dopo si fonderebbero in una sola, e la frase di confronto tace', function () {
-    // Il piano generato dopo la vendita intesta a Ines una riga sola, somma della parte di inquilina e di quella di proprietaria, e il già versato
-    // dell'unità si divide su quella: un conto che la frase non fa. Il conguaglio c'è lo stesso (Ugo → Ines, 120/365 della parte di proprietà).
-    [$s, $a] = b51aVendita160($this, 30000, 20000, ['inquilino' => 30, 'proprietario' => 70], [['Ines', 100]], vende: 'Ines');
+it('O-160-COMPRA-L-INQUILINO — chi compra è già sul piano (Ines, inquilina per tutto l\'anno): le sue righe di prima e di dopo si fondono in una, e le due strade danno le stesse cifre entro il centesimo', function () {
+    // Conto a mano: piano emesso Ugo 40000, Ines 30000 (come sopra con Ines inquilina). Conguaglio: Ines 70000 × 245/365 = 46986 → Ines 76986, Ugo −6986.
+    //   Piano dopo: Ines 36000 + 56384 = 92384, Ugo 27616; l'unità 20000: 4602,7 e 15397,3, il resto a Ugo → 4603 e 15397: Ugo 23013, Ines 76987;
+    //   Ugo 23013 − 30000 → 0, e 6987 avanzano.
+    $d = b51aDueStrade($this, fn () => b51aVersato(30000, 20000, ['inquilino' => 30, 'proprietario' => 70], [['Ines', 100]]), 'Ines');
 
-    expect(fclCoppie($a))->not->toBe([])
-        ->and(b51aFraseDelConfronto($a))->toBeNull('La frase di confronto c\'è con chi compra già sul piano: ' . implode(' | ', $a['rate']['conguaglio']['frasi'] ?? []));
+    expect($d['conguaglio'])->toBe(['Ines' => 76986, 'Ugo' => -6986])
+        ->and($d['dopo'])->toBe(['Ines' => 76987])
+        ->and($d['avanzo_dopo'])->toBe(['Ugo' => 6987]);
+    b51aCoincidono($d);
+    b51aNessunConfronto($d['frasi']);
 });
 
 // --- Coda 251-c -------------------------------------------------------------------------------------------------------------------------------------

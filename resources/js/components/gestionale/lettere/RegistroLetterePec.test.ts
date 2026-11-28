@@ -19,7 +19,7 @@ const axiosPost = vi.fn();
 const routerPost = vi.fn();
 vi.mock('axios', () => ({ default: { post: (...a: unknown[]) => axiosPost(...a) } }));
 vi.mock('@inertiajs/vue3', () => ({ router: { reload: vi.fn(), post: (...a: unknown[]) => routerPost(...a), delete: vi.fn() }, usePage: () => ({ props: { errors: {} } }) }));
-vi.mock('@/composables/permissions', () => ({ usePermission: () => ({ generateRoute: (nome: string) => nome }) }));
+vi.mock('@/composables/permissions', () => ({ usePermission: () => ({ generateRoute: (nome: string) => nome, hasPermission: () => true }) }));
 (globalThis as unknown as { route: unknown }).route = (nome: string, p: Record<string, unknown> = {}) => `/${nome}/${p.invio ?? ''}/${p.documento ?? ''}`;
 
 const RegistroLettere = (await import('./RegistroLettere.vue')).default;

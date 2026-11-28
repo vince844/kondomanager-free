@@ -22,7 +22,10 @@
  * - (a) Sara rientra il 1/12, Teo dal 1/12 al 20 %: Sara 80 × 123 = 9840, Teo 20 × 31 = 620; 12132 × 620/10460 = 719,11 → 719. Sara 18148 − 719 = 17429.
  * - (b) la fine di Elsa il 1/12, Teo dal 1/12 all'80 %: Sara 80 × 92 = 7360, Teo 80 × 31 = 2480; 12132 × 2480/9840 = 3057,66, 9074,34 → 3057 + 9074, il centesimo a Teo: 3058. Sara 15090.
  *
- * Cosa NON copre: l'accordo con chi ha la riga (la domanda D-a, decisione 153.4: resta com'è fino alla 1.12, qui solo la guardia); la pagina Vue; MySQL.
+ * - (D-a, dalla 1.12.0-beta.15) l'accordo con chi ha la riga (il cambio Ines → Sara annullato) finisce con l'uscita di Sara, come quello con la parte (decisione 144): chi entra dopo rimborsa
+ *   a Ines i giorni fuori dall'accordo, per quota e per giorni.
+ *
+ * Cosa NON copre: la pagina Vue; MySQL.
  */
 
 use App\Models\Gestionale\Subentro;
@@ -282,7 +285,7 @@ it('Coda 413 — l\'uscita di chi ha preso il posto della parte si cerca dal gio
         ->and(p59PagateDa($p, 'Teo'))->toBe(['Sara' => 3058]);
 });
 
-it('Coda 413 — le guardie: chi entra nei giorni di chi ha preso il posto della parte non li divide, il cambio verso un altro non chiude l\'accordo, e l\'accordo con chi ha la riga resta com\'è (decisione 153.4)', function () {
+it('Coda 413 — le guardie: chi entra nei giorni di chi ha preso il posto della parte non li divide, il cambio verso un altro non chiude l\'accordo, e l\'accordo con chi ha la riga finisce con l\'uscita della parte (decisioni 144 e 153.4)', function () {
     // Teo dal 15/11 al 30/11 al 20 % nei giorni di Elsa, poi la fine di Teo il 1/12, e nessuno dopo: sono i giorni dell'accordo (144, 148.1, Coda 367), e Teo non rimborsa niente. Il pannello del
     // suo inizio dice l'accordo. Sara 18148 con il conguaglio, Elsa senza sezione.
     $s = p59Scenario($this);
@@ -306,16 +309,52 @@ it('Coda 413 — le guardie: chi entra nei giorni di chi ha preso il posto della
     expect(p59Breve($p)['conduttori'])->toBe(['ines' => [17852, 17852, 0, 181], 'sara' => [18148, 0, 0, 184]])
         ->and(p59PagateDa($p, 'Teo'))->toBe([]);
 
-    // D-a (decisione 153.4, alla 1.12): l'accordo con chi ha la riga (Ines → Sara «Scrivi» il 1/7 annullato), la fine di Sara «Non scriverlo» il 1/10, Elsa dal 15/10 all'80 %: i giorni di chi ha
-    // la riga restano nelle sue rate, ed Elsa non rimborsa niente. Ines 36000 nelle sue rate, il Wallet vuoto.
+    // D-a (decisioni 144 e 153.4, nella 1.12.0-beta.15): l'accordo con chi ha la riga (Ines → Sara «Scrivi» il 1/7 annullato) copre i giorni di Sara e finisce con la sua uscita, la fine
+    // «Non scriverlo» del 1/10; dopo i giorni sono di nuovo nelle rate di Ines, ed Elsa, dal 15/10 all'80 %, glieli rimborsa per quota e per giorni. Conto a mano: fuori dall'accordo (1/7–30/9,
+    // 92 giorni) 273 giorni, 36000 × 273/365 = 26926,03 → 26926 (l'accordo 9074); Elsa 80 × 78 su Ines 80 × 273: 26926 × 78/273 = 7693,14 → 7693. Ines 36000 − 7693 = 28307. Il Wallet vuoto.
+    // Era: Ines 36000 nelle sue rate, ed Elsa non rimborsava niente.
     $s = p59Scenario($this);
     p59Annulla($this, $s, p59Passaggio($this, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi'));
     p59Passaggio($this, $s, 'Sara', null, '2026-10-01', 'non_scrivere');
     p59Inizio($this, $s, 'Elsa', '2026-10-15', 80);
     $p = p59DallaRotta($this, $s);
     expect(fclSaldi($s))->toBe([])
-        ->and(p59Breve($p))->toBe(['conduttori' => ['ines' => [36000, 36000, 0, 365]], 'senza' => [0, 0]])
-        ->and(p59PagateDa($p, 'Elsa'))->toBe([]);
+        ->and(p59Breve($p))->toBe(['conduttori' => ['elsa' => [7693, 0, 7693, 78], 'ines' => [28307, 36000, -7693, 365]], 'senza' => [0, 0]])
+        ->and(p59PagateDa($p, 'Elsa'))->toBe(['Ines' => 7693]);
+
+    // La guardia: senza l'uscita di Sara l'accordo va fino alla fine della voce, ed Elsa, che entra dal 15/10 al 20 % accanto a Sara, non rimborsa niente.
+    $s = p59Scenario($this);
+    p59Annulla($this, $s, p59Passaggio($this, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi'));
+    p59Inizio($this, $s, 'Elsa', '2026-10-15', 20);
+    expect(p59PagateDa(p59DallaRotta($this, $s), 'Elsa'))->toBe([]);
+});
+
+// --- PA-1 (Coda 428): chi ha le righe prende il posto della parte con «Non scriverlo» ed esce con «Scrivi» -------------------------------------------------------------------------
+
+it('Coda 428 — Sara → Zoe con l\'accordo, Zoe → Ines «Non scriverlo» il 1/11, la fine di Ines «Scrivi» il 1/12, Teo dal 1/12 all\'80 %: Teo rimborsa a Ugo € 30,58, Ines a Sara € 30,58', function () {
+    // La storia della sonda Z13 dello scettico del prospetto della 1.11.0-beta.59 (PA-1). Ines → Sara «Scrivi» il 1/7 (Ines − 18148, Sara + 18148); Sara → Zoe «Scrivi» il 1/10 con «Annulla
+    // il conguaglio» (l'accordo); Zoe → Ines «Non scriverlo» il 1/11: Ines prende il posto di Zoe nell'accordo (decisione 148.1); la fine di Ines «Scrivi» il 1/12 chiude l'accordo e scrive la
+    // coppia di dicembre: 18148 × 31/184 = 3057,52 → Ines − 3058, Ugo + 3058. Con la lettura P della decisione 145 (la coppia è giusta e il prospetto la segue): Teo rimborsa a Ugo € 30,58, che
+    // Ugo ha pagato con la coppia; Ines rimborsa a Sara € 30,58, il dicembre che aveva ceduto a Sara il 1/7 e che la coppia le ha dato a credito. Sara € 150,90 (18148 − 3058). Era: Teo 3058
+    // «pagata da Sara», e Ugo non compariva (il registro dell'inizio di Teo diceva Ugo).
+    $s = p59Scenario($this);
+    p59Passaggio($this, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi');
+    p59Annulla($this, $s, p59Passaggio($this, $s, 'Sara', 'Zoe', '2026-10-01', 'scrivi'));
+    p59Passaggio($this, $s, 'Zoe', 'Ines', '2026-11-01', 'non_scrivere');
+    p59Passaggio($this, $s, 'Ines', null, '2026-12-01', 'scrivi');
+    $frasi = p59Inizio($this, $s, 'Teo', '2026-12-01', 80);
+    $p = p59DallaRotta($this, $s);
+
+    expect(fclSaldi($s))->toBe(['Ines' => -21206, 'Sara' => 18148, 'Ugo' => 3058])
+        ->and(p59GiorniDelConduttore($s, 'Teo'))->toBe([[3058, ['Ugo']]])
+        ->and(p59PagateDa($p, 'Teo'))->toBe(['Ugo' => 3058])
+        ->and(p59PagateDa($p, 'Ines'))->toBe(['Sara' => 3058])
+        ->and(collect(p59Breve($p)['conduttori'])->sum(fn ($c) => $c[0]))->toBe(36000)
+        ->and($frasi)->toContain('li rimborsa Teo a Ugo')
+        ->and($frasi)->not->toContain('li rimborsa Teo a Sara');
+    // Le sezioni, come le cifre della lettura P nel rapporto dello scettico: Ines € 178,52 a carico, € 147,94 nelle sue rate (36000 − 21206) e € 30,58 da rimborsare a Sara; Sara € 150,90;
+    // Teo € 30,58 a Ugo.
+    expect(p59Breve($p))->toBe(['conduttori' => ['ines' => [17852, 14794, 3058, 181], 'sara' => [15090, 0, -3058, 153], 'teo' => [3058, 0, 3058, 31]], 'senza' => [0, 0]]);
 });
 
 // --- Il pannello dell'inizio nei giorni dell'accordo nomina chi ha i giorni con il conguaglio ------------------------------------------------------------------------------
@@ -354,14 +393,16 @@ it('Coda 413 — chi entra nei giorni dell\'accordo fra Sara e Zoe: il pannello 
         ->and(p59PagateDa(p59DallaRotta($this, $s), 'Teo'))->toBe([]);
 });
 
-it('Coda 413 — la guardia del pannello: con l\'accordo fatto con chi ha la riga (il cambio Ines → Sara annullato) la frase resta quella di prima, perché è l\'uscita di Ines che le parti hanno regolato', function () {
+it('Coda 413 — la guardia del pannello: con l\'accordo fatto con chi ha la riga (il cambio Ines → Sara annullato) la frase resta quella di prima nei giorni dell\'accordo, e dopo l\'uscita di Sara dice il rimborso a Ines', function () {
     // Il cambio Ines → Sara del 1/7 annullato: i giorni dopo l'uscita di Ines restano nelle sue rate, regolati fra le parti (decisioni 43 e 46). Elsa dal 15/10, dopo la fine di Sara
-    // «Non scriverlo» del 1/10: la frase di prima è vera, e resta (la domanda D-a, decisione 153.4, va alla 1.12).
+    // «Non scriverlo» del 1/10: dalla 1.12.0-beta.15 (decisioni 144 e 153.4, la D-a) l'accordo è finito con l'uscita di Sara, e il pannello dice ciò che il prospetto fa: Elsa rimborsa a Ines
+    // i giorni nelle sue rate. Era: «il conguaglio dei giorni dopo la sua uscita le parti lo hanno regolato fra loro».
     $s = p59Scenario($this);
     p59Annulla($this, $s, p59Passaggio($this, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi'));
     p59Passaggio($this, $s, 'Sara', null, '2026-10-01', 'non_scrivere');
     $frasi = p59Inizio($this, $s, 'Elsa', '2026-10-15', 80);
-    expect($frasi)->toContain('La parte a carico dell\'inquilino dal 15 ottobre 2026 resta nelle rate di Ines: il conguaglio dei giorni dopo la sua uscita le parti lo hanno regolato fra loro.')
+    expect($frasi)->toContain('La parte a carico dell\'inquilino dal 15 ottobre 2026 resta nelle rate di Ines: i giorni dopo la sua uscita li rimborsa Elsa a Ines, con il prospetto degli oneri accessori.')
+        ->and($frasi)->not->toContain('le parti lo hanno regolato fra loro')
         ->and($frasi)->not->toContain('con il conguaglio Sara');
 
     // Teo dal 1/9 al 20 %, nei giorni di Sara dopo il cambio annullato: lo stesso.
@@ -428,7 +469,11 @@ it('Coda 413 — quando i giorni li ha presi con il conguaglio la stessa persona
 
 // --- Un piano che solo un passaggio dopo ha preso ------------------------------------------------------------------------------------------------------------------------
 
-/** Un secondo piano ordinario sulla stessa gestione, «Integrativo 2026», con la sola voce «Pulizie» € 365,00 (30 % all'inquilino), dalle pagine; approvato e generato. Con un nome e una voce dati, un altro piano uguale. */
+/**
+ * Un secondo piano ordinario sulla stessa gestione, «Integrativo 2026», con la sola voce «Pulizie» € 365,00 (30 % all'inquilino); la voce dalla pagina del piano dei conti,
+ * il piano come il primo dello scenario (`PianoRate::create` e la sua riga della voce), perché la rotta di creazione guarda le voci che chiedono già gli altri piani dello
+ * stesso esercizio, e ciò che qui si prova è il prospetto dopo i passaggi, non la creazione; approvato dalla sua rotta e generato. Con un nome e una voce dati, un altro piano uguale.
+ */
 function p59SecondoPiano($test, array $s, string $piano = 'Integrativo 2026', string $voce = 'Pulizie'): \App\Models\Gestionale\PianoRate
 {
     $pc = \App\Models\Gestionale\PianoConto::where('gestione_id', $s['g']->id)->firstOrFail();
@@ -439,12 +484,11 @@ function p59SecondoPiano($test, array $s, string $piano = 'Integrativo 2026', st
         'isCapitolo' => false, 'isSottoConto' => false, 'richiedeGiaVersato' => false,
     ])->assertSessionHasNoErrors();
     $conto = \App\Models\Gestionale\Conto::where('nome', $voce)->where('piano_conto_id', $pc->id)->firstOrFail();
-    $test->actingAs($test->user)->from('/crea')->post(route('admin.gestionale.esercizi.piani-rate.store', [$s['c'], $s['e']]), [
-        'nome' => $piano, 'tipo' => 'ordinario', 'gestione_id' => $s['g']->id, 'metodo_distribuzione' => 'prima_rata', 'numero_rate' => 12,
-        'giorno_scadenza' => 5, 'data_prima_scadenza' => '2026-01-05', 'genera_subito' => false, 'recurrence_enabled' => false, 'capitoli_ids' => [],
-        'capitoli_config' => [['id' => $conto->id, 'importo' => '365,00', 'note' => '']],
-    ])->assertSessionHasNoErrors();
-    $p2 = \App\Models\Gestionale\PianoRate::where('gestione_id', $s['g']->id)->where('nome', $piano)->firstOrFail();
+    $p2 = \App\Models\Gestionale\PianoRate::create([
+        'gestione_id' => $s['g']->id, 'condominio_id' => $s['c']->id, 'esercizio_id' => $s['e']->id, 'nome' => $piano, 'tipo' => 'ordinario', 'metodo_distribuzione' => 'prima_rata',
+        'numero_rate' => 12, 'giorno_scadenza' => 5, 'data_prima_scadenza' => '2026-01-05', 'contesto_creazione' => 'preventivo_iniziale', 'applica_saldi' => false,
+    ]);
+    DB::table('piano_rate_capitoli')->insert(['piano_rate_id' => $p2->id, 'conto_id' => $conto->id, 'importo' => 36500, 'note' => '', 'created_at' => now(), 'updated_at' => now()]);
     $test->actingAs($test->user)->from('/piano')->put(route('admin.gestionale.piani-rate.update-stato', [$s['c'], $s['e'], $p2]), [
         'approvato' => true, 'data_delibera_assemblea' => '2025-12-15',
     ])->assertSessionHasNoErrors();
@@ -592,24 +636,25 @@ it('Coda 413 — dopo il cambio Ines → Sara annullato, un secondo piano emesso
     // P2, emesso in ottobre senza ricalcolo, ha tutte le quote nelle rate di Ines (decisione 40). La fine di Sara del 1/12 l'ha preso, ma la sua coppia scrive solo il dicembre di P1: Sara −
     // 3058, Ugo + 3058 (18148 × 31/184 = 3057,52 → 3058, il centesimo al resto maggiore; Sara 15090). Su P1 la catena della 83.3 resta: Ines 17852, Sara 15090 «regolata fra le parti», Teo
     // 3058 a Ugo. Su P2 la catena non segue la fine di Sara, che non ne ha la coppia: il cambio regolato fra le parti si legge come senza la fine dopo (decisioni 43 e 46), e P2 resta tutto
-    // nelle rate di Ines, 10950; dopo un accordo con chi ha la riga l'uscita della parte non chiude l'accordo (decisione 153.4, la domanda D-a alla 1.12): Teo non rimborsa niente su P2. Ines
-    // 17852 + 10950 = 28802, tutto nelle sue rate; Sara 15090; Teo 3058, come il Wallet e come il registro del suo inizio; il controllo 28802 + 15090 + 3058 = 46950. Era: Sara 4590 «regolata
-    // fra le parti» su P2 (153 giorni) e Teo 930 «pagata da Ugo», che non li ha mai avuti, come diceva anche il pannello.
+    // nelle rate di Ines, 10950. Dalla 1.12.0-beta.15 (decisioni 144 e 153.4, la D-a) l'uscita della parte chiude anche l'accordo con chi ha la riga: l'accordo su P2 va dal 1/7 al 30/11, e
+    // Teo rimborsa a Ines il dicembre di P2, 10950 × 31/365 = 930,04 → 930 (fuori dall'accordo 212 giorni, 10950 × 212/365 = 6360; Teo 80 × 31 su Ines 80 × 212: 6360 × 31/212 = 930).
+    // Ines 28802 − 930 = 27872; Sara 15090; Teo 3058 + 930 = 3988; il controllo 27872 + 15090 + 3988 = 46950. Il Wallet e il registro dell'inizio di Teo dicono solo la coppia di P1, 3058
+    // a Ugo: i 930 sono nelle rate di Ines. Era: Teo non rimborsava niente su P2 (prima ancora, alla .58: Sara 4590 «regolata fra le parti» su P2 e Teo 930 «pagata da Ugo»).
     [$s, $p2, [$a, $c], $frasi] = p59RegolatoConDuePiani($this, 'ottobre');
     expect(array_map(fn (Subentro $x) => array_map('intval', $x->fresh()->registro['piani_presi'] ?? []), [$a, $c]))->toBe([[(int) $s['piano']->id], [(int) $s['piano']->id, (int) $p2->id]]);
     $p = p59DallaRotta($this, $s);
     expect(fclSaldi($s))->toBe(['Sara' => -3058, 'Ugo' => 3058])
         ->and(p59Breve($p))->toBe(['conduttori' => [
-            'ines' => [28802, 28802, 0, 546],
+            'ines' => [27872, 28802, -930, 546],
             'sara' => [15090, 0, 0, 153],
-            'teo' => [3058, 0, 3058, 31],
+            'teo' => [3988, 0, 3988, 62],
         ], 'senza' => [0, 0]])
-        ->and(p59Voci($p, 'Pulizie'))->toBe(['Ines' => [[10950, 'rate', null, 365]]])
+        ->and(p59Voci($p, 'Pulizie'))->toBe(['Ines' => [[-930, 'entrato_dopo', null, null], [10950, 'rate', null, 365]], 'Teo' => [[930, 'proprietario', 'Ines', 31]]])
         ->and(p59Voci($p, 'Spese generali'))->toBe(['Ines' => [[17852, 'rate', null, 181]], 'Sara' => [[15090, 'regolato', null, 153]], 'Teo' => [[3058, 'proprietario', 'Ugo', 31]]])
-        ->and(p59PagateDa($p, 'Teo'))->toBe(['Ugo' => 3058])
+        ->and(p59PagateDa($p, 'Teo'))->toBe(['Ines' => 930, 'Ugo' => 3058])
         ->and(p59GiorniDelConduttore($s, 'Teo'))->toBe([[3058, ['Ugo']]])
         ->and($frasi)->toContain('Il piano «Integrativo 2026» non si ricalcola più: anche le rate ancora da emettere restano a chi le ha. La parte a carico dell\'inquilino dal 1 dicembre 2026 '
-            . 'resta nelle rate di Ines: il conguaglio dei giorni dopo la sua uscita le parti lo hanno regolato fra loro.')
+            . 'resta nelle rate di Ines: i giorni dopo la sua uscita li rimborsa Teo a Ines, con il prospetto degli oneri accessori.')
         ->and(substr_count($frasi, 'li ha presi Ugo con il conguaglio della fine locazione del 1 dicembre 2026, e li rimborsa Teo a Ugo, con il prospetto degli oneri accessori.'))->toBe(1);
 });
 
@@ -1083,4 +1128,24 @@ it('Coda 413 — la storia della Coda 380 con la riga di Ugo chiusa il 15/12 e I
         ->and(array_map(fn (array $c) => array_slice($c, 0, 3), $breve['conduttori']))->toBe(['ines' => [25209, 14735, 10474], 'sara' => [5504, 0, -10829]])
         ->and($breve['senza'])->toBe([1687, 19])
         ->and(collect(p59Righe($p, 'Ines'))->where(2, 'rate')->sum(1))->toBe(14735);
+});
+
+
+it('la stampa del prospetto dice l\'accordo: Ines rimborsa a Sara i giorni che Sara aveva con il conguaglio, finito l\'accordo con l\'uscita di Ines', function () {
+    // La storia della Coda 428 qui sopra. Le cifre non cambiano (€ 30,58); cambiano le parole, che erano quelle della fine «Non scriverlo» di Sara, che non c'è: «pagata da Sara, rimasta a suo
+    // carico (fine della locazione del 01/11/2026, conguaglio non scritto)» e «da restituire a Sara (fine della locazione del 01/11/2026, …)». Il 01/11 è il cambio Zoe → Ines.
+    $s = p59Scenario($this);
+    p59Passaggio($this, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi');
+    p59Annulla($this, $s, p59Passaggio($this, $s, 'Sara', 'Zoe', '2026-10-01', 'scrivi'));
+    p59Passaggio($this, $s, 'Zoe', 'Ines', '2026-11-01', 'non_scrivere');
+    p59Passaggio($this, $s, 'Ines', null, '2026-12-01', 'scrivi');
+    p59Inizio($this, $s, 'Teo', '2026-12-01', 80);
+
+    $t = p59Stampa($this, $s);
+    expect($t)->toContain('€ 30,58 pagata da Sara, che aveva questi giorni con il conguaglio del cambio d\'inquilino del 01/07/2026 (accordo fra le parti del 01/10/2026, finito con l\'uscita del 01/12/2026)')
+        ->and($t)->toContain('€ 30,58 da restituire a Sara (accordo fra le parti del 01/10/2026, finito con l\'uscita del 01/12/2026)')
+        ->and($t)->toContain('€ 30,58 pagata da Ugo con il conguaglio della fine locazione del 01/12/2026')
+        ->and($t)->toContain('Con il cambio d\'inquilino del 01/11/2026 chi è entrato ha preso il posto della parte nell\'accordo fra le parti del 01/10/2026, senza scrivere il conguaglio; '
+            . 'con la sua uscita del 01/12/2026, con il conguaglio scritto, l\'accordo è finito: i giorni dopo li aveva pagati chi li aveva con il conguaglio, e chi è uscito glieli restituisce.')
+        ->and($t)->not->toContain('fine della locazione del 01/11/2026');
 });

@@ -24,7 +24,19 @@ import { Permission } from '@/enums/Permission';
 import { trans } from 'laravel-vue-i18n';
 import type { BreadcrumbItem, NavItem, LinkItem, Auth } from '@/types';
 
-const { generatePath, canAccess, hasPermission } = usePermission();
+const { generatePath, canAccess, hasPermission, hasRole } = usePermission();
+
+/**
+ * «Impostazioni» c'è per chi può aprire almeno una scheda della pagina: gli stessi permessi dell'elenco delle schede del server
+ * (`ImpostazioniController::SCHEDE`, una prova li confronta), più il ruolo amministratore. Il registro delle modifiche non vale per i
+ * ruoli del portale, come nella sua pagina.
+ */
+const permessiDelleImpostazioni = [Permission.MANAGE_GENERAL_SETTINGS, Permission.VIEW_USERS, Permission.VIEW_REGISTRO_MODIFICHE];
+const apreLeImpostazioni = computed(() =>
+    hasRole(['amministratore']) ||
+    hasPermission(permessiDelleImpostazioni.filter(p => p !== Permission.VIEW_REGISTRO_MODIFICHE)) ||
+    (hasPermission([Permission.VIEW_REGISTRO_MODIFICHE]) && !hasRole(['utente', 'fornitore']))
+);
 
 interface Props { breadcrumbs?: BreadcrumbItem[]; }
 
@@ -124,14 +136,13 @@ const rightNavItems = computed(() =>
     [
         // Il collegamento al codice sta nel piede della pagina (decisione 573).
         { type: 'link', title: trans('appHeader.documentation'), href: 'https://kondomanager.com/docs/index.html', icon: BookText, external: true },
-        { 
-            type: 'link', 
+        ...(apreLeImpostazioni.value ? [{
+            type: 'link',
             title: trans('appHeader.settings'),
-            href: '/impostazioni', 
-            icon: Settings, 
-            permissions: [Permission.MANAGE_GENERAL_SETTINGS], 
-            hasBadge: updateAvailable.value 
-        },
+            href: '/impostazioni',
+            icon: Settings,
+            hasBadge: updateAvailable.value
+        }] : []),
     ].filter(item => canAccess(item))
 );
 

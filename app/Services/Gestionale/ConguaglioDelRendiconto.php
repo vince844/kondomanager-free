@@ -184,9 +184,22 @@ final class ConguaglioDelRendiconto
 
         // Le uscite che nessuno paga si dicono anche qui: costi = spese divise fra le persone + non attribuite + fuori dai capitoli.
         return ['cifre' => $t, 'peso' => $peso, 'data' => self::data($esercizio, $letto), 'frase' => self::FRASE_PROPOSTA,
-            'non_attribuite' => $t['non_attribuite'] === 0 ? null
-                : '€ '.number_format($t['non_attribuite'] / 100, 2, ',', '.').' di spese non attribuite a nessuno: le dice la scheda Conguaglio, con il perché.',
+            'non_attribuite' => self::fraseNonAttribuite((int) $t['non_attribuite']),
             'non_disponibili' => self::fraseNonDisponibili($t, self::nonSiCalcolano($letto))];
+    }
+
+    /**
+     * La frase delle uscite che nessuno paga, o null se non ce ne sono. Sotto zero sono entrate (gli interessi versati su una voce senza tabella):
+     * la frase lo dice, con la cifra senza il meno.
+     */
+    public static function fraseNonAttribuite(int $centesimi): ?string
+    {
+        if ($centesimi === 0) {
+            return null;
+        }
+
+        return '€ '.number_format(abs($centesimi) / 100, 2, ',', '.').' di '.($centesimi < 0 ? 'entrate' : 'spese')
+            .' non attribuite a nessuno: le dice la scheda Conguaglio, con il perché.';
     }
 
     /** La somma delle gestioni e della riga da altre gestioni: la riga del condominio. */
@@ -635,7 +648,7 @@ final class ConguaglioDelRendiconto
                     .'non è sul foglio di nessuno, a chi va lo decidi tu.', (string) ($r['gia_versato_da_decidere_perche'] ?? 'titolare'));
             }
             foreach ($r['passaggio_non_registrato'] ?? [] as $frase) {
-                $note[] = $frase.' Registra il passaggio dalla pagina dei titolari dell\'unità.';
+                $note[] = $frase.' Se chi è entrato lo è dalla vendita, correggi la sua data di inizio dalla pagina dei titolari dell\'unità.';
             }
             if (($r['personali_non_tornano'] ?? null) !== null) {
                 $note[] = self::frasePersonaliNonTornano($r['personali_non_tornano']);

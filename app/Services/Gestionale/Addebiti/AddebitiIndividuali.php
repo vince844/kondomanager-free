@@ -676,7 +676,7 @@ final class AddebitiIndividuali
         $voce = isset($v['conto_id']) ? \App\Models\Gestionale\Conto::with('pianoConto')->find((int) $v['conto_id']) : null;
         $entrata = $tipo === 'interessi';
         $frase = 'Scegli la voce che riceve il denaro quando la persona lo versa: ' . ($entrata ? 'una voce di entrata' : 'una voce') . ' della gestione «'
-            . $gestione->nome . '». Se non c\'è, creala nel piano dei conti con il preventivo a zero.';
+            . $gestione->nome . '». Se non c\'è, creala nel piano dei conti con il preventivo a zero e una tabella millesimale collegata.';
         abort_if($voce !== null && (int) ($voce->pianoConto?->condominio_id ?? 0) !== (int) $gestione->condominio_id, 404);
         if ($voce === null || (int) $voce->pianoConto?->gestione_id !== (int) $gestione->id || $voce->conto_contabile_id === null
             || $voce->sottoconti()->exists() || ($entrata && \App\Models\Gestionale\Conto::segnoDelTipo((string) $voce->tipo) === 1)) {

@@ -121,7 +121,7 @@ class StatoPatrimonialePaginaService
         $riepilogo = $this->riepilogo->perEsercizio($esercizio, $oggi);
         $liquidita = $this->liquidita->allaData($condominio, $foto['attivo']['voci'], $foto['liquidita_non_contabilizzata'], $stato);
 
-        $risultatoGestione = $this->risultatoGestione($foto, $flussi);
+        $risultatoGestione = $this->risultatoGestione($foto, $flussi, $this->rettifica($condominio, $esercizio));
         $raccordo = $this->raccordo($flussi, $risultatoGestione['risultato']);
         $debiti = $this->debiti($condominio, $foto, $al);
         $oltreIlConfine = $this->annoACavallo->perLaCassa($condominio, $esercizio, $al);
@@ -185,7 +185,7 @@ class StatoPatrimonialePaginaService
      * Il risultato di gestione dell'esercizio, con i suoi due termini letti dal giornale: lo stesso calcolo della pagina (`risultatoGestione`, sulla
      * fotografia e sui flussi dell'esercizio senza le aperture), per chi lo mostra fuori dalla pagina, come il riepilogo per competenza.
      *
-     * @return array{quote_emesse:int, costi:int, risultato:int, cumulato:int}
+     * @return array{quote_emesse:int, rettifica_esercizi_precedenti:int, costi:int, risultato:int, cumulato:int}
      */
     public function risultatoDi(Condominio $condominio, Esercizio $esercizio, ?string $oggi = null): array
     {
@@ -193,7 +193,14 @@ class StatoPatrimonialePaginaService
         $fine = $esercizio->data_fine->format('Y-m-d');
         $al = $fine < $oggi ? $fine : $oggi;
 
-        return $this->risultatoGestione($this->statoPatrimoniale->calcola($condominio, allaData: $al), $this->flussi($condominio, $esercizio));
+        return $this->risultatoGestione($this->statoPatrimoniale->calcola($condominio, allaData: $al), $this->flussi($condominio, $esercizio),
+            $this->rettifica($condominio, $esercizio));
+    }
+
+    /** La rettifica di esercizi precedenti dell'esercizio, tutte le gestioni insieme ({@see StatoPatrimonialeService::rettificaDiEserciziPrecedenti()}). */
+    private function rettifica(Condominio $condominio, Esercizio $esercizio): int
+    {
+        return (int) array_sum($this->statoPatrimoniale->rettificaDiEserciziPrecedenti($condominio, $esercizio));
     }
 
     /** I flussi dell'esercizio: per esercizio_id, senza le aperture. Stesso perimetro del prospetto per cassa e del risultato, da un posto solo. */
@@ -206,16 +213,20 @@ class StatoPatrimonialePaginaService
      * D18 — il risultato di gestione è `quote registrate in questo esercizio − costi`: l'avanzo o il
      * disavanzo rispetto a quanto chiesto ai condòmini; che cosa farne lo decide l'assemblea. Il
      * risultato del motore (`ricavi − costi`, con ricavi sempre zero) resta quello che è e serve a R6.
+     *
+     * La rettifica di esercizi precedenti (la spesa ad personam contata due volte da un'emissione di un esercizio chiuso, tolta in questo)
+     * è una riga sua, fuori dalle quote registrate in questo esercizio: il risultato la conta, quindi resta lo stesso.
      */
-    private function risultatoGestione(array $foto, array $flussi): array
+    private function risultatoGestione(array $foto, array $flussi, int $rettifica = 0): array
     {
-        $quote = $this->saldoPerRuolo($flussi['passivo']['voci'], 'gestione_rate');
+        $quote = $this->saldoPerRuolo($flussi['passivo']['voci'], 'gestione_rate') - $rettifica;
         $costi = $flussi['costi'];
 
         return [
             'quote_emesse' => $quote,
+            'rettifica_esercizi_precedenti' => $rettifica,
             'costi' => $costi,
-            'risultato' => $quote - $costi,
+            'risultato' => $quote + $rettifica - $costi,
             // Senza chiusura, quote e costi si accumulano dal primo esercizio: per il primo esercizio
             // il cumulato coincide con il risultato.
             'cumulato' => $this->saldoPerRuolo($foto['passivo']['voci'], 'gestione_rate') - $foto['costi'],
@@ -383,13 +394,13 @@ class StatoPatrimonialePaginaService
      * inizio, accanto alla parte dell'esercizio. Una fattura con voci di un'altra gestione ha il costo nel blocco della voce e il debito nel blocco
      * della testata: le fatture così si dicono per numero. La liquidità e i fondi non si dividono.
      *
-     * @param  array{quote_emesse:int, costi:int}  $risultato
+     * @param  array{quote_emesse:int, rettifica_esercizi_precedenti:int, costi:int}  $risultato
      */
     private function perGestione(Condominio $condominio, Esercizio $esercizio, string $al, array $risultato, array $foto, array $debiti, int $crediti): array
     {
         $somme = $this->statoPatrimoniale->perGestione($condominio, $esercizio, $al);
         $collegate = DB::table('esercizio_gestione')->where('esercizio_id', $esercizio->id)->pluck('gestione_id')->map(fn ($id) => (int) $id)->all();
-        $ids = array_values(array_unique(array_filter([...$collegate, ...array_keys($somme['costi']), ...array_keys($somme['quote_emesse']),
+        $ids = array_values(array_unique(array_filter([...$collegate, ...array_keys($somme['costi']), ...array_keys($somme['quote_emesse']), ...array_keys($somme['rettifica_esercizi_precedenti']),
             ...array_keys($somme['crediti']), ...array_keys($debiti['per_gestione'])])));
         sort($ids);
         $gestioni = DB::table('gestioni')->whereIn('id', $ids ?: [0])->get(['id', 'nome', 'tipo'])->keyBy('id');
@@ -405,6 +416,7 @@ class StatoPatrimonialePaginaService
                 'gestione' => ['id' => $id, 'nome' => $g->nome, 'tipo' => $g->tipo],
                 'costi' => $somme['costi'][$id] ?? 0,
                 'quote_emesse' => $somme['quote_emesse'][$id] ?? 0,
+                'rettifica_esercizi_precedenti' => $somme['rettifica_esercizi_precedenti'][$id] ?? 0,
                 'crediti' => $somme['crediti'][$id] ?? 0,
                 'debiti' => $debiti['per_gestione'][$id] ?? 0,
                 'cumulato_opera' => $g->tipo === 'straordinaria' ? $this->spese->cumulatoDellaGestione($id, $dal) : null,
@@ -425,9 +437,9 @@ class StatoPatrimonialePaginaService
         return [
             'righe' => $righe,
             'senza_voce' => $somme['costi'][0] ?? 0,
-            'senza_gestione' => ['quote_emesse' => $somme['quote_emesse'][0] ?? 0, 'crediti' => $somme['crediti'][0] ?? 0, 'debiti' => $debiti['per_gestione'][0] ?? 0],
+            'senza_gestione' => ['quote_emesse' => $somme['quote_emesse'][0] ?? 0, 'rettifica_esercizi_precedenti' => $somme['rettifica_esercizi_precedenti'][0] ?? 0, 'crediti' => $somme['crediti'][0] ?? 0, 'debiti' => $debiti['per_gestione'][0] ?? 0],
             'differenza_debiti' => $debiti['scarto'],
-            'totale' => ['costi' => $risultato['costi'], 'quote_emesse' => $risultato['quote_emesse'], 'crediti' => $crediti, 'debiti' => $debiti['saldo_fornitori']],
+            'totale' => ['costi' => $risultato['costi'], 'quote_emesse' => $risultato['quote_emesse'], 'rettifica_esercizi_precedenti' => $risultato['rettifica_esercizi_precedenti'], 'crediti' => $crediti, 'debiti' => $debiti['saldo_fornitori']],
             'fatture_altra_gestione' => $altraGestione,
             'nota_altra_gestione' => $altraGestione === [] ? null
                 : (count($altraGestione) === 1 ? 'Una fattura ha' : count($altraGestione).' fatture hanno').' voci di un\'altra gestione ('.implode(', ', $altraGestione).'): il costo sta nel blocco della voce, il debito e il pagato nel blocco della gestione della fattura.',

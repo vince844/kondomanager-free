@@ -455,6 +455,20 @@ it('resta rieseguibile dopo un\'interruzione a metà', function (string $file) {
     // guardia per ognuno; ha anche un `it()` che la interrompe dopo la colonna (in fondo al file). Il suo uso lo prova
     // `tests/Feature/Gestionale/Beta14PiuVenditoriTest.php`.
     '2026_11_23_180000_add_insieme_id_to_subentri',
+    // 1.12.0-beta.15 (Coda 384): l'impostazione generale «La verifica in due passaggi è obbligatoria per chi entra nel pannello», spenta di serie. Il suo
+    // uso lo prova `tests/Feature/Auth/DueFattoriObbligatoriaPerIlPannelloTest.php`.
+    'settings/2026_11_27_090000_add_due_fattori_obbligatoria_pannello_to_general_settings',
+    // 1.12.0-beta.15 (Coda 385): la tabella `dispositivi_conosciuti`, con l'indice unico e la chiave esterna, una guardia per ognuno. Il suo uso lo prova
+    // `tests/Feature/Auth/AvvisoDispositivoNuovoTest.php`.
+    '2026_11_27_090100_create_dispositivi_conosciuti_table',
+    // 1.12.0-beta.15 (Coda 746, decisioni 693, 694 e 734 (3)): la tabella delle letture di fine anno dei sottocontatori di una voce, con una guardia per la
+    // tabella, per ogni colonna, per l'indice unico e per ognuna delle tre chiavi esterne; ha anche un `it()` che la interrompe dopo la tabella (in fondo al
+    // file). Il suo uso lo prova `tests/Feature/Gestionale/Beta15LettureDiFineAnnoTest.php`.
+    '2026_11_27_100000_create_letture_consuntivo_table',
+    // 1.12.0-beta.15 (decisione 747): `righe_fattura.conto_addebito_id`, la voce della riga addebitata a una sola unità, con l'indice e la chiave esterna su
+    // `conti` (nullOnDelete), una guardia per ognuno; ha anche un `it()` che la interrompe dopo la colonna (in fondo al file). Il suo uso lo prova
+    // `tests/Feature/Gestionale/AddebitoDirettoVoceRicordataTest.php`.
+    '2026_11_28_100000_add_conto_addebito_id_to_righe_fattura',
 ]);
 
 it('la migrazione dei modelli delle lettere interrotta dopo la tabella e prima dell\'indice e delle chiavi si riprende e li mette, uno per nome', function () {
@@ -1606,6 +1620,74 @@ it('la migrazione dei passaggi registrati insieme interrotta dopo la colonna si 
     // Interrotta dopo la colonna: l'indice e la chiave mancano.
     $migrazione->down();
     Schema::table('subentri', fn ($t) => $t->unsignedBigInteger('insieme_id')->nullable());
+    expect($stato())->toBe(['colonna' => true, 'indici' => [], 'chiavi' => []]);
+
+    $migrazione->up();
+    $migrazione->up();
+    expect($stato())->toBe($atteso);
+
+    $migrazione->down();
+    $migrazione->down();
+    expect($stato())->toBe(['colonna' => false, 'indici' => [], 'chiavi' => []]);
+    $migrazione->up();
+    expect($stato())->toBe($atteso);
+});
+
+it('la migrazione delle letture di fine anno interrotta dopo la tabella si riprende e mette le colonne, l\'indice e le chiavi, uno per nome', function () {
+    // Che cosa non copre: MySQL (la suite gira su SQLite).
+    $percorso = database_path('migrations/2026_11_27_100000_create_letture_consuntivo_table.php');
+    expect(file_exists($percorso))->toBeTrue('Migrazione non trovata: 2026_11_27_100000_create_letture_consuntivo_table');
+    $migrazione = require $percorso;
+    $stato = fn () => [
+        'colonne' => collect(['conto_id', 'tabella_id', 'esercizio_id', 'lettura', 'percentuale', 'per_differenza', 'unita'])->filter(fn ($c) => Schema::hasColumn('letture_consuntivo', $c))->values()->all(),
+        'indici' => collect(Schema::getIndexes('letture_consuntivo'))->pluck('name')->filter(fn ($n) => str_starts_with($n, 'letture_consuntivo_'))->values()->all(),
+        'chiavi' => collect(Schema::getForeignKeys('letture_consuntivo'))->map(fn ($k) => implode(',', $k['columns']) . '>' . $k['foreign_table'] . ' ' . strtolower((string) $k['on_delete']))->sort()->values()->all(),
+    ];
+    $atteso = [
+        'colonne' => ['conto_id', 'tabella_id', 'esercizio_id', 'lettura', 'percentuale', 'per_differenza', 'unita'],
+        'indici' => ['letture_consuntivo_conto_tabella_esercizio_unique'],
+        'chiavi' => ['conto_id>conti cascade', 'esercizio_id>esercizi cascade', 'tabella_id>tabelle cascade'],
+    ];
+    expect($stato())->toBe($atteso);
+
+    // Interrotta dopo la tabella con le sole colonne di base: le altre colonne, l'indice e le chiavi mancano.
+    $migrazione->down();
+    Schema::create('letture_consuntivo', function ($t) {
+        $t->id();
+        $t->unsignedBigInteger('conto_id');
+        $t->unsignedBigInteger('esercizio_id');
+        $t->timestamps();
+    });
+    expect($stato())->toBe(['colonne' => ['conto_id', 'esercizio_id'], 'indici' => [], 'chiavi' => []]);
+
+    $migrazione->up();
+    $migrazione->up();
+    expect($stato())->toBe($atteso);
+
+    $migrazione->down();
+    $migrazione->down();
+    expect(Schema::hasTable('letture_consuntivo'))->toBeFalse();
+    $migrazione->up();
+    expect($stato())->toBe($atteso);
+});
+
+it('la migrazione della voce dell\'addebito interrotta dopo la colonna si riprende e mette l\'indice e la chiave, uno per nome', function () {
+    // Che cosa non copre: MySQL (la suite gira su SQLite).
+    $percorso = database_path('migrations/2026_11_28_100000_add_conto_addebito_id_to_righe_fattura.php');
+    expect(file_exists($percorso))->toBeTrue('Migrazione non trovata: 2026_11_28_100000_add_conto_addebito_id_to_righe_fattura');
+    $migrazione = require $percorso;
+    $stato = fn () => [
+        'colonna' => Schema::hasColumn('righe_fattura', 'conto_addebito_id'),
+        'indici' => collect(Schema::getIndexes('righe_fattura'))->pluck('name')->filter(fn ($n) => str_contains($n, 'conto_addebito'))->values()->all(),
+        'chiavi' => collect(Schema::getForeignKeys('righe_fattura'))->filter(fn ($k) => $k['columns'] === ['conto_addebito_id'])
+            ->map(fn ($k) => $k['foreign_table'] . '(' . implode(',', $k['foreign_columns']) . ') ' . strtolower((string) $k['on_delete']))->values()->all(),
+    ];
+    $atteso = ['colonna' => true, 'indici' => ['righe_fattura_conto_addebito_id_index'], 'chiavi' => ['conti(id) set null']];
+    expect($stato())->toBe($atteso);
+
+    // Interrotta dopo la colonna: l'indice e la chiave mancano.
+    $migrazione->down();
+    Schema::table('righe_fattura', fn ($t) => $t->unsignedBigInteger('conto_addebito_id')->nullable());
     expect($stato())->toBe(['colonna' => true, 'indici' => [], 'chiavi' => []]);
 
     $migrazione->up();

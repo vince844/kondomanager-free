@@ -48,6 +48,7 @@ final class ImpostazioniNelRegistro
             'segnalazioni_assegnazione_porta_in_lavorazione' => ['Assegnando una segnalazione aperta, passa a «in lavorazione»', 'si_no'],
             'comunicazioni_registra_aperture' => ['Registra quando una comunicazione viene aperta nel portale', 'si_no'],
             'errori_avviso_dalla_pagina' => ['I condòmini possono avvisare lo studio dalla pagina d\'errore', 'si_no'],
+            'due_fattori_obbligatoria_pannello' => ['La verifica in due passaggi è obbligatoria per chi entra nel pannello', 'si_no'],
             'default_per_page' => ['Righe per pagina negli elenchi', 'numero'],
         ],
         // Le parole della pagina delle caselle dello studio (decisione 572, proposta 14). La porta come testo: 2525 non è «2.525».

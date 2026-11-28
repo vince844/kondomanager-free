@@ -419,13 +419,24 @@ final class CoseDaFare
         };
     }
 
-    /** Il nuovo piano straordinario del deficit, con la delibera scelta, nell'esercizio aperto di oggi; null senza un esercizio aperto. */
+    /**
+     * Il nuovo piano straordinario del deficit, con la delibera scelta, nell'esercizio aperto di oggi; null senza un esercizio aperto. Coda 743: con il debito
+     * ereditato del punto ancora da ripianare, anche il compito e la gestione della pregressa (la pagina mette il debito nel piano), nell'esercizio della
+     * pregressa se è aperto; chiuso, la pagina dell'esercizio di oggi dice perché lì il ripianamento non si prepara.
+     */
     private static function pianoDelDeficit(CosaDaFareDellaDelibera $cosa): ?string
     {
-        $esercizio = \App\Services\Treasury\DisponibilitaDiOggi::esercizioDiOggi((int) $cosa->condominio_id, DateHelper::oggiUtente());
+        $cosa->loadMissing('delibera');
+        $deficit = $cosa->delibera === null ? null : ContestoDellaDelibera::per($cosa->delibera)->scheda('compito');
+        $parametri = \App\Services\Gestionale\RipianamentoDelDeficit::parametriDelCompito($deficit instanceof Evento ? $deficit : null);
+        $esercizio = $parametri['esercizio'] ?? \App\Services\Treasury\DisponibilitaDiOggi::esercizioDiOggi((int) $cosa->condominio_id, DateHelper::oggiUtente());
+        unset($parametri['esercizio']);
+        if ($esercizio === null) {
+            return null;
+        }
 
-        return $esercizio === null ? null : route('admin.gestionale.esercizi.piani-rate.create', ['condominio' => $cosa->condominio_id, 'esercizio' => $esercizio,
-            'tipo' => 'straordinario', 'delibera_id' => $cosa->delibera_id], false);
+        return route('admin.gestionale.esercizi.piani-rate.create', ['condominio' => $cosa->condominio_id, 'esercizio' => $esercizio,
+            'tipo' => 'straordinario', 'delibera_id' => $cosa->delibera_id] + $parametri, false);
     }
 
     /** La pagina del piano da rimettere come il preventivo approvato, se la cosa lo ricorda. */

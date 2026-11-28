@@ -120,14 +120,16 @@ it('con la voce tutta nei piani: «Nei piani della voce» con «Apri il piano»,
     expect(SpesaDaMettereARate::perLaFattura($f->fresh(), ViaRoma12::utente([]))['url'])->not->toContain('delibera_id');
 });
 
-it('una voce che nel preventivo vale € 0: il riquadro non dice «Nei piani della voce», dice che la spesa non è in nessun piano (rilievo C24, Coda 742)', function () {
+it('una voce che nel preventivo vale € 0: il riquadro non dice «Nei piani della voce»; dalla 1.12.0-beta.14 la spesa si mette a rate con «Spese fuori preventivo» (rilievo C24, Coda 742)', function () {
     $x = marPortone($this);
     $s = $x['s']->voce('Portone 2026', 'Manutenzione tetto', 0, ['Proprietà' => 100]);
     $tetto = $s->voci['Manutenzione tetto']['conto'];
     $f = marFattura($x, 'T1', [['conto_id' => $tetto->id, 'importo_imponibile' => 140000]]);
     $spesa = SpesaDaMettereARate::perLaFattura($f, $s->admin);
-    expect($spesa)->toMatchArray(['fuori' => 0, 'url' => null, 'piano' => null,
-        'frase' => 'La voce «Manutenzione tetto» non è nel preventivo: questa spesa non è in nessun piano rate']);
+    // Nella beta.13 il riquadro diceva «questa spesa non è in nessun piano rate», senza pulsante; con la Coda 742 «Metti a rate» porta al carrello.
+    expect($spesa)->toMatchArray(['fuori' => 140000, 'scheda' => 'fuori_preventivo', 'piano' => null,
+        'frase' => 'La voce «Manutenzione tetto» non è nel preventivo: € 1.400,00 da mettere a rate'])
+        ->and(urldecode((string) $spesa['url']))->toContain('tipo=straordinario')->toContain('fatture[0]=' . $f->id);
 });
 
 it('la fattura di un altro condominio: «Metti a rate questa spesa» risponde 404 e non porta a nessun piano', function () {

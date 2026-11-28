@@ -29,7 +29,7 @@ interface RigaRiepilogo { cassa_id: number; conto_contabile_id: number | null; c
 interface Fondo { cassa_id: number; cassa: string; sottotipo: string | null; sottotipo_label: string; saldo: number; vincolato: boolean; sbloccato?: boolean; vincolo_registrato: number; scoperto: number }
 interface Fattura { id: number; fornitore: string; numero: string | null; data: string | null; scadenza: string | null; residuo: number; nota_credito: boolean; contestata: boolean; pregressa: boolean; esercizio_id: number; gestione_id: number | null }
 interface RigaFondo { cassa_id: number; cassa: string; conto_contabile_id: number; iniziale: number; accantonato: number; utilizzato: number; finale: number; saldo_alla_data: number; vincolo: number; scoperto: number | null }
-interface RigaGestione { gestione: { id: number; nome: string; tipo: string }; costi: number; quote_emesse: number; crediti: number; debiti: number; cumulato_opera: { dal: string | null; consuntivo: number } | null }
+interface RigaGestione { gestione: { id: number; nome: string; tipo: string }; costi: number; quote_emesse: number; rettifica_esercizi_precedenti?: number; crediti: number; debiti: number; cumulato_opera: { dal: string | null; consuntivo: number } | null }
 
 interface Pagina {
     data: string; dal: string; stato_esercizio: 'futuro' | 'aperto' | 'chiuso';
@@ -39,7 +39,8 @@ interface Pagina {
         risultato_motore: number; sbilancio: number; quadra: boolean;
     };
     sintesi: { liquidita: number; in_fondi: number; crediti_condomini: number; debiti_fornitori: number; debiti_erario: number; spese_anticipate: number };
-    risultato_gestione: { quote_emesse: number; costi: number; risultato: number; cumulato: number };
+    /** La rettifica di esercizi precedenti: fuori dalle quote registrate in questo esercizio, dentro il risultato. */
+    risultato_gestione: { quote_emesse: number; rettifica_esercizi_precedenti?: number; costi: number; risultato: number; cumulato: number };
     riepilogo: {
         dal: string; al: string; stato_esercizio: string; righe: RigaRiepilogo[];
         totale: { iniziale: number; entrate: number; uscite: number; finale: number };
@@ -64,8 +65,8 @@ interface Pagina {
         scarto: number; scarto_voci: { voce: string; importo: number; fatture: string[] }[];
     };
     per_gestione: {
-        righe: RigaGestione[]; senza_voce: number; senza_gestione: { quote_emesse: number; crediti: number; debiti: number }; differenza_debiti: number;
-        totale: { costi: number; quote_emesse: number; crediti: number; debiti: number }; fatture_altra_gestione: string[]; nota_altra_gestione: string | null; nota_liquidita: string;
+        righe: RigaGestione[]; senza_voce: number; senza_gestione: { quote_emesse: number; rettifica_esercizi_precedenti?: number; crediti: number; debiti: number }; differenza_debiti: number;
+        totale: { costi: number; quote_emesse: number; rettifica_esercizi_precedenti?: number; crediti: number; debiti: number }; fatture_altra_gestione: string[]; nota_altra_gestione: string | null; nota_liquidita: string;
     };
     controlli: Controllo[];
 }
@@ -118,6 +119,8 @@ const hrefNota = generatePath('gestionale/:condominio/esercizi/:esercizio/rendic
 const scaduta = (f: Fattura) => !!f.scadenza && f.scadenza < p.value.debiti.alla;
 const senzaGestione = computed(() => p.value.per_gestione.senza_voce !== 0 || p.value.per_gestione.differenza_debiti !== 0
     || Object.values(p.value.per_gestione.senza_gestione).some(v => v !== 0));
+// La rettifica di esercizi precedenti: la riga e la colonna ci sono solo quando c'è.
+const rettificaPrecedenti = computed(() => p.value.risultato_gestione.rettifica_esercizi_precedenti ?? 0);
 
 const classeR8 = computed<Esito>(() => p.value.liquidita.esito_r8 === 'quadra' ? 'quadra' : (p.value.liquidita.esito_r8 === 'scoperto' ? 'non_quadra' : 'segnalazione'));
 
@@ -233,7 +236,8 @@ const pageGuides = [
                                 <div class="min-w-0">
                                     <div class="text-[11px] uppercase tracking-wider text-slate-500 dark:text-slate-400 font-bold">{{ p.risultato_gestione.risultato < 0 ? 'Disavanzo' : (p.risultato_gestione.risultato > 0 ? 'Avanzo' : 'Risultato') }} di gestione</div>
                                     <div class="text-lg font-bold tabular-nums" :class="p.risultato_gestione.risultato < 0 ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'" data-test="risultato-gestione">{{ euro(p.risultato_gestione.risultato) }}<template v-if="p.risultato_gestione.risultato === 0"> ({{ comeRisultato(p.risultato_gestione.risultato) }})</template></div>
-                                    <div class="text-[11px] text-slate-500 dark:text-slate-400" data-test="risultato-gestione-termini">quote registrate in questo esercizio {{ euro(p.risultato_gestione.quote_emesse) }} − costi {{ euro(p.risultato_gestione.costi) }}</div>
+                                    <div class="text-xs text-slate-500 dark:text-slate-400" data-test="risultato-gestione-termini">quote registrate in questo esercizio {{ euro(p.risultato_gestione.quote_emesse) }}<template v-if="rettificaPrecedenti !== 0">{{ ` ${segnoVoce(rettificaPrecedenti)} rettifica di esercizi precedenti ${euro(Math.abs(rettificaPrecedenti))}` }}</template> − costi {{ euro(p.risultato_gestione.costi) }}</div>
+                                    <div v-if="rettificaPrecedenti !== 0" class="text-xs text-slate-500 dark:text-slate-400 mt-1" data-test="rettifica-esercizi-precedenti">La rettifica di esercizi precedenti toglie la spesa di una sola unità contata due volte nelle rate emesse in un esercizio chiuso: non è una quota chiesta in questo esercizio.</div>
                                 </div>
                             </div>
                         </div>
@@ -387,6 +391,7 @@ const pageGuides = [
                                         <th class="text-left font-bold py-2 px-4">Gestione</th>
                                         <th class="text-right font-bold py-2 px-4">Costi dell'esercizio</th>
                                         <th class="text-right font-bold py-2 px-4">Quote emesse nell'esercizio</th>
+                                        <th v-if="rettificaPrecedenti !== 0" class="text-right font-bold py-2 px-4" data-test="colonna-rettifica">Rettifica di esercizi precedenti</th>
                                         <th class="text-right font-bold py-2 px-4">Crediti verso i condòmini</th>
                                         <th class="text-right font-bold py-2 px-4">Debiti verso fornitori</th>
                                     </tr>
@@ -397,6 +402,7 @@ const pageGuides = [
                                             <div v-if="r.cumulato_opera" class="text-[11px] text-slate-500 dark:text-slate-400">cumulato dell'opera<template v-if="r.cumulato_opera.dal"> dal {{ formatData(r.cumulato_opera.dal) }}</template>: {{ euro(r.cumulato_opera.consuntivo) }}</div></td>
                                         <td class="py-2 px-4 text-right tabular-nums">{{ euro(r.costi) }}</td>
                                         <td class="py-2 px-4 text-right tabular-nums">{{ euro(r.quote_emesse) }}</td>
+                                        <td v-if="rettificaPrecedenti !== 0" class="py-2 px-4 text-right tabular-nums">{{ euro(r.rettifica_esercizi_precedenti ?? 0) }}</td>
                                         <td class="py-2 px-4 text-right tabular-nums">{{ euro(r.crediti) }}</td>
                                         <td class="py-2 px-4 text-right tabular-nums">{{ euro(r.debiti) }}</td>
                                     </tr>
@@ -404,6 +410,7 @@ const pageGuides = [
                                         <td class="py-2 px-4 text-[12px]">Senza una gestione: costi senza voce, scritture senza gestione<template v-if="p.per_gestione.differenza_debiti !== 0">, e la differenza dei debiti</template></td>
                                         <td class="py-2 px-4 text-right tabular-nums">{{ euro(p.per_gestione.senza_voce) }}</td>
                                         <td class="py-2 px-4 text-right tabular-nums">{{ euro(p.per_gestione.senza_gestione.quote_emesse) }}</td>
+                                        <td v-if="rettificaPrecedenti !== 0" class="py-2 px-4 text-right tabular-nums">{{ euro(p.per_gestione.senza_gestione.rettifica_esercizi_precedenti ?? 0) }}</td>
                                         <td class="py-2 px-4 text-right tabular-nums">{{ euro(p.per_gestione.senza_gestione.crediti) }}</td>
                                         <td class="py-2 px-4 text-right tabular-nums">{{ euro(p.per_gestione.senza_gestione.debiti + p.per_gestione.differenza_debiti) }}</td>
                                     </tr>
@@ -413,6 +420,7 @@ const pageGuides = [
                                         <td class="py-2 px-4">Condominio</td>
                                         <td class="py-2 px-4 text-right tabular-nums">{{ euro(p.per_gestione.totale.costi) }}</td>
                                         <td class="py-2 px-4 text-right tabular-nums">{{ euro(p.per_gestione.totale.quote_emesse) }}</td>
+                                        <td v-if="rettificaPrecedenti !== 0" class="py-2 px-4 text-right tabular-nums">{{ euro(p.per_gestione.totale.rettifica_esercizi_precedenti ?? 0) }}</td>
                                         <td class="py-2 px-4 text-right tabular-nums">{{ euro(p.per_gestione.totale.crediti) }}</td>
                                         <td class="py-2 px-4 text-right tabular-nums">{{ euro(p.per_gestione.totale.debiti) }}</td>
                                     </tr>

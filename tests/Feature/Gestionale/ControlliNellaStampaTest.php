@@ -68,10 +68,22 @@ it('la pagina dei controlli con un passaggio non registrato: la frase del buco e
     $this->travelTo('2027-01-10 10:00:00');
     $testo = vrmTestiDelFascicolo($s, $s['e']->fresh(), ['controlli', 'conguaglio'], false)['controlli']['testo'];
 
-    expect($testo)->toContain('Int. U2: Bianchi fino al 30/06/2026, Rossi dal 15/07/2026, senza un passaggio registrato. Così Rossi conta dall\'inizio dell\'anno; '
-        .'con il passaggio registrato conterebbe dal 15/07/2026.')
-        ->toContain('Che cosa si fa: Con il passaggio registrato, chi entra conta dal giorno in cui entra.')
+    expect($testo)->toContain('Int. U2: Bianchi fino al 30/06/2026, Rossi dal 15/07/2026, senza un passaggio registrato. Rossi conta dal 15/07/2026, come se il passaggio fosse registrato: '
+        .'i giorni in mezzo non hanno un titolare e la loro parte non è divisa fra le persone.')
+        // I 14 giorni senza titolare non sono delle persone (€ 48,33): il controllo non torna e dice dove guardare, come con il passaggio registrato.
+        ->toContain('mancano € 48,33')
+        // Il rimedio vero: registrare il passaggio con la stessa data non cambia le cifre (lo prova `BucoFraDueTitolariTest`), la data di inizio sì.
+        ->toContain('Che cosa si fa: Nei giorni in cui un\'unità non ha un titolare la sua parte non va a nessuno: controlla le date dei titolari dell\'unità. '
+            .'Dove un titolare è entrato senza un passaggio, i giorni prima non hanno un titolare: se è entrato dalla vendita, la sua data di inizio va corretta.')
+        ->not->toContain('chi entra conta dal giorno in cui entra')
         ->not->toContain('programma')->not->toContain('Registra il passaggio');
+});
+
+it('il rimedio del passaggio non registrato dice la strada vera, nella pagina e nella stampa: la data di inizio, non il passaggio con la stessa data', function () {
+    expect(ControlliDelConguaglio::RIMEDIO_PASSAGGIO)->toBe('I giorni in mezzo non hanno un titolare: se chi è entrato lo è dalla vendita, correggi la sua data di inizio dalla pagina dei titolari dell\'unità.')
+        ->and(ControlliDelConguaglio::RIMEDIO_PASSAGGIO_ANCHE)->toBe('Dove un titolare è entrato senza un passaggio, i giorni prima non hanno un titolare: se è entrato dalla vendita, correggi la sua data di inizio.')
+        ->and(ParoleDellaStampa::frase(ControlliDelConguaglio::RIMEDIO_PASSAGGIO))->toBe('I giorni in mezzo non hanno un titolare: se chi è entrato lo è dalla vendita, la sua data di inizio va corretta.')
+        ->and(ParoleDellaStampa::frase(ControlliDelConguaglio::RIMEDIO_PASSAGGIO_ANCHE))->toBe('Dove un titolare è entrato senza un passaggio, i giorni prima non hanno un titolare: se è entrato dalla vendita, la sua data di inizio va corretta.');
 });
 
 it('il rimedio delle spese personali che non tornano, nella stampa, dice che cosa si guarda senza dare istruzioni', function () {

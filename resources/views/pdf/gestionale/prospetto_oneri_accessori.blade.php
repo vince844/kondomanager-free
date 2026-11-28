@@ -26,6 +26,9 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
         'scritto' => ', nessuno al posto dell\'inquilino',
         default => ', nessun conguaglio',
     };
+    // Dopo un accordo fra le parti finito con l'uscita, con la coppia, di chi aveva ceduto i giorni (Coda 428): chi li ha pagati non è uscito, li aveva con il conguaglio.
+    $dellAccordo = fn (array $v) => 'accordo fra le parti del ' . $data($v['accordo_del'] ?? null) . ', finito con l\'uscita del ' . $data($v['accordo_fino'] ?? null);
+    $comeLiAveva = fn (array $v) => empty($v['conguaglio_di_chi_paga']) ? '' : ', che aveva questi giorni con il conguaglio del cambio d\'inquilino del ' . $data($v['conguaglio_di_chi_paga']);
     // Coda 245 (1.11.0-beta.55): la parte con la regola del piano, e accanto ciò che ne è nelle rate; un credito si dice a parole, senza «€ -».
     $nelleRate = fn (array $v) => (int) ($v['nelle_rate'] ?? 0) === 0 ? '' : ((int) $v['nelle_rate'] < 0 ? '; a credito nelle sue rate ' : '; nelle sue rate ') . $euro(abs((int) $v['nelle_rate']));
     // Coda 366: chi è entrato con il cambio d'inquilino ha pagato i giorni del suo pezzo con il conguaglio scritto, o con il cambio regolato fra le parti (decisione 83.3):
@@ -46,11 +49,12 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
         // Coda 413 (decisione 156.4): il credito della coppia dell'uscita di chi aveva il pezzo regolato fra le parti è nel Wallet, non nell'accordo.
         $v['modo'] === 'credito' => (int) $v['importo'] > 0 ? 'a suo debito nel Wallet' : 'a suo credito nel Wallet',
         // Coda 429: il verso è quello della cifra. Negativa: chi è uscito riceve («da restituire a»); positiva (un'entrata che nei giorni dopo l'uscita supera la spesa): è lui a dover dare, «da ricevere da».
-        $v['modo'] === 'restituzione' => ((int) $v['importo'] > 0 ? 'da ricevere da ' : 'da restituire a ') . ($v['a_chi'] ?? 'chi è uscito') . ' (' . $allaFine($v) . ')',
+        $v['modo'] === 'restituzione' => ((int) $v['importo'] > 0 ? 'da ricevere da ' : 'da restituire a ') . ($v['a_chi'] ?? 'chi è uscito') . ' (' . (! empty($v['accordo_del']) ? $dellAccordo($v) : $allaFine($v)) . ')',
         $v['modo'] === 'da_restituire' => 'pagata da ' . $v['pagato_da'] . ', rimasta a suo carico (' . $allaFine($v) . '): si restituisce a chi l\'ha pagata, fra le parti',
         // Coda 364 (1.11.0-beta.55): i giorni di un conduttore entrato dopo un cambio d'inquilino, che chi è entrato con il cambio ha pagato con il conguaglio.
         $v['modo'] === 'entrato_dopo' => ((int) $v['importo'] < 0 ? 'da ricevere da ' : 'da restituire a ') . $v['da_chi'] . ': la parte di ' . $v['da_chi'] . ' dei giorni presi ' . $conIlCambio($v),
         $v['modo'] === 'proprietario' && ! empty($v['conguaglio_del']) => 'pagata da ' . $v['pagato_da'] . ' ' . $conIlCambio($v),
+        ($v['strada'] ?? null) === 'A' && ! empty($v['accordo_del']) => 'pagata da ' . $v['pagato_da'] . $comeLiAveva($v) . ' (' . $dellAccordo($v) . ')',
         ($v['strada'] ?? null) === 'A' => 'pagata da ' . $v['pagato_da'] . ', rimasta a suo carico (' . $allaFine($v) . ')',
         ($v['strada'] ?? null) === 'B' => 'pagata da ' . $v['pagato_da'] . ' con il conguaglio della fine locazione del ' . $data($v['uscita_del'] ?? null) . (! empty($v['oppure']) ? ', o da ' . $v['oppure'] : ''),
         default => 'pagata da ' . $v['pagato_da'],

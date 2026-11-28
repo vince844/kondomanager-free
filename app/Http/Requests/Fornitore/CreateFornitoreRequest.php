@@ -12,6 +12,8 @@ use App\Http\Requests\Fornitore\Concerns\ChiedeLaNaturaDelPercipiente;
 use App\Helpers\MoneyHelper;
 use App\Models\Fornitore;
 use App\Rules\UniqueEmailAcrossTables;
+use Illuminate\Auth\Access\Response;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Carbon\Carbon;
@@ -22,11 +24,12 @@ class CreateFornitoreRequest extends FormRequest
     use ChiedeLaNaturaDelPercipiente;
 
     /**
-     * Determine if the user is authorized to make this request.
+     * Il permesso prima dei campi: chi non può creare fornitori riceve il rifiuto, non l'errore sulla ragione sociale, sulla
+     * partita IVA o sul codice fiscale già usati. La stessa abilità che il controller ripete (`FornitorePolicy::create`).
      */
-    public function authorize(): bool
+    public function authorize(): Response
     {
-        return true;
+        return Gate::forUser($this->user())->inspect('create', Fornitore::class);
     }
 
     /**

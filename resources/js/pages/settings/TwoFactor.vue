@@ -21,9 +21,12 @@ import { useTwoFactorAuth } from '@/composables/useTwoFactorAuth';
 const props = withDefaults(defineProps<{
   confirmed?: boolean;
   recoveryCodes?: string[];
+  // Lo studio rende la verifica obbligatoria per chi entra nel pannello: la pagina lo dice e non offre di toglierla.
+  obbligatoria?: boolean;
 }>(), {
   confirmed: false,
-  recoveryCodes: () => []
+  recoveryCodes: () => [],
+  obbligatoria: false,
 });
 
 const breadcrumbs = [
@@ -79,6 +82,14 @@ const toggleRecoveryCodes = () => {
       <div class="space-y-6">
         <HeadingSmall :title="trans('settings.two_factor.heading')" :description="trans('settings.two_factor.description')" />
         
+        <p
+          v-if="props.obbligatoria && !confirmed"
+          data-test="due-fattori-obbligatoria"
+          class="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+        >
+          {{ trans('settings.two_factor.obbligatoria_per_il_pannello') }}
+        </p>
+
         <div v-if="!confirmed" class="flex flex-col items-start justify-start space-y-5">
           <Badge
             variant="outline"
@@ -309,7 +320,10 @@ const toggleRecoveryCodes = () => {
             </div>
           </div>
 
-          <div class="inline relative">
+          <p v-if="props.obbligatoria" data-test="due-fattori-non-disattivabile" class="text-sm text-muted-foreground">
+            {{ trans('settings.two_factor.disattivazione_bloccata') }}
+          </p>
+          <div v-else class="inline relative">
             <Button variant="destructive" @click="disable">
               {{ trans('settings.two_factor.disable') }}
             </Button>

@@ -97,6 +97,15 @@ describe('la guida dell\'estratto conto', () => {
         expect(testo).toContain('Con l\'esercizio chiuso.');
         expect(testo).toContain('«Spese del ritardo»');
         expect(testo).not.toContain('Addebita una spesa');
+        // Il riquadro del credito dice il netto della persona, e il rimborso a chi ha da versare chiede una conferma.
+        expect(testo).toContain('Il netto della persona sulle rate emesse');
+        expect(testo).toContain('Il credito di un\'altra persona non toglie mai dal suo debito.');
+        expect(testo).toContain('il programma chiede «Rimborsi lo stesso?»');
+        expect(testo).not.toContain('Non toglie il debito delle altre rate');
+        // Con credito e debito su gestioni diverse, una riga per gestione: il credito di una gestione non toglie dal debito di un'altra.
+        expect(testo).toContain('Il credito di una gestione copre le rate della stessa gestione.');
+        expect(testo).toContain('non un solo «da versare» di € 80,00');
+        expect(testo).not.toContain('la «i» divide il lordo per gestione');
     });
 
     test('ogni nome tra virgolette basse c\'è nella pagina, nei suoi pezzi o nei servizi che lo scrivono', () => {

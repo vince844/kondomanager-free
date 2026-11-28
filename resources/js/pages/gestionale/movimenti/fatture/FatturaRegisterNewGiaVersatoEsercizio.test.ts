@@ -7,6 +7,11 @@
  * Coda 438 (decisione 183.1): la stima del modale dello sforo toglie il già versato che vale nell'esercizio della fattura.
  * Il già versato di Ugo (€ 300,00) vale per il 2026 (id 41); la fattura è del 2027 (id 42): la rata integrativa del 2027 non lo toglie, e la stima
  * non deve toglierlo. Con la fattura del 2026, sì.
+ *
+ * La stima è la cifra che chiede il piano integrativo: lo sforo, meno il già versato nella parte che lo sforo ha della voce alzata alla spesa
+ * (`IntegrativoDopoSforoTest.php`, letta dal motore). Voce € 1.200,00, fattura € 1.500,00: lo sforo è € 300,00, la voce sale a € 1.500,00, e con
+ * € 300,00 di già versato l'integrativo chiede € 300,00 − € 300,00 × 300 / 1.500 = € 240,00. Prima la stima diceva la fattura meno il già versato
+ * (€ 1.200,00), una cifra che nessun piano chiede.
  */
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { enableAutoUnmount, mount } from '@vue/test-utils';
@@ -66,37 +71,53 @@ async function fatturaDi(esercizioId: number, conto: typeof CONTO = CONTO) {
 }
 
 describe('Coda 438 — la stima dello sforo e il già versato di un altro esercizio', () => {
-    test('fattura del 2027, già versato del 2026: la stima non lo toglie (sforo € 300,00, residuo netto € 1.500,00)', async () => {
+    test('fattura del 2027, già versato del 2026: la stima non lo toglie (lo sforo intero, € 300,00)', async () => {
         const impatto = await fatturaDi(42);
         expect(impatto.isOk).toBe(false);
         expect(impatto.gia_versato_cents).toBe(0);
-        expect(impatto.residuoNettoStimatoCents).toBe(150_000);
+        expect(impatto.residuoNettoStimatoCents).toBe(30_000);
     });
 
-    test('fattura del 2026, già versato del 2026: la stima lo toglie (€ 1.500,00 − € 300,00 = € 1.200,00)', async () => {
+    test('fattura del 2026, già versato del 2026: la stima lo toglie nella parte dello sforo (€ 300,00 − € 300,00 × 300 / 1.500 = € 240,00)', async () => {
         const impatto = await fatturaDi(41);
         expect(impatto.gia_versato_cents).toBe(30_000);
-        expect(impatto.residuoNettoStimatoCents).toBe(120_000);
+        expect(impatto.residuoNettoStimatoCents).toBe(24_000);
+    });
+
+    test('il caso del motore: voce € 1.200,00, fattura € 6.100,00, € 300,00 di già versato: la stima è € 4.659,02, quanto chiede l\'integrativo', async () => {
+        const w = render(CONTO);
+        const vm = w.vm as any;
+        vm.form.esercizio_id = 41;
+        vm.form.fornitore_id = 10;
+        await w.vm.$nextTick();
+        vm.form.righe[0].conto_id = CONTO.id;
+        vm.form.righe[0].importo_imponibile = 6100;
+        vm.form.righe[0].aliquota_iva = 0;
+        await w.vm.$nextTick();
+
+        const impatto = vm.budgetImpacts.find((i: any) => i.id === CONTO.id);
+        expect(impatto.residuoNettoStimatoCents).toBe(465_902);
+        expect(vm.vociInSforo[0].sforoLordoCents).toBe(490_000);
     });
 
     // Il già versato senza esercizio (€ 100,00) vale in tutti i piani della voce, quindi in quello di ogni esercizio, e si somma a quello dell'esercizio.
     const CONTO_CON_TUTTI = { ...CONTO, gia_versato_cents: 40_000, gia_versato_per_esercizio: { tutti: 10_000, '41': 30_000 } };
 
-    test('fattura del 2027 con un già versato per tutti gli esercizi (€ 100,00) e uno del 2026 (€ 300,00): la stima toglie solo il primo', async () => {
+    test('fattura del 2027 con un già versato per tutti gli esercizi (€ 100,00) e uno del 2026 (€ 300,00): la stima toglie solo il primo (€ 300,00 − € 20,00 = € 280,00)', async () => {
         const impatto = await fatturaDi(42, CONTO_CON_TUTTI);
         expect(impatto.gia_versato_cents).toBe(10_000);
-        expect(impatto.residuoNettoStimatoCents).toBe(140_000);
+        expect(impatto.residuoNettoStimatoCents).toBe(28_000);
     });
 
-    test('fattura del 2026 con gli stessi due già versati: la stima li toglie tutti e due (€ 1.500,00 − € 400,00 = € 1.100,00)', async () => {
+    test('fattura del 2026 con gli stessi due già versati: la stima li toglie tutti e due nella parte dello sforo (€ 300,00 − € 80,00 = € 220,00)', async () => {
         const impatto = await fatturaDi(41, CONTO_CON_TUTTI);
         expect(impatto.gia_versato_cents).toBe(40_000);
-        expect(impatto.residuoNettoStimatoCents).toBe(110_000);
+        expect(impatto.residuoNettoStimatoCents).toBe(22_000);
     });
 
     test('una voce senza il campo del già versato per esercizio: vale il totale', async () => {
         const impatto = await fatturaDi(42, { id: 55, nome: 'Spese generali', residuo_budget: 120_000, gia_versato_cents: 30_000, ultimi_movimenti: [] } as any);
         expect(impatto.gia_versato_cents).toBe(30_000);
-        expect(impatto.residuoNettoStimatoCents).toBe(120_000);
+        expect(impatto.residuoNettoStimatoCents).toBe(24_000);
     });
 });

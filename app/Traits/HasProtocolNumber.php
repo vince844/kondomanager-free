@@ -60,6 +60,9 @@ trait HasProtocolNumber
             // è `STO`, come gli altri storni di scrittura.
             'incasso_diverso'             => 'ENT',
             'storno_incasso_diverso'      => 'STO',
+            // 1.12.0-beta.14 (Coda 743): il ripianamento del debito ereditato ha un prefisso suo; il suo storno è `STO`, come gli altri storni di scrittura.
+            'ripianamento_debito'         => 'RIP',
+            'storno_ripianamento_debito'  => 'STO',
             default                       => 'SCR',
         };
 

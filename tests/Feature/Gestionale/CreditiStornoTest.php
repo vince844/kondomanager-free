@@ -814,3 +814,25 @@ it('P8/C209 — l\'uso che lo storno stesso annulla non si avvisa: stornato prim
     cstStorna($this, $s, $compensazione)->assertSessionHasNoErrors();
     expect([(int) RataQuote::find(cstQuota($s, 1))->importo_pagato, (int) RataQuote::find(cstQuota($s, 2))->importo_pagato])->toBe([0, 0]);
 });
+
+it('«Usa credito» senza denaro non chiede la risorsa finanziaria: l\'incasso tutto a credito si registra senza; con denaro la chiede ancora', function () {
+    $s = cstScenario();
+    cstEmetti($this, $s, [1, 2], '2026-02-28')->assertSessionHasNoErrors();
+    $richiesta = ['pagante_id' => $s['v']->id, 'data_pagamento' => '2026-03-10', 'importo_totale' => '0.00', 'descrizione' => 'Compensazione', 'eccedenza' => '0.00',
+        'dettaglio_pagamenti' => [['rata_id' => cstQuota($s, 1), 'importo' => '100.00'], ['rata_id' => cstQuota($s, 0), 'importo' => '-100.00']]];
+
+    // Con denaro, senza la risorsa: il rifiuto di sempre, e niente scritto.
+    $this->actingAs($this->user)->from('/incasso')->post(route('admin.gestionale.movimenti-rate.store', [$s['c']]),
+        array_replace($richiesta, ['importo_totale' => '100.00', 'dettaglio_pagamenti' => [['rata_id' => cstQuota($s, 1), 'importo' => '100.00']]]))
+        ->assertRedirect('/incasso')->assertSessionHasErrors('cassa_id');
+    expect(DB::table('scritture_contabili')->where('condominio_id', $s['c']->id)->where('tipo_movimento', 'incasso_rata')->count())->toBe(0);
+
+    // Tutto a credito, senza la risorsa: si registra, e la scrittura non ha righe di cassa.
+    $this->actingAs($this->user)->from('/incasso')->post(route('admin.gestionale.movimenti-rate.store', [$s['c']]), $richiesta)
+        ->assertRedirect()->assertSessionHasNoErrors();
+    $padre = (int) DB::table('scritture_contabili')->where('condominio_id', $s['c']->id)->where('tipo_movimento', 'incasso_rata')->value('id');
+    expect($padre)->toBeGreaterThan(0)
+        ->and(DB::table('scritture_contabili')->where('condominio_id', $s['c']->id)->where('tipo_movimento', 'storno_credito')->count())->toBe(1)
+        ->and(DB::table('righe_scritture')->where('scrittura_id', $padre)->whereNotNull('cassa_id')->count())->toBe(0)
+        ->and((int) DB::table('rate_quote')->where('id', cstQuota($s, 1))->value('importo_pagato'))->toBe(10000);
+});

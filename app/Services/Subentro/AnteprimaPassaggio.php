@@ -635,8 +635,9 @@ class AnteprimaPassaggio
         $consolidaPerUnita = [(int) $immobileIds[0] => $this->consolida];
         $righeUscenti = [(int) $immobileIds[0] => (int) $uscente->id];
         foreach (array_slice($immobileIds, 1) as $u) {
-            $riga = TitolaritaImmobile::where('immobile_id', $u)->where('anagrafica_id', $uscente->anagrafica_id)->where('tipologia', $uscente->tipologia)->get()
-                ->first(fn (TitolaritaImmobile $t) => $t->inCorsoIl($decorrenza->subDay()) && $t->passaggioCheLaChiude() === null);
+            $pertinenza = Immobile::find($u);
+            $riga = $pertinenza === null ? null
+                : TitolaritaImmobile::rigaCheEsceDallaPertinenza($pertinenza, (int) $uscente->anagrafica_id, (string) $uscente->tipologia, $decorrenza->subDay());
             if ($riga !== null) {
                 $righeUscenti[(int) $u] = (int) $riga->id;
             }
@@ -3416,21 +3417,24 @@ class AnteprimaPassaggio
      * Scaduto e non pagato di chi esce, sulle rate emesse di questa unità e delle pertinenze spuntate. Coda 252 (le tre frasi con il box spuntato):
      * prima contava solo la principale; con il box spuntato il passaggio porta con sé anche le sue rate, e la cifra deve contarle e dire la divisione.
      *
+     * La cifra è lo scaduto della lettura comune dei debiti (`LetturaDebiti::perPersona`, il giornale), unità per unità: la stessa della
+     * situazione debitoria. Fino alla 1.12.0-beta.14 si sommavano le sole quote a debito scadute; dopo una vendita seguita da una ricompra
+     * la stessa persona ha sulla stessa rata e unità una quota a debito e la gemella a credito (decisione 25), il giornale le netta, e la
+     * somma delle sole quote a debito diceva di più.
+     *
      * @param list<int> $immobileIds la principale e le pertinenze spuntate
      */
     private function morosita(Immobile $immobile, int $anagraficaId, array $immobileIds = []): ?array
     {
         $immobileIds = $immobileIds !== [] ? $immobileIds : [(int) $immobile->id];
-        $perUnita = DB::table('rate_quote')
-            ->join('rate', 'rate.id', '=', 'rate_quote.rata_id')
-            ->whereIn('rate_quote.immobile_id', $immobileIds)
-            ->where('rate_quote.anagrafica_id', $anagraficaId)
-            ->whereExists(\App\Models\Gestionale\Rata::aGiornale())
-            ->whereIn('rate_quote.stato', ['da_pagare', 'parzialmente_pagata'])
-            ->whereDate('rate.data_scadenza', '<', DateHelper::oggiUtente())
-            ->groupBy('rate_quote.immobile_id')
-            ->selectRaw('rate_quote.immobile_id as immobile_id, COALESCE(SUM(rate_quote.importo - rate_quote.importo_pagato), 0) as residuo')
-            ->get()->mapWithKeys(fn ($r) => [(int) $r->immobile_id => (int) $r->residuo])->filter(fn (int $c) => $c > 0)->all();
+        $lettura = app(\App\Services\Gestionale\Debiti\LetturaDebiti::class)->perPersona((int) $immobile->condominio_id, $anagraficaId);
+        $perUnita = [];
+        foreach ($lettura['rate'] as $r) {
+            $id = (int) ($r['immobile_id'] ?? 0);
+            if ($r['scaduta'] && (int) $r['residuo'] > 0 && in_array($id, array_map('intval', $immobileIds), true)) {
+                $perUnita[$id] = ($perUnita[$id] ?? 0) + (int) $r['residuo'];
+            }
+        }
         $residuo = (int) array_sum($perUnita);
 
         if ($residuo <= 0) {

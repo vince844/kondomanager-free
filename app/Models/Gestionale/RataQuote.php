@@ -938,6 +938,9 @@ class RataQuote extends Model
      * segno. La usano i tre scrittori dell'emissione: l'emissione, il comando di riallineamento e lo storno di un incasso con la
      * quota rimasta fuori.
      *
+     * Una quota senza righe a nome della persona (a zero) può avere la sua parte ad personam: allora `righe` è vuoto, `gestione` è
+     * meno la parte e `anticipazione` la parte, e chi scrive la porta a giornale lo stesso (Coda 426).
+     *
      * Il credito già uscito da «Passate gestioni» si legge per persona, rata e unità: con due quote gemelle (decisione 25) il
      * giornale non dice da quale delle due è uscito, e si consuma una quota dopo l'altra, così non si sottrae due volte.
      *
@@ -967,7 +970,10 @@ class RataQuote extends Model
             $righe = $quota->righeDiEmissione($usato);
             $netto = array_sum(array_map(fn (array $r) => $r[0] === 'dare' ? $r[1] : -$r[1], $righe));
             $spesa = $righe === [] ? 0 : $quota->componenti()['spesa'];
-            $anticipazione = $righe === [] ? 0 : $partiAdPersonam[(int) $quota->id];
+            // La parte ad personam si chiude anche per una quota senza righe a nome della persona: una quota che una rettifica comune
+            // negativa porta a zero ha chiesto lo stesso la spesa della sua unità, e l'anticipazione della fattura va chiusa con lei
+            // (Coda 426). La contropartita è su «Gestione rate», in DARE.
+            $anticipazione = $partiAdPersonam[(int) $quota->id];
             $esito[(int) $quota->id] = ['righe' => $righe, 'gestione' => $spesa - $anticipazione, 'anticipazione' => $anticipazione, 'pregresso' => $netto - $spesa];
         }
 

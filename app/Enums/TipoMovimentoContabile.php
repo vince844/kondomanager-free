@@ -24,6 +24,7 @@ namespace App\Enums;
  * Aggiunto in v1.9.1: storno_pagamento_fornitore
  * Aggiunto in v1.10.0-beta.21: storno_pagamento_f24
  * Aggiunto in v1.12.0-beta.5: storno_incasso_diverso (e `incasso_diverso` ha un movimento che lo scrive)
+ * Aggiunti in v1.12.0-beta.14: ripianamento_debito, storno_ripianamento_debito (Coda 743)
  */
 enum TipoMovimentoContabile: string
 {
@@ -83,6 +84,16 @@ enum TipoMovimentoContabile: string
 
     case RETTIFICA                   = 'rettifica';
 
+    /**
+     * Coda 743 (1.12.0-beta.14): il ripianamento del debito ereditato (`RipianamentoDelDeficit`), scritto con il piano che lo mette a rate. DARE
+     * Sopravvenienze passive (con la voce) / AVERE Fondo Passate Gestioni, legato alla fattura pregressa. Non è una `rettifica`: il programma legge una
+     * rettifica con il padre come lo storno di un incasso.
+     */
+    case RIPIANAMENTO_DEBITO         = 'ripianamento_debito';
+
+    /** Lo storno del ripianamento, quando il suo piano si elimina: la scrittura inversa, con il padre (giornale append-only). */
+    case STORNO_RIPIANAMENTO_DEBITO  = 'storno_ripianamento_debito';
+
     // Attivato in beta.27: RegistraContributoInCassaAction — porta a giornale
     // un "già versato" (beta.26) che l'amministratore dichiara ancora fermo su
     // una cassa/fondo del condominio. DARE cassa / AVERE Fondo Passate Gestioni,
@@ -121,6 +132,8 @@ enum TipoMovimentoContabile: string
             self::GIROCONTO                  => 'Giroconto',
             self::STORNO_GIROCONTO           => 'Storno giroconto',
             self::RETTIFICA                  => 'Rettifica',
+            self::RIPIANAMENTO_DEBITO        => 'Ripianamento del debito ereditato',
+            self::STORNO_RIPIANAMENTO_DEBITO => 'Storno del ripianamento del debito ereditato',
             self::ACCANTONAMENTO             => 'Accantonamento',
             self::RIPARTO                    => 'Riparto',
             self::RICONCILIAZIONE_BANCARIA   => 'Riconciliazione bancaria',
@@ -173,6 +186,7 @@ enum TipoMovimentoContabile: string
             self::STORNO_PAGAMENTO_F24,
             self::STORNO_GIROCONTO,
             self::STORNO_INCASSO_DIVERSO,
+            self::STORNO_RIPIANAMENTO_DEBITO,
         ]);
     }
 

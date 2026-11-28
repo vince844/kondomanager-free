@@ -193,6 +193,8 @@ const form = useForm({
   interessi_del_defunto: null as SceltaInteressiDelDefunto | null,
   // Decisione 494 (2): le otto scelte sugli interessi degli eredi cambiate per questa successione; null: le regole del condominio.
   interessi_eredi: null as Record<string, boolean> | null,
+  // Chi vende e si toglie dalle persone del condominio con la registrazione: di serie chi non ha altro qui (lo dice il pannello).
+  togli_dal_condominio: [] as number[],
 });
 
 const ANTICIPI = [30, 60, 90, 180] as const;
@@ -696,6 +698,25 @@ const cancelloRichiesto = computed(() => pannelloDati.value?.cancello.richiesto 
 const informazioniCancello = computed(() => pannelloDati.value?.cancello.informazioni ?? []);
 /** Rilievo T4 della Fase 1-bis della .43: gli avvisi senza spunta che non riguardano quote lasciate dov'erano (decisione 58). */
 const avvisiCancello = computed(() => pannelloDati.value?.cancello.avvisi ?? []);
+
+// --- Chi vende e il condominio -------------------------------------------------------------------
+
+/** Chi vende e che cosa gli resta nel condominio dopo l'atto (`AnteprimaPassaggioRequest::chiEsceDallaVendita`). */
+interface ChiEsceDalCondominio { id: number; nome: string; resta: string[] }
+const esceDalCondominio = computed<ChiEsceDalCondominio[]>(() => eVendita.value
+  ? ((pannelloDati.value as (AnteprimaRisposta & { esce_dal_condominio?: ChiEsceDalCondominio[] }) | null)?.esce_dal_condominio ?? []) : []);
+/** Toccata una casella, la scelta resta dell'amministratore: il pannello che si ricalcola non la rimette di serie. */
+const togliToccato = ref(false);
+watch(esceDalCondominio, (chi) => {
+  const ids = chi.map(c => c.id);
+  form.togli_dal_condominio = togliToccato.value
+    ? form.togli_dal_condominio.filter(id => ids.includes(id))
+    : chi.filter(c => c.resta.length === 0).map(c => c.id);
+});
+function spuntaTogli(id: number) {
+  togliToccato.value = true;
+  form.togli_dal_condominio = form.togli_dal_condominio.includes(id) ? form.togli_dal_condominio.filter(x => x !== id) : [...form.togli_dal_condominio, id];
+}
 const cancelloSoddisfatto = computed(() => !cancelloRichiesto.value || (form.ho_letto && form.nota_cancello.trim().length >= 10));
 // Decisioni 72 e 73 (1.11.0-beta.48): nella successione e nel legato, con l'arretrato a nome del defunto, il conguaglio si sceglie
 // al posto della casella, e «Non scriverlo» non chiede una nota (se c'è, almeno dieci caratteri, come sul server). Decisione 77
@@ -738,6 +759,7 @@ function corpoRegistrazione() {
     conguaglio: sceltaRichiesta.value ? form.conguaglio : null,
     // Rilievo S1: l'elenco delle voci che il pannello ha mostrato; se sul server è cambiato, la registrazione si ferma.
     ordinaria_impronta: ordinaria.value?.impronta ?? null,
+    togli_dal_condominio: eVendita.value ? form.togli_dal_condominio : [],
     ...(insieme.value ? { impronta_del_gruppo: gruppo.value?.impronta ?? null } : {}),
   };
 }
@@ -1375,7 +1397,7 @@ function urlTipo(t: TipoPassaggio) {
                     <span class="flex flex-col gap-0.5">
                       <span class="text-sm font-semibold text-slate-800 dark:text-slate-200">All'usufruttuario<template v-if="ordinaria.usufruttuario">, {{ ordinaria.usufruttuario }}</template></span>
                       <span class="text-[11px] font-medium text-purple-700 dark:text-purple-300">Proposta di legge, art. 1004 c.c.</span>
-                      <span class="text-[11px] text-slate-500 dark:text-slate-400">Le spese ordinarie sono di chi gode del bene. Le voci sul «Proprietario» che si possono spostare passano all'«Usufruttuario», così i piani generati dopo fanno lo stesso. Le voci create dopo partono dal «Proprietario», e nei piani generati o ricalcolati dopo la spesa addebitata direttamente all'unità va al nudo proprietario (nel conguaglio delle rate già emesse resta all'usufruttuario).</span>
+                      <span class="text-[11px] text-slate-500 dark:text-slate-400">Le spese ordinarie sono di chi gode del bene. Le voci sul «Proprietario» che si possono spostare passano all'«Usufruttuario», così i piani generati dopo fanno lo stesso. Le voci create dopo partono dal «Proprietario». La spesa addebitata direttamente all'unità segue la sua voce; senza voce va all'usufruttuario, nei piani generati o ricalcolati dopo e nel conguaglio delle rate già emesse.</span>
                     </span>
                   </label>
                   <label class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition-all"
@@ -1605,6 +1627,23 @@ function urlTipo(t: TipoPassaggio) {
                   <p class="text-[11px] text-slate-500 dark:text-slate-400">Restano a chi le ha e nessuna cambia intestatario: per queste non serve la spunta.</p>
                 </div>
               </div>
+            </div>
+            <div v-if="esceDalCondominio.length && pannelloPronto" data-testid="esce-dal-condominio" class="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950 p-5 space-y-3">
+              <div class="flex items-start gap-3">
+                <Users class="w-5 h-5 text-slate-500 shrink-0 mt-0.5" />
+                <div class="space-y-1">
+                  <p class="text-sm font-bold text-slate-800 dark:text-slate-200">Chi vende e il condominio</p>
+                  <p class="text-[13px] text-slate-600 dark:text-slate-400">Le sue rate rimaste si incassano lo stesso, e il suo estratto conto resta: togliendolo non vede più il portale e non riceve le comunicazioni a tutti.</p>
+                </div>
+              </div>
+              <label v-for="c in esceDalCondominio" :key="c.id" class="flex items-start gap-3 pl-8 cursor-pointer select-none">
+                <input type="checkbox" :data-testid="`togli-${c.id}`" :checked="form.togli_dal_condominio.includes(c.id)" @change="spuntaTogli(c.id)" class="w-4 h-4 mt-0.5 accent-slate-900 dark:accent-slate-300 rounded border-slate-300" />
+                <span class="text-[13px] text-slate-800 dark:text-slate-200">
+                  <span class="font-semibold">Togli {{ c.nome }} dal condominio</span>
+                  <span class="block text-xs text-slate-500 dark:text-slate-400">{{ c.resta.length ? `Gli resta ${c.resta.join(', ')}: di solito resta fra le persone del condominio.` : 'Dopo l\'atto non gli resta nessuna unità qui.' }}</span>
+                </span>
+              </label>
+              <InputError :message="form.errors.togli_dal_condominio" class="pl-8" />
             </div>
             <div v-if="avvisiCancello.length && pannelloPronto" class="rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/40 p-5">
               <div class="flex items-start gap-3">

@@ -23,7 +23,7 @@ vi.mock('@inertiajs/vue3', () => ({
     router: { get: (...a: unknown[]) => routerGet(...a), reload: vi.fn(), post: vi.fn(), delete: vi.fn() },
     usePage: () => ({ props: { errors: {} } }),
 }));
-vi.mock('@/composables/permissions', () => ({ usePermission: () => ({ generateRoute: (nome: string) => nome, generatePath: (p: string) => `/${p}` }) }));
+vi.mock('@/composables/permissions', () => ({ usePermission: () => ({ generateRoute: (nome: string) => nome, generatePath: (p: string) => `/${p}`, hasPermission: () => true }) }));
 (globalThis as unknown as { route: unknown }).route = (nome: string, parametri: Record<string, unknown> = {}) =>
     `/${nome}?${new URLSearchParams(Object.entries(parametri).flatMap(([k, v]) => (v === undefined ? [] : [[k, String(v)]]))).toString()}`;
 

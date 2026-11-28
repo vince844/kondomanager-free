@@ -7,6 +7,30 @@ e il progetto adotta il [Versionamento Semantico](https://semver.org/lang/it/).
 
 ---
 
+## [1.12.0-beta.15] - Gli accessi, il piano rate e i passaggi di proprietà
+
+**Tocca il database.** L'aggiornamento esegue da solo le migrazioni nuove. Nascono due tabelle, vuote: i dispositivi da cui ognuno entra nel programma, per l'avviso di un accesso da un dispositivo nuovo, e le letture di fine anno dei sottocontatori. Una impostazione nuova, spenta di serie: la verifica in due passaggi obbligatoria per chi entra nel pannello. Una colonna nuova sulle righe delle fatture ricorda la voce di un addebito a una sola unità, per le fatture registrate o modificate da adesso. Nessuna migrazione cambia i dati che ci sono. Nessun permesso nuovo. I requisiti del server non cambiano.
+
+**Che cosa fa la beta.**
+- **Chi può fare che cosa nel pannello**: «Accesso pannello amministratore» lo dà solo un amministratore; caricare un file chiede «Crea documenti archivio»; unità, tabelle e millesimi chiedono «Modifica condomini».
+- **La verifica in due passaggi obbligatoria** per chi entra nel pannello, se la accendi, e l'email «Nuovo accesso al tuo account» da un dispositivo nuovo.
+- **Chi è sospeso non riceve più avvisi**; lettere, ricevute e convocazioni partono come sempre.
+- **Chi vende si può togliere dal condominio** al passaggio, e le sue rate rimaste si incassano lo stesso; la rubrica non cancella più le quote di chi si elimina.
+- **Le cifre dei piani generati da adesso** nei giorni senza titolare, nel «già versato» di unità e persona sulla stessa spesa, nell'addebito a una sola unità e nella spesa senza periodo.
+- **Una voce già chiesta per intero da un altro piano non si chiede di nuovo**, e il piano dice quanto resta.
+- **Il piano rate** con il suo esercizio e «Cambia», il credito dell'estratto conto gestione per gestione, il versamento parziale che paga prima il debito dell'anno prima.
+- **La correzione delle spese chieste due volte** in un piano vecchio, con la riga «Rettifica di esercizi precedenti» nel rendiconto.
+- **Le letture di fine anno** dei sottocontatori, per il conguaglio.
+- **Gli eredi e i passaggi**: l'erede di un erede, le fermate già regolate dal Wallet, l'accordo fra le parti nel prospetto degli oneri.
+- **I saldi da incassare senza voci**, i piani che cambiano dopo una quota corretta, le righe chiuse da correggere nello storico.
+- **Le impostazioni generali in tre schede**, con la guida.
+- **Inserire molte unità di fila** in «Nuova associazione» e «Nuovo immobile», proposto e scritto da Federico D'Eredità: grazie.
+- **Corretto**: i messaggi d'errore senza il testo tecnico, l'esercizio nuovo con la sua gestione ordinaria, le librerie alle ultime versioni correttive e molte cose piccole.
+
+---
+
+---
+
 ## [1.12.0-beta.14] - I conti, gli eredi e le pagine d'errore
 
 **Tocca il database.** L'aggiornamento esegue da solo otto migrazioni nuove e due delle impostazioni. Nascono tre tabelle: due per gli errori del programma (l'errore e le volte in cui è successo) e una per le letture delle comunicazioni. Colonne nuove su tabelle che c'erano: il segno «di un gruppo» sulle tabelle millesimali, la richiesta della presa visione sulle comunicazioni, il legame fra i passaggi registrati insieme; nascono vuote. A chi ha già delle preferenze di notifica si aggiunge la voce «Errore avvisato», spenta. **Due migrazioni cambiano i dati che ci sono, una volta sola**: i promemoria «F24 Ritenuta» ancora aperti, uno per pagamento, si chiudono e al loro posto nasce un promemoria per ogni delega aperta e un «Prepara le deleghe F24» per le ritenute che non sono in nessuna delega (quelli che hai chiuso tu non si toccano); le voci di spesa che un'importazione aveva scritto senza il loro conto di partita doppia lo prendono («Costi per Servizi», o «Compensi Professionisti» per le voci dei professionisti). Le impostazioni nuove hanno il loro valore di serie: le aperture delle comunicazioni non si registrano, i condòmini possono avvisare lo studio dalla pagina d'errore. Nessun permesso nuovo. I requisiti del server non cambiano.

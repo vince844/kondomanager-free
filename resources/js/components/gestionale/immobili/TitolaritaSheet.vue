@@ -21,7 +21,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * con una finestra e un motivo solo («Annulla i passaggi»). Il server manda `insieme.passaggi` (§1.9 di `tappa7_progetto.md`); un passaggio da solo resta com'era.
  */
 import { computed, ref } from 'vue';
-import { useForm } from '@inertiajs/vue3';
+import { Link, useForm } from '@inertiajs/vue3';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Input } from '@/components/ui/input';
@@ -195,6 +195,12 @@ const sottotitolo = computed(() => {
       : `${registrati} passaggi registrati, ${inVigore.insieme} insieme.`;
   return registratiInParole + eAnnullati;
 });
+
+/** «1 giorno», «258 giorni»: i giorni in cui, con la quota a 0 %, nessuno paga per l'unità. */
+function giorniScoperti(r: RigaStorico): string {
+  const n = r.giorni_scoperti ?? 0;
+  return n === 1 ? '1 giorno' : `${n} giorni`;
+}
 
 /** «●———» in corso, «●——●» chiuso, «○———» non ancora iniziato. */
 function tratto(r: RigaStorico): string {
@@ -419,6 +425,17 @@ function tratto(r: RigaStorico): string {
                     <span v-if="Number(r.quota) !== 100">quota {{ Number(r.quota).toLocaleString('it-IT', { maximumFractionDigits: 2 }) }} %</span>
                     <span v-if="!r.attivo" class="italic">riga disattivata</span>
                   </p>
+                  <!-- Una riga di proprietà a quota 0 lascia senza pagante i suoi giorni: lo dice il server (`giorni_scoperti`). Lo 0 può essere voluto (il regolamento
+                       esonera il costruttore): il testo non lo corregge da solo, indica dove si cambia. -->
+                  <div v-if="(r.giorni_scoperti ?? 0) > 0" data-testid="avviso-quota-zero" class="mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] leading-snug text-amber-900 dark:border-amber-800/50 dark:bg-amber-900/10 dark:text-amber-200">
+                    Con la quota a 0 % in questo periodo nessuno paga per questa unità: {{ giorniScoperti(r) }}. Se lo 0 è voluto (il regolamento esonera il costruttore), lascialo; se è un errore, correggi la quota.
+                    <div v-if="r.correggibile && r.url_correggi" class="mt-1.5">
+                      <Link :href="r.url_correggi" data-testid="correggi-riga" class="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">Correggi questa riga</Link>
+                    </div>
+                  </div>
+                  <div v-else-if="r.correggibile && r.url_correggi" class="mt-1.5">
+                    <Link :href="r.url_correggi" data-testid="correggi-riga" class="inline-flex h-8 items-center rounded-md border border-slate-200 bg-white px-3 text-[13px] font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">Correggi questa riga</Link>
+                  </div>
                   <p v-if="r.subentro" class="flex items-start gap-1.5 text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
                     <FileSignature class="w-3 h-3 mt-0.5 shrink-0" />
                     <span>
@@ -432,6 +449,15 @@ function tratto(r: RigaStorico): string {
                 </div>
               </li>
             </ol>
+            <!-- Che cosa cambia correggendo la quota: lo dice una volta per gruppo, dove c'è una riga a quota 0 che lascia dei giorni senza pagante. -->
+            <details v-if="g.righe.some((r) => (r.giorni_scoperti ?? 0) > 0)" data-testid="che-cosa-cambia" class="mt-3 text-[13px] text-slate-600 dark:text-slate-400">
+              <summary class="cursor-pointer text-indigo-600 dark:text-indigo-400">Che cosa cambia se correggi la quota</summary>
+              <ul class="mt-1.5 list-disc space-y-1 pl-5">
+                <li>Le rate già emesse non cambiano da sole.</li>
+                <li>Un piano in bozza si ricalcola con la quota nuova.</li>
+                <li>Un piano emesso: «Annulla emissione», bozza e «Ricalcola» (solo se non ha incassi).</li>
+              </ul>
+            </details>
           </section>
 
           <Accordion v-if="storico.righe.length" type="single" collapsible class="border-t border-dashed border-slate-200 dark:border-slate-700 pt-2">

@@ -38,6 +38,10 @@ final class LetterePec
         $ruolo->givePermissionTo($permesso);
         $utente = User::factory()->create(['email' => 'studio@prova.it', 'name' => 'Andrea Costa']);
         $utente->assignRole($ruolo);
+        // Caricare un file nel gestionale chiede anche «Crea documenti archivio», che l'amministratore di serie ha.
+        foreach (['Crea documenti archivio'] as $nomeDelPermesso) {
+            $ruolo->givePermissionTo(\Spatie\Permission\Models\Permission::firstOrCreate(['name' => $nomeDelPermesso, 'guard_name' => 'web']));
+        }
         if ($impostazioni) {
             $utente->givePermissionTo(Permission::firstOrCreate(['name' => \App\Enums\Permission::MANAGE_GENERAL_SETTINGS->value, 'guard_name' => 'web']));
         }

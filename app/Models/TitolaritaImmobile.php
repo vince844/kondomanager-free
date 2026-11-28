@@ -5,12 +5,14 @@
 
 namespace App\Models;
 
+use App\Enums\RuoloAnagraficaImmobile;
 use App\Models\Gestionale\Subentro;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 use App\Traits\RegistraLeModifiche;
+use Illuminate\Validation\ValidationException;
 
 /**
  * La riga di `anagrafica_immobile`: chi è titolare di un'unità, con quale ruolo, da quando a quando.
@@ -185,6 +187,31 @@ class TitolaritaImmobile extends Pivot
     {
         return Subentro::where('immobile_id', $this->immobile_id)->where('tipo_passaggio', 'successione')->get(['id', 'tipo_passaggio', 'registro'])
             ->contains(fn (Subentro $s) => in_array((int) $this->id, array_column($s->eredi(), 'riga_id'), true));
+    }
+
+    /**
+     * Su una pertinenza spuntata nel passaggio, la riga di chi esce che il passaggio chiude: fra le righe della persona nello stesso ruolo
+     * in corso il giorno prima e non chiuse da un passaggio, quella con una quota. Una riga a quota zero accanto a quella vera (un dato
+     * scritto prima della guardia del modulo, o importato) non si chiude al suo posto: chi esce resterebbe pieno sulla pertinenza insieme
+     * a chi entra. Senza nessuna riga con una quota, la prima in corso (la riga a zero del costruttore esonerato si passa com'è). Con più
+     * righe con una quota il passaggio si ferma: quale chiudere non si indovina. La stessa lettura per la registrazione
+     * (`RegistraSubentroAction::applicaAllaPertinenza`), per il pannello (`AnteprimaPassaggio`) e per la fermata (`FermataDopoScrivi`).
+     *
+     * @throws ValidationException con più righe con una quota
+     */
+    public static function rigaCheEsceDallaPertinenza(Immobile $pertinenza, int $anagraficaId, string $tipologia, CarbonInterface $giornoPrima, bool $blocca = false): ?self
+    {
+        $query = static::query()->with('anagrafica')->where('immobile_id', $pertinenza->id)->where('anagrafica_id', $anagraficaId)->where('tipologia', $tipologia)->orderBy('id');
+        $righe = ($blocca ? $query->lockForUpdate() : $query)->get()
+            ->filter(fn (self $t) => $t->inCorsoIl($giornoPrima) && $t->passaggioCheLaChiude() === null)->values();
+        $conQuota = $righe->filter(fn (self $t) => (float) $t->quota > 0.0)->values();
+        if ($conQuota->count() > 1) {
+            $ruolo = RuoloAnagraficaImmobile::tryFrom($tipologia)?->label() ?? $tipologia;
+            throw ValidationException::withMessages(['pertinenze' => sprintf('%s: %s ha due righe di %s in corso; correggile dallo storico della pertinenza prima del passaggio.',
+                $pertinenza->nome, $conQuota->first()->anagrafica?->nome ?? 'chi esce', mb_strtolower($ruolo))]);
+        }
+
+        return $conQuota->first() ?? $righe->first();
     }
 
     /** Esiste una riga della stessa persona su questa unità chiusa il giorno prima di questa? */

@@ -1045,13 +1045,21 @@ test('B2 S6 (verifica, R15) — dopo una vendita il versato del venditore resta 
     DB::table('anagrafica_immobile')->where('immobile_id', $sc->unita[0]->immobile->id)->where('anagrafica_id', $venditore->id)->update(['data_fine' => now()->subDay()->format('Y-m-d')]);
     DB::table('anagrafica_immobile')->insert(['anagrafica_id' => $acquirente->id, 'immobile_id' => $sc->unita[0]->immobile->id, 'tipologia' => 'proprietario', 'quota' => 100, 'attivo' => true, 'data_inizio' => now()->format('Y-m-d')]);
 
-    // La pagina: il venditore resta in elenco con la titolarità chiusa e la sua quota lorda storica (100 % di 55.000); l'acquirente è il titolare in corso.
+    // La pagina: il venditore resta in elenco con la titolarità chiusa; l'acquirente è il titolare in corso. La quota lorda è per giorni, con la regola del motore:
+    // la riga del venditore porta la data di oggi ma nessuno prima di lei, quindi per il motore vale da sempre, fino a ieri (dal primo giorno dell'esercizio);
+    // l'acquirente conta da oggi. Era la quota di possesso, 55.000.
     $props = $this->actingAs($this->user)->get("/admin/gestionale/{$sc->condominio->id}/contributi/{$sc->conto->id}")->viewData('page')['props'];
     $titolari = collect($props['titolari'][$sc->unita[0]->immobile->id]);
     expect($titolari->firstWhere('id', $venditore->id)['chiusa_il'])->toBe(now()->subDay()->format('Y-m-d'))
         ->and($titolari->firstWhere('id', $acquirente->id)['chiusa_il'])->toBeNull();
     $rigaVenditore = collect($props['righe'])->firstWhere('anagrafica_id', $venditore->id);
-    expect($rigaVenditore['gia_versato'])->toBe(30_000)->and($rigaVenditore['quota_lorda'])->toBe(55_000);
+    $es = \App\Models\Esercizio::findOrFail($props['esercizio_di_calcolo']);
+    $dal = \Carbon\CarbonImmutable::parse($es->data_inizio)->startOfDay();
+    $giorniEs = (int) $dal->diffInDays(\Carbon\CarbonImmutable::parse($es->data_fine)->startOfDay()) + 1;
+    $ieri = now()->subDay()->startOfDay()->toImmutable();
+    $giorniVenditore = $ieri->lt($dal) ? 0 : (int) $dal->diffInDays($ieri) + 1;
+    expect($rigaVenditore['gia_versato'])->toBe(30_000)->and($rigaVenditore['quota_lorda_unita'])->toBe(55_000)
+        ->and($rigaVenditore['quota_lorda'])->toBe((int) round(55_000 * round($giorniVenditore / $giorniEs, 6)));
 
     // Il salvataggio con la riga storica del venditore e la riga nuova dell'acquirente passa.
     $this->actingAs($this->user)

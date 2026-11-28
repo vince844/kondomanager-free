@@ -308,13 +308,17 @@ test('Coda 313 — un passaggio prima dell\'emissione: la parte ad personam pass
     // la chiave per l'entrante e danno zero alla gemella del pregresso»): ogni bozza di Anna ha `addebito_diretto` 10000, ogni quota del
     // pregresso di Rossi 0. Emesse le rate 5–12: chiusure 8 × 10000; «Crediti» di Interno 1 = 120000 (fattura) + 4 × 11500 + 8 × 10000 +
     // 8 × 1500 − 12 × 10000 = 138000, quanto le quote chiedono alle persone: Rossi 46000 + 12000 = 58000, Anna 80000. «Gestione rate» 0.
-    // Gli estratti conto contano anche la coppia del conguaglio (decisione 25), che non è nel giornale: Rossi ha avuto 4 × 10000
-    // per i suoi 120 giorni, 120000 × 120/365 = 39452 → € 5,48 a credito a Rossi e a debito ad Anna: 58000 − 548 = 57452, 80000 + 548 = 80548.
+    // La fattura è del 10 giugno, dopo la vendita (Coda 610, decisione 329 (2)): la riga sull'unità senza competenza è di chi è titolare
+    // quel giorno, cioè di Anna, e le bozze passano (decisione 26.4: la spesa è tutta di chi entra). Fino alla beta.14 la fattura del 10/03
+    // si divideva sui giorni dell'anno; ora sarebbe tutta di Rossi e le bozze resterebbero a lui (il caso dopo questo).
+    // Gli estratti conto contano anche la coppia del conguaglio (decisione 25.1), che non è nel giornale: la parte di Anna su emesse e bozze
+    // è tutta la spesa, 120000, meno il preventivo delle bozze passate, 8 × 10000 = 80000 → € 400,00 a credito a Rossi e a debito ad Anna:
+    // 58000 − 40000 = 18000 (il solo pregresso di Rossi), 80000 + 40000 = 120000 (tutta la spesa di Anna).
     $s = b59apBase(tipoGestione: 'ordinaria', saldi: ['mario' => 18000]);
     $rossi = $s['persone']['mario'];
     $anna = Anagrafica::forceCreate(['nome' => 'Anna Neri', 'email' => 'b59ap-anna@test.it', 'indirizzo' => 'Via Po 2', 'codice_fiscale' => 'B59APANNAXXXXXXX']);
     $anna->condomini()->syncWithoutDetaching([$s['c']->id]);
-    $fattura = b59apFattura($this, $s, [b59apRigaAdPersonam($s, 1200.00, 0)]);
+    $fattura = b59apFattura($this, $s, [b59apRigaAdPersonam($s, 1200.00, 0)], data: '2026-06-10');
     $piano = b59apPianoConSaldi($s, $fattura, 12, 'tutte_rate');
     expect((int) b59apQuota($piano, 5, $rossi)->importo)->toBe(11500);
     b59apEmetti($this, $s, $piano, [1, 2, 3, 4], '2026-01-05')->assertSessionHas('message.type', 'success');
@@ -338,8 +342,44 @@ test('Coda 313 — un passaggio prima dell\'emissione: la parte ad personam pass
 
     b59apEmetti($this, $s, $piano, range(5, 12), '2026-05-05')->assertSessionHas('message.type', 'success');
     expect(b59apCreditiUnita($s))->toBe(138000)
-        ->and(b59apEstratto($this, $s, $rossi))->toBe(57452)
-        ->and(b59apEstratto($this, $s, $anna))->toBe(80548)
+        ->and(b59apEstratto($this, $s, $rossi))->toBe(18000)
+        ->and(b59apEstratto($this, $s, $anna))->toBe(120000)
+        ->and(b59apGestioneRate($s))->toBe(0);
+});
+
+test('Coda 313 (Coda 610) — la fattura ad personam di prima della vendita è di chi vende: le bozze restano a Rossi, il conguaglio è zero, e l\'emissione chiude l\'anticipazione sulle sue quote', function () {
+    // Lo scenario di sopra con la fattura del 10 marzo, prima della vendita del 1° maggio. La riga sull'unità senza competenza è di chi era
+    // titolare quel giorno (decisione 329 (2), Coda 610: nel piano come nel consuntivo per persona), cioè di Rossi; le bozze seguono la
+    // decisione 26.4 e restano a lui (motivo `fattura_di_chi_esce`): passarle ad Anna per riprendersele con la coppia non serve. A mano:
+    // nessuna bozza passa, coppia 0; Rossi ha le 12 quote da 11500 = 138000, Anna 0; le chiusure sono 12 × 10000 e «Crediti» di Interno 1 =
+    // 120000 + 12 × 11500 − 12 × 10000 = 138000. «Gestione rate» 0. Fino alla beta.14 le bozze passavano e la coppia era € 5,48 (giorni).
+    $s = b59apBase(tipoGestione: 'ordinaria', saldi: ['mario' => 18000]);
+    $rossi = $s['persone']['mario'];
+    $anna = Anagrafica::forceCreate(['nome' => 'Anna Neri', 'email' => 'b59ap-anna3@test.it', 'indirizzo' => 'Via Po 2', 'codice_fiscale' => 'B59APANNA3XXXXXX']);
+    $anna->condomini()->syncWithoutDetaching([$s['c']->id]);
+    $piano = b59apPianoConSaldi($s, b59apFattura($this, $s, [b59apRigaAdPersonam($s, 1200.00, 0)]), 12, 'tutte_rate');
+    expect(DB::table('righe_riparto')->where('piano_rate_id', $piano->id)->where('tipo', 'ad_personam')->get(['competenza_dal', 'competenza_al'])
+        ->map(fn ($r) => [substr((string) $r->competenza_dal, 0, 10), substr((string) $r->competenza_al, 0, 10)])->all())->toBe([['2026-03-10', '2026-03-10']]);
+    b59apEmetti($this, $s, $piano, [1, 2, 3, 4], '2026-01-05')->assertSessionHas('message.type', 'success');
+
+    $vendita = ['tipo' => 'vendita', 'riga_uscente_id' => $s['righeTitolarita']['mario'], 'anagrafica_entrante_id' => $anna->id, 'decorrenza' => '2026-05-01',
+        'quota' => 100, 'tipologia' => 'proprietario', 'copia_autentica' => true, 'copia_autentica_il' => '2026-05-06', 'estremi_titolo' => 'atto notaio Verdi, rep. 12345',
+        'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Rogito letto, le bozze restano a chi vende'];
+    $conguaglio = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']['1']]), $vendita)->assertOk()->json('rate.conguaglio');
+    expect($conguaglio['bozze_riassegnate'])->toBe([])
+        ->and(collect($conguaglio['quote_in_bozza'])->map(fn ($b) => [$b['n'], $b['motivo']])->all())->toBe([[8, 'fattura_di_chi_esce']])
+        ->and((int) $conguaglio['totale_entrante'])->toBe(0);
+    $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']['1']]), $vendita)->assertSessionHasNoErrors();
+    foreach (range(5, 12) as $n) {
+        expect((int) b59apQuota($piano, $n, $rossi)->importo)->toBe(11500)
+            ->and(b59apQuota($piano, $n, $rossi)->regole_calcolo['importi']['addebito_diretto'] ?? null)->toBe(10000)
+            ->and(RataQuote::where('rata_id', b59apRata($piano, $n)->id)->where('anagrafica_id', $anna->id)->exists())->toBeFalse();
+    }
+
+    b59apEmetti($this, $s, $piano, range(5, 12), '2026-05-05')->assertSessionHas('message.type', 'success');
+    expect(b59apCreditiUnita($s))->toBe(138000)
+        ->and(b59apEstratto($this, $s, $rossi))->toBe(138000)
+        ->and(b59apEstratto($this, $s, $anna))->toBe(0)
         ->and(b59apGestioneRate($s))->toBe(0);
 });
 
@@ -370,7 +410,8 @@ test('Coda 313 — quote generate prima dell\'aggiornamento e passate a chi entr
     $rossi = $s['persone']['mario'];
     $anna = Anagrafica::forceCreate(['nome' => 'Anna Neri', 'email' => 'b59ap-anna2@test.it', 'indirizzo' => 'Via Po 2', 'codice_fiscale' => 'B59APANNA2XXXXXX']);
     $anna->condomini()->syncWithoutDetaching([$s['c']->id]);
-    $piano = b59apPianoConSaldi($s, b59apFattura($this, $s, [b59apRigaAdPersonam($s, 1200.00, 0)]), 12, 'tutte_rate');
+    // La fattura è del 10 giugno, dopo la vendita, perché le bozze passino (Coda 610: vedi il primo caso dei passaggi).
+    $piano = b59apPianoConSaldi($s, b59apFattura($this, $s, [b59apRigaAdPersonam($s, 1200.00, 0)], data: '2026-06-10'), 12, 'tutte_rate');
     b59apSenzaChiave($piano);
     b59apEmetti($this, $s, $piano, [1, 2, 3, 4], '2026-01-05')->assertSessionHas('message.type', 'success');
     $this->actingAs($this->user)->post(route('admin.gestionale.immobili.passaggi.store', [$s['c'], $s['unita']['1']]), [
@@ -452,24 +493,25 @@ test('Coda 313 — l\'annullamento del passaggio riporta a chi era uscito le quo
     expect(b59apCreditiUnita($s))->toBe(127500)->and(b59apGestioneRate($s))->toBe(0);
 });
 
-test('Coda 313 (Coda 426, limite dichiarato) — una quota della rata a zero esatto non scrive niente, la rata va a giornale per gli altri e la sua parte ad personam resta aperta', function () {
+test('Coda 313 (Coda 426) — una quota della rata a zero esatto con la parte ad personam va a giornale con la rata e chiude l\'anticipazione', function () {
     // Fattura: € 100,00 ad personam su Interno 1 (Rossi), − € 200,00 comuni sulla tabella 500/500, € 300,00 ad personam su Interno 2 (Bice);
-    // una rata. Rossi: 10000 − 10000 = 0, la quota senza righe (`RataQuote::scritturaDiEmissione` le dà `anticipazione` 0); Bice: 30000 −
-    // 10000 = 20000, DARE Bice 20000 / AVERE Interno 2 30000 / DARE «Gestione rate» 10000. Interno 1 resta a 10000 (la fattura) e «Gestione
-    // rate» a − 10000 invece di − 20000: è il limite della decisione 157 (Coda 426, alla 1.12), e il rilevamento non lo elenca.
+    // una rata. Rossi: 10000 − 10000 = 0, nessuna riga a suo nome ma la chiusura di Interno 1 (10000); Bice: 30000 − 10000 = 20000, DARE
+    // Bice 20000 / AVERE Interno 2 30000. «Gestione rate»: DARE 10000 + 10000 = 20000, la rettifica comune. Fino alla 1.12.0-beta.14 la
+    // quota di Rossi restava senza scrittura e Interno 1 a 10000 (era il limite dichiarato qui); le altre prove in `Beta15QuotaAZeroAdPersonamTest`.
     $s = b59apBase();
     $piano = b59apPiano($this, $s, b59apFattura($this, $s, [b59apRigaAdPersonam($s, 100.00, 0), b59apRigaComune(-200.00, 0, 'Rettifica'), b59apRigaAdPersonam($s, 300.00, 0, '2', 'Persiana')]), numeroRate: 1);
     b59apEmetti($this, $s, $piano, [1])->assertSessionHas('message.type', 'success');
 
     expect(b59apRighe(b59apEmissione($piano, 1)))->toBe([
+        ['crediti_condomini', 'avere', 10000, null, (int) $s['unita']['1']->id],
         ['crediti_condomini', 'avere', 30000, null, (int) $s['unita']['2']->id],
         ['crediti_condomini', 'dare', 20000, (int) $s['persone']['bice']->id, (int) $s['unita']['2']->id],
-        ['gestione_rate', 'dare', 10000, null, null],
+        ['gestione_rate', 'dare', 20000, null, null],
     ])
-        ->and(b59apQuota($piano, 1, $s['persone']['mario'])->scrittura_contabile_id)->toBeNull()
-        ->and(b59apCreditiUnita($s, '1'))->toBe(10000)
+        ->and((int) b59apQuota($piano, 1, $s['persone']['mario'])->scrittura_contabile_id)->toBe(b59apEmissione($piano, 1))
+        ->and(b59apCreditiUnita($s, '1'))->toBe(0)
         ->and(b59apCreditiUnita($s, '2'))->toBe(20000)
-        ->and(b59apGestioneRate($s))->toBe(-10000)
+        ->and(b59apGestioneRate($s))->toBe(-20000)
         ->and($this->actingAs($this->user)->get(route('admin.gestionale.movimenti-rate.index', [$s['c']]))->assertOk()->viewData('page')['props']['riallineamento_crediti'])->toBeNull();
 });
 
@@ -596,12 +638,15 @@ test('Coda 313 (decisione 160, limite L1) — dopo lo storno o la nota delle ver
 
     $this->actingAs($this->user)->post(route('admin.gestionale.riallinea-crediti', [$s['c']]));
 
+    // La quota di Rossi resta fuori. Dalla Coda 313 il riallineamento chiude anche la parte ad personam di Bice che l'emissione della
+    // 1.10 ha chiesto due volte sulla rata 1 (15000 su Interno 2), ma solo se l'anticipazione di Interno 2 è ancora aperta: con la nota
+    // (che tocca solo Interno 1) Interno 2 scende da 30000 a 15000 (la rettifica: due righe); con lo storno è già a zero, e la voce resta.
     expect($q1->fresh()->scrittura_contabile_id)->toBeNull()
-        ->and(DB::table('righe_scritture')->count())->toBe($righe)
-        ->and([b59apSenzaPersona($s, '1'), b59apSenzaPersona($s, '2')])->toBe($unita);
+        ->and(DB::table('righe_scritture')->count())->toBe($righe + ($come === 'storno' ? 0 : 2))
+        ->and([b59apSenzaPersona($s, '1'), b59apSenzaPersona($s, '2')])->toBe($come === 'storno' ? $unita : [0, 15000]);
 
-    // La strada della card, dalle rotte: stornato l'incasso di Bice, annullata la rata 1, il piano in bozza ed eliminato. Le unità senza persona
-    // restano quelle di prima (l'emissione della 1.10 non le chiudeva), e la card non elenca più la quota.
+    // La strada della card, dalle rotte: stornato l'incasso di Bice, annullata la rata 1 (con la sua rettifica, figlia dell'emissione), il piano
+    // in bozza ed eliminato. Le unità senza persona restano quelle di prima (l'emissione della 1.10 non le chiudeva), e la card non elenca più la quota.
     $this->actingAs($this->user)->from('/incassi-rate')->post(route('admin.gestionale.movimenti-rate.storno', [$s['c'], $incasso]), stornoVersamentoTornato())->assertSessionHasNoErrors();
     session()->forget(['message', 'errors']);
     $this->actingAs($this->user)->delete(route('admin.gestionale.piani-rate.annulla-emissione', ['condominio' => $s['c']->id, 'pianoRate' => $piano->id, 'rata' => b59apRata($piano, 1)->id]))
@@ -677,4 +722,23 @@ test('Coda 313 (decisione 160, limite L1) — il riallineamento rilegge l\'antic
         ->and(b59apQuota($piano, 2, $rossi)->scrittura_contabile_id)->toBeNull()
         ->and(b59apSenzaPersona($s, '1'))->toBe(0)
         ->and((string) session('message.message'))->toContain('la quota di Mario Rossi sulla rata 2 (Balcone con saldi) non si porta a giornale: l\'emissione chiuderebbe € 305,00 della spesa ad personam di «Int. 1», ma sull\'unità ne restano aperti € 0,00: la nota di credito n. NC-LIBERA, non collegata a una fattura, l\'ha già tolta dall\'unità');
+});
+
+test('la fattura ad personam senza competenza: il pannello del passaggio dice che è il giorno della fattura a decidere, non una competenza dichiarata che la fattura non ha', function () {
+    // Lo scenario del caso di sopra: la fattura del 10/03/2026, senza un periodo, la vendita dal 01/05. Le cifre non cambiano (le bozze restano a Rossi,
+    // conguaglio zero); la ragione sì: la fattura non dichiara niente, ed è il suo giorno che cade prima del passaggio (decisione 329 (2)).
+    $s = b59apBase(tipoGestione: 'ordinaria', saldi: ['mario' => 18000]);
+    $anna = Anagrafica::forceCreate(['nome' => 'Anna Neri', 'email' => 'b59ap-anna4@test.it', 'indirizzo' => 'Via Po 2', 'codice_fiscale' => 'B59APANNA4XXXXXX']);
+    $anna->condomini()->syncWithoutDetaching([$s['c']->id]);
+    $piano = b59apPianoConSaldi($s, b59apFattura($this, $s, [b59apRigaAdPersonam($s, 1200.00, 0)]), 12, 'tutte_rate');
+    b59apEmetti($this, $s, $piano, [1, 2, 3, 4], '2026-01-05')->assertSessionHas('message.type', 'success');
+    $vendita = ['tipo' => 'vendita', 'riga_uscente_id' => $s['righeTitolarita']['mario'], 'anagrafica_entrante_id' => $anna->id, 'decorrenza' => '2026-05-01',
+        'quota' => 100, 'tipologia' => 'proprietario', 'copia_autentica' => true, 'copia_autentica_il' => '2026-05-06', 'estremi_titolo' => 'atto notaio Verdi, rep. 12345',
+        'pertinenze' => [], 'ho_letto' => true, 'nota_cancello' => 'Rogito letto, le bozze restano a chi vende'];
+    $rate = $this->actingAs($this->user)->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$s['c'], $s['unita']['1']]), $vendita)->assertOk()->json('rate');
+    $testo = implode("\n", \Illuminate\Support\Arr::flatten(array_filter($rate, fn ($v, $k) => str_contains((string) $k, 'frasi'), ARRAY_FILTER_USE_BOTH)));
+
+    expect($testo)->not->toContain('competenza dichiarata')
+        ->and($testo)->toContain('la fattura non dichiara un periodo, ed è del 10 marzo 2026, prima del passaggio: la spesa è sua.')
+        ->and($testo)->toContain('fattura del 10 marzo 2026');
 });

@@ -190,6 +190,7 @@ return [
         ],
         'permissions' => [
             'not_allowed' => 'Non puoi concedere un permesso che tu stesso non hai.',
+            'admin_panel_only_admin' => '«Accesso pannello amministratore» apre il gestionale di tutti i condomini: lo concede solo un amministratore.',
             'privileged_target' => 'Solo un amministratore può cambiare i permessi aggiuntivi di questo account: ha un ruolo diverso da «utente» e «fornitore», o permessi aggiuntivi che tu non hai.',
         ],
         'default_user_role' => [
@@ -268,6 +269,9 @@ return [
     */
 
     'attributes' => [
+        // Gli allegati di segnalazioni, comunicazioni e commenti: il messaggio nomina l'allegato, non il campo «allegati.0».
+        'allegati' => 'allegati',
+        'allegati.*' => 'allegato',
         'email' => 'indirizzo email',
         'emails' => 'indirizzi email',
         'buildings' => 'condomini',

@@ -29,6 +29,11 @@ final class ParoleDelPiano
         // Coda 688: il giorno dei lavori urgenti sulle voci di una gestione straordinaria.
         'giorno_dei_lavori' => 'Lavori ordinati il',
         'delibera_id' => 'La delibera',
+        // Coda 743: il debito ereditato da ripianare, dal compito «Deficit da recuperare».
+        'ripianamento' => 'Il debito ereditato da ripianare',
+        'ripianamento.compito_id' => 'Il deficit da recuperare',
+        'ripianamento.importo' => 'Quanto mettere a rate',
+        'ripianamento.tabella_id' => 'La tabella del riparto',
         'gestione_id' => 'Gestione di riferimento',
         'nome' => 'Nome identificativo',
         'descrizione' => 'Descrizione',

@@ -1186,9 +1186,9 @@ class PagamentoFornitoreService
         // Le causali bancarie hanno un limite ~140 caratteri.
         // Se supera, tronca e avvisa: l'admin dovrà allegare distinta PDF separata.
         if (mb_strlen($causale) > 140) {
+            // La causale porta nomi e codici fiscali: nel registro solo la lunghezza.
             Log::warning("Causale Bonifico Parlante troncata per fattura {$fattura->id}.", [
                 'lunghezza_originale' => mb_strlen($causale),
-                'causale_troncata' => mb_substr($causale, 0, 137).'...',
             ]);
 
             return mb_substr($causale, 0, 137).'...';

@@ -71,6 +71,8 @@ export const CATEGORIA_PER_TIPO: Record<string, 'passivo' | 'attivo' | 'prima_no
   giroconto: 'tecnico',
   storno_giroconto: 'tecnico',
   rettifica: 'tecnico',
+  ripianamento_debito: 'tecnico',
+  storno_ripianamento_debito: 'tecnico',
   accantonamento: 'tecnico',
   riparto: 'tecnico',
   riconciliazione_bancaria: 'tecnico',

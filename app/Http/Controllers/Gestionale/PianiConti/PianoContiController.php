@@ -647,6 +647,14 @@ class PianoContiController extends Controller
             ])->with($this->flashError(BloccoDellaVoce::rifiutoDelPianoDeiContiPerLeRighe($vociConRighe)));
         }
 
+        // Le voci con dei movimenti a giornale: con il piano dei conti se ne andrebbero le voci, e le righe del giornale resterebbero senza voce.
+        $movimenti = BloccoDellaVoce::movimentiAGiornale(array_map('intval', $vociIds));
+        if ($movimenti['movimenti'] > 0) {
+            return to_route('admin.gestionale.esercizi.piani-conti.index', [
+                'condominio' => $condominio->id, 'esercizio'  => $esercizio->id,
+            ])->with($this->flashError(BloccoDellaVoce::rifiutoDelPianoDeiContiPerIMovimenti($movimenti['voci'], $movimenti['movimenti'])));
+        }
+
         // Le voci se ne vanno con il piano dei conti, e con loro le righe dei piani rate che le tengono: un piano approvato, emesso o chiuso che ne
         // tiene una lo impedisce, con la regola delle voci (`Conto::pianiCheBloccanoLaVoce`). Un piano in bozza non blocca.
         $tengono = array_merge([], ...array_values(Conto::pianiCheBloccanoLaVoce($vociIds)));

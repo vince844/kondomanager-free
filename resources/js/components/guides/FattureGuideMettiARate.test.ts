@@ -23,6 +23,15 @@ describe('FattureGuide — mettere a rate una spesa', () => {
     test('la scheda giusta, con tutto già scelto', () => {
         expect(guida).toContain('Apre il nuovo piano sulla scheda giusta, con tutto già scelto: una spesa sulla voce va su «Dalle voci del preventivo».');
         expect(guida).toContain('Una fattura con una riga «Fuori preventivo» va su «Spese fuori preventivo», con la fattura nel carrello.');
+        // Coda 742: la voce a € 0 nel preventivo va con le fatture, e il riquadro lo dice con le parole del server.
+        expect(guida).toContain('Anche una spesa su una voce che nel preventivo vale € 0: il riquadro dice «La voce … non è nel preventivo».');
+        expect(leggi('app/Services/Gestionale/SpesaDaMettereARate.php')).toContain('non è nel preventivo');
+        // La fattura mista e il fondo (1.12.0-beta.14): la guida dice le parole del riquadro.
+        expect(guida).toContain('Se la fattura ha anche righe «Fuori preventivo» o di un\'unità, la riga sulla voce a € 0 resta al conguaglio del rendiconto.');
+        expect(guida).toContain('Se la copre il fondo di riserva non si mette a rate: il riquadro dice il fondo, o che la sua cassa non c\'è più.');
+        expect(leggi('app/Services/Gestionale/SpesaDaMettereARate.php')).toContain('la copertura è di un fondo che non c\\\'è più');
+        expect(leggi('app/Services/Gestionale/SpesaDaMettereARate.php')).toContain('resta al conguaglio del rendiconto');
+        expect(leggi('app/Services/Gestionale/SpesaDaMettereARate.php')).toContain('non si mette a rate');
     });
     test('la delibera della gestione', () => {
         expect(guida).toContain('Con la delibera della gestione già scelta, se la spesa ne ha una. Il piano nasce quando lo salvi.');

@@ -73,6 +73,8 @@ return [
     'two_factor' => [
         // Coda 261: `enable` con la 2FA già confermata.
         'already_enabled' => 'La autenticación de dos factores ya está activa: para cambiarla, primero desactívala.',
+        'obbligatoria_per_il_pannello' => 'El estudio pide la verificación en dos pasos a quien entra en el panel: actívala para continuar.',
+        'disattivazione_bloccata' => 'El estudio pide la verificación en dos pasos a quien entra en el panel: no se puede desactivar.',
         'title' => 'Two-Factor Authentication',
         'heading' => 'Two-Factor Authentication',
         'description' => 'Manage two-factor authentication (2FA) settings',

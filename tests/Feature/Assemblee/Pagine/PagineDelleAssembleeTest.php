@@ -110,6 +110,9 @@ it('la raccolta: l\'anteprima con la data sospetta, senza il modello; la card de
         ->assertInertia(fn (AssertableInertia $p) => $p->missing('prossimaAssemblea')
             ->loadDeferredProps('assemblee', fn (AssertableInertia $r) => $r->where('prossimaAssemblea.totale', fn ($n) => $n >= 1)));
 
+    // La scheda della tabella si apre con «Modifica condomini» (Coda 714).
+    \Spatie\Permission\Models\Permission::firstOrCreate(['name' => Permesso::EDIT_CONDOMINI->value, 'guard_name' => 'web']);
+    $s->admin->givePermissionTo(Permesso::EDIT_CONDOMINI->value);
     $this->actingAs($s->admin)->get(route('admin.gestionale.tabelle.edit', [$s->c, $s->tabelle['Proprietà']]))->assertOk()
         ->assertInertia(fn (AssertableInertia $p) => $p->where('proprieta', ['questa' => false, 'attuale' => null, 'si_sceglie' => true]));
 });

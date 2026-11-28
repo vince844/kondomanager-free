@@ -92,28 +92,16 @@ test('Coda 313 — la card «Crediti da riallineare» elenca le emissioni già s
     expect(b59apVoci(b59apCard($this, $s)))->toBe([[1, 'Int. 1', 61000, '01/04/2026', true], [2, 'Int. 1', 61000, '01/05/2026', true]]);
 });
 
-test('Coda 313 — la conferma della card e il comando non scrivono niente per l\'elenco della spesa ad personam, e il messaggio dice il vero', function () {
-    // Decisione 153.1: la scrittura del riallineamento va alla 1.12. Il giornale resta identico (l'impronta) dopo la conferma e dopo il
-    // comando senza `--dry-run`. Il messaggio della conferma non dice più «i crediti sono già a posto» (prima lo diceva, con l'unità a
-    // € 2.440,00).
+test('Coda 313 — la conferma della card scrive la chiusura dell\'anticipazione per le voci dell\'elenco, e il messaggio dice il vero', function () {
+    // Fino alla 1.12.0-beta.14 la conferma non scriveva niente per l'elenco (decisione 153.1: la scrittura con la 1.12). Ora scrive, per
+    // la rata 1 e la rata 2, DARE «Gestione rate» 61000 / AVERE Interno 1 61000 senza persona: «Crediti» dell'unità da 244000 a 122000, e
+    // l'elenco si svuota. Le prove intere (anteprima, doppia conferma, esercizio chiuso, comando) in `Beta15RettificaAdPersonamTest`.
     [$s] = b59apGiaScritte($this);
-    $prima = b59apImpronta($s);
 
     $this->actingAs($this->user)->post(route('admin.gestionale.riallinea-crediti', [$s['c']]))
-        ->assertSessionHas('message', fn ($m) => ! str_contains($m['message'], 'già a posto') && str_contains($m['message'], 'spesa ad personam'));
-    expect(b59apImpronta($s))->toBe($prima);
-
-    $this->artisan('kondomanager:riallinea-crediti', ['--condominio' => $s['c']->id])
-        ->expectsOutputToContain('Spesa ad personam addebitata due volte')
-        ->expectsOutputToContain('rata 1 (Balcone interno 1), Int. 1, emessa il 01/04/2026: € 610,00')
-        ->doesntExpectOutputToContain('niente da riallineare')
-        ->assertExitCode(0);
-    expect(b59apImpronta($s))->toBe($prima);
-
-    $this->artisan('kondomanager:riallinea-crediti', ['--condominio' => $s['c']->id, '--dry-run' => true])
-        ->expectsOutputToContain('rata 2 (Balcone interno 1), Int. 1, emessa il 01/05/2026: € 610,00')
-        ->assertExitCode(0);
-    expect(b59apImpronta($s))->toBe($prima);
+        ->assertSessionHas('message', fn ($m) => ! str_contains($m['message'], 'già a posto') && str_contains($m['message'], 'anticipazione ad personam'));
+    expect(b59apCreditiUnita($s))->toBe(122000)
+        ->and(b59apVoci(b59apCard($this, $s)))->toBe([]);
 });
 
 test('Coda 313 — controllo: le emissioni scritte da questa versione chiudono l\'anticipazione e non compaiono nell\'elenco', function () {

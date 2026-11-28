@@ -59,13 +59,16 @@ class RegolazioneImmediataController extends Controller
             ->whereDoesntHave('sottoconti')
             ->whereNotNull('conto_contabile_id')
             ->visibili()
-            ->with('parent:id,nome')
+            ->with(['parent:id,nome', 'pianoConto:id,gestione_id', 'pianoConto.gestione:id,nome'])
             ->get()
+            // La gestione di ogni voce: la pagina offre solo le voci della gestione scelta, e l'etichetta la nomina («Riscaldamento · Manutenzione caldaia»).
             ->map(fn ($c) => [
                 'id' => $c->id,
                 'nome' => $c->nome,
                 'parent_nome' => $c->parent?->nome,
-                'label' => $c->parent ? $c->parent->nome.' — '.$c->nome : $c->nome,
+                'gestione_id' => $c->pianoConto?->gestione_id,
+                'label' => ($c->pianoConto?->gestione ? $c->pianoConto->gestione->nome.' · ' : '')
+                    .($c->parent ? $c->parent->nome.' — '.$c->nome : $c->nome),
             ])
             ->sortBy('label')
             ->values();
@@ -161,9 +164,10 @@ class RegolazioneImmediataController extends Controller
         try {
             $storno = $action->execute($scrittura, $condominio, $validated['motivo']);
 
+            // Nel registro la lunghezza del motivo, non il testo: lo scrive l'amministratore e può portare nomi e fatti delle persone.
             Log::info(
                 "Storno regolazione immediata {$scrittura->numero_protocollo} → {$storno->numero_protocollo} "
-                ."da utente #".Auth::id()." — motivo: {$validated['motivo']}"
+                ."da utente #".Auth::id().' — motivo di '.mb_strlen($validated['motivo']).' caratteri'
             );
 
             return redirect()
@@ -192,9 +196,10 @@ class RegolazioneImmediataController extends Controller
         try {
             $scrittura = $action->execute($validated, $condominio, $esercizio);
 
+            // La causale resta nella scrittura; nel registro solo la sua lunghezza.
             Log::info(
                 "Regolazione immediata {$scrittura->numero_protocollo} registrata da utente #".Auth::id()
-                ." — condominio #{$condominio->id}, importo {$validated['importo']}, causale: {$validated['causale']}"
+                ." — condominio #{$condominio->id}, importo {$validated['importo']}, causale di ".mb_strlen((string) $validated['causale']).' caratteri'
             );
 
             // "Registra e nuova": chi ha una pila di scontrini torna al modulo

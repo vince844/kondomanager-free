@@ -119,6 +119,10 @@ class ImmobileDocumentoController extends Controller
      */
     public function create(Condominio $condominio, Immobile $immobile): Response
     {
+        // I documenti dell'unità si caricano, si modificano e si eliminano con «Modifica condomini», come la scheda dell'unità
+        // (i documenti di un'anagrafica e di un fornitore chiedono la modifica della loro scheda).
+        Gate::authorize('update', $condominio);
+
         // Get the current active and open esercizio this is important to navigate gestioni menu
         $esercizio = $this->getEsercizioCorrente($condominio);
         
@@ -176,6 +180,10 @@ class ImmobileDocumentoController extends Controller
      */
     public function store(CreateImmobileDocumentoRequest $request, Condominio $condominio, Immobile $immobile): RedirectResponse
     {
+        // I documenti dell'unità si caricano, si modificano e si eliminano con «Modifica condomini», come la scheda dell'unità
+        // (i documenti di un'anagrafica e di un fornitore chiedono la modifica della loro scheda).
+        Gate::authorize('update', $condominio);
+
         $validated = $request->validated();
 
         if (!$request->hasFile('file') || !$request->file('file')->isValid()) {
@@ -205,6 +213,8 @@ class ImmobileDocumentoController extends Controller
                 'mime_type'    => $uploadedFile->getClientMimeType(),
                 'file_size'    => $uploadedFile->getSize(),
                 'created_by'   => $validated['created_by'],
+                // La visibilità scelta nel modulo: «ad uso interno» resta tale.
+                'is_published' => (bool) $validated['is_published'],
             ]);
 
             RegistroModifiche::legame($documento, 'condomini', 'Condomini', fn () => $documento->condomini()->attach($condominio->id));
@@ -250,6 +260,10 @@ class ImmobileDocumentoController extends Controller
      */
     public function edit(Condominio $condominio, Immobile $immobile, Documento $documento): Response
     {
+        // I documenti dell'unità si caricano, si modificano e si eliminano con «Modifica condomini», come la scheda dell'unità
+        // (i documenti di un'anagrafica e di un fornitore chiedono la modifica della loro scheda).
+        Gate::authorize('update', $condominio);
+
         // Get the current active and open esercizio this is important to navigate gestioni menu
         $esercizio = $this->getEsercizioCorrente($condominio);
 
@@ -319,6 +333,10 @@ class ImmobileDocumentoController extends Controller
      */
     public function update(UpdateImmobileDocumentoRequest $request, Condominio $condominio, Immobile $immobile, Documento $documento): RedirectResponse
     {
+        // I documenti dell'unità si caricano, si modificano e si eliminano con «Modifica condomini», come la scheda dell'unità
+        // (i documenti di un'anagrafica e di un fornitore chiedono la modifica della loro scheda).
+        Gate::authorize('update', $condominio);
+
 
         $validated = $request->validated();
 
@@ -338,14 +356,15 @@ class ImmobileDocumentoController extends Controller
                 'path'         => $documento->path,
                 'mime_type'    => $documento->mime_type,
                 'file_size'    => $documento->file_size,
-                'created_by'   => $validated['created_by'] ?? $documento->created_by,
+                // Chi l'ha caricato e se è approvato non cambiano con la modifica: si scrivono solo alla creazione.
+                'created_by'   => $documento->created_by,
                 // ⚠️ Qui c'era `'category_id' => $validated['category_id'] ?? $documento->category_id`,
                 // ed era **già inerte**: il modulo di un documento d'unità non chiede la categoria,
                 // quindi `$validated['category_id']` non esisteva mai e la riga si limitava a
                 // riscrivere il valore che c'era. Dalla 1.11.0-beta.10 la colonna non c'è più, e i
                 // documenti di un soggetto restano senza categoria di proposito.
                 'is_published' => $validated['is_published'] ?? $documento->is_published,
-                'is_approved'  => $validated['is_approved'] ?? $documento->is_approved,
+                'is_approved'  => $documento->is_approved,
             ]);
 
             DB::commit();
@@ -421,6 +440,10 @@ class ImmobileDocumentoController extends Controller
      */
     public function destroy(Condominio $condominio, Immobile $immobile, Documento $documento): RedirectResponse
     {
+        // I documenti dell'unità si caricano, si modificano e si eliminano con «Modifica condomini», come la scheda dell'unità
+        // (i documenti di un'anagrafica e di un fornitore chiedono la modifica della loro scheda).
+        Gate::authorize('update', $condominio);
+
         try {
 
             // 1.12.0-beta.13 (decisione 559, P21): con le versioni di prima; i file si cancellano dopo il commit.

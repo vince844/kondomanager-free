@@ -8,6 +8,7 @@ namespace App\Http\Controllers\Eventi;
 use App\Http\Controllers\Controller;
 use App\Models\CategoriaEvento;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Gate;
 
 class FetchCategorieController extends Controller
 {
@@ -16,6 +17,8 @@ class FetchCategorieController extends Controller
      */
     public function __invoke(): JsonResponse
     {
+        // Le categorie per il filtro dell'agenda, a chi vede l'agenda («Visualizza scadenze in agenda»).
+        Gate::allowIf((bool) request()->user()?->hasPermissionTo(\App\Enums\Permission::VIEW_EVENTS->value), __('policies.view_events'));
         $categorie = CategoriaEvento::select('id', 'name')->orderBy('name')->get();
 
         return response()->json($categorie);

@@ -8,7 +8,6 @@ namespace App\Http\Resources;
 use App\Traits\HasProtectedRoles;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
-use Illuminate\Support\Str;
 
 class RoleResource extends JsonResource
 {
@@ -23,7 +22,9 @@ class RoleResource extends JsonResource
     {
         return [
             'id'           => $this->id,
-            'name'         => Str::of($this->name)->ucfirst(), 
+            // Il nome com'è scritto: la pagina di modifica lo rimanda, e una maiuscola aggiunta qui rinominava il ruolo al salvataggio.
+            // L'iniziale maiuscola la mettono le pagine, solo a video.
+            'name'         => $this->name,
             'description'  => $this->description, 
             'users_count'  => $this->users_count ?? 0,
             'is_protected' => $this->isProtectedRole($this->name),

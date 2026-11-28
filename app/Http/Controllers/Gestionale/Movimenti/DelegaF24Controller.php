@@ -280,7 +280,7 @@ class DelegaF24Controller extends Controller
         } catch (\Exception $e) {
             Log::error("Errore calcolo deleghe F24 per condominio {$condominio->id}: ".$e->getMessage());
 
-            return back()->with($this->flashError($e->getMessage()));
+            return back()->with($this->flashError(\App\Support\Errori\MessaggioPerLaPagina::di($e, 'DelegaF24Controller@genera')));
         }
     }
 
@@ -331,7 +331,7 @@ class DelegaF24Controller extends Controller
         } catch (\Exception $e) {
             Log::error("Errore versamento delega F24 #{$delega->id}: ".$e->getMessage());
 
-            return back()->withErrors(['versamento' => $e->getMessage()]);
+            return back()->withErrors(['versamento' => \App\Support\Errori\MessaggioPerLaPagina::di($e, 'DelegaF24Controller@conferma')]);
         }
     }
 

@@ -78,7 +78,30 @@ class SaldoInizialeController extends Controller
             // Per l'origine del pregresso (1.12.0-beta.4): gli esercizi del condominio, dal più recente, e la frase accanto al campo.
             'esercizi'   => $condominio->esercizi()->orderByDesc('data_inizio')->get(['id', 'nome', 'data_inizio', 'data_fine', 'stato']),
             'frase_origine' => \App\Services\Gestionale\Debiti\OriginePregresso::FRASE_PIU_ESERCIZI,
+            // «Rendi incassabili questi saldi»: per gestione, i saldi non a zero che nessun piano tiene. Un saldo si incassa solo dentro una rata.
+            'saldi_incassabili' => self::saldiIncassabili($condominio, $esercizioAttivo),
         ]);
+    }
+
+    /**
+     * Per gestione, i saldi iniziali dei condòmini nell'esercizio non a zero, senza un piano rate che li tenga e senza lucchetto: quelli che un piano nuovo
+     * prende alla generazione. Quanti sono e quanto fanno, in centesimi.
+     *
+     * @return list<array{gestione_id: int, gestione: string, numero: int, totale: int}>
+     */
+    public static function saldiIncassabili(Condominio $condominio, \App\Models\Esercizio $esercizio, ?int $gestioneId = null): array
+    {
+        return Saldo::query()
+            ->where('saldi.condominio_id', $condominio->id)->where('saldi.esercizio_id', $esercizio->id)
+            // Col lucchetto e senza piano un saldo non entra in nessuna generazione (`GenerateSaldiAction::execute`): non si conta fra quelli da rendere incassabili.
+            ->whereNull('saldi.piano_rate_id')->whereNull('saldi.fornitore_id')->where('saldi.is_applicato', false)->where('saldi.saldo_iniziale', '!=', 0)
+            ->when($gestioneId !== null, fn ($q) => $q->where('saldi.gestione_id', $gestioneId))
+            ->join('gestioni', 'gestioni.id', '=', 'saldi.gestione_id')
+            ->groupBy('saldi.gestione_id', 'gestioni.nome')->orderBy('saldi.gestione_id')
+            ->selectRaw('saldi.gestione_id, gestioni.nome as gestione, COUNT(*) as numero, SUM(saldi.saldo_iniziale) as totale')
+            ->get()
+            ->map(fn ($r) => ['gestione_id' => (int) $r->gestione_id, 'gestione' => (string) $r->gestione, 'numero' => (int) $r->numero, 'totale' => (int) $r->totale])
+            ->values()->all();
     }
 
     /**
@@ -227,7 +250,21 @@ class SaldoInizialeController extends Controller
             $this->scriviManuale($riga);
         }
 
-        return back()->with($this->flashSuccess('Saldo aggiunto al Wallet con successo.'));
+        return back()->with($this->dopoIlSaldo($condominio, (int) $esercizioAttivo->id, 'Saldo aggiunto al Wallet con successo.', 'Saldo aggiunto al Wallet.'));
+    }
+
+    /**
+     * Coda 743: dopo un saldo scritto, modificato o eliminato, se un piano di ripianamento del debito ereditato mette ora a rate più dello scoperto (un
+     * pregresso scritto dopo), il messaggio lo dice con i numeri, come avviso, e il compito del debito torna aperto (`RipianamentoDelDeficit::dopoUnSaldo`):
+     * il piano non cambia, decide l'amministratore.
+     *
+     * @return array<string, mixed>
+     */
+    private function dopoIlSaldo(Condominio $condominio, ?int $esercizioId, string $fatto, string $fattoConAvviso): array
+    {
+        $avviso = \App\Services\Gestionale\RipianamentoDelDeficit::dopoUnSaldo((int) $condominio->id, $esercizioId);
+
+        return $avviso === null ? $this->flashSuccess($fatto) : $this->flashWarning($fattoConAvviso . ' ' . $avviso);
     }
 
     /**
@@ -285,7 +322,7 @@ class SaldoInizialeController extends Controller
         // sono già verificati in UpdateSaldoRequest::after()
         $saldo->update($request->validated());
 
-        return back()->with($this->flashSuccess('Saldo aggiornato.'));
+        return back()->with($this->dopoIlSaldo($condominio, $saldo->esercizio_id === null ? null : (int) $saldo->esercizio_id, 'Saldo aggiornato.', 'Saldo aggiornato.'));
     }
 
     /**
@@ -382,8 +419,9 @@ class SaldoInizialeController extends Controller
                 : 'Non puoi eliminare un saldo già applicato a un piano rate.'
         );
 
+        $esercizioId = $saldo->esercizio_id === null ? null : (int) $saldo->esercizio_id;
         $saldo->delete();
 
-        return back()->with($this->flashSuccess('Saldo rimosso dal Wallet.'));
+        return back()->with($this->dopoIlSaldo($condominio, $esercizioId, 'Saldo rimosso dal Wallet.', 'Saldo rimosso dal Wallet.'));
     }
 }

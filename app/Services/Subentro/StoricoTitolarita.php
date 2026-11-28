@@ -10,6 +10,7 @@ use App\Helpers\DateHelper;
 use App\Models\Gestionale\Subentro;
 use App\Models\Immobile;
 use App\Models\TitolaritaImmobile;
+use App\Services\Gestionale\Titolarita\RigheAQuotaZero;
 use Carbon\CarbonImmutable;
 
 /**
@@ -36,8 +37,10 @@ class StoricoTitolarita
 
     private const ORDINE_DIRITTI = ['Proprietà' => 0, 'Usufrutto' => 1, 'Locazione' => 2, 'Altro' => 3];
 
-    public function __construct(private readonly FrasiObbligati $frasiObbligati = new FrasiObbligati())
-    {
+    public function __construct(
+        private readonly FrasiObbligati $frasiObbligati = new FrasiObbligati(),
+        private readonly RigheAQuotaZero $righeAQuotaZero = new RigheAQuotaZero(),
+    ) {
     }
 
     /** @return array{passaggi: int, righe: list<array<string, mixed>>, gruppi: list<array{diritto: string, righe: list<array<string, mixed>>}>, subentri: list<array<string, mixed>>} */
@@ -48,7 +51,7 @@ class StoricoTitolarita
         $subentri = Subentro::with('padre')->where('immobile_id', $immobile->id)->get();
 
         $righe = $titolarita
-            ->map(fn (TitolaritaImmobile $t) => $this->riga($t, $oggi, $subentri))
+            ->map(fn (TitolaritaImmobile $t) => $this->riga($t, $oggi, $subentri) + $this->perLaCorrezione($t, $immobile, $oggi, $titolarita))
             ->sortBy([
                 fn ($a, $b) => (self::ORDINE_DIRITTI[$a['diritto']] ?? 9) <=> (self::ORDINE_DIRITTI[$b['diritto']] ?? 9),
                 fn ($a, $b) => strcmp($b['data_inizio'] ?? '', $a['data_inizio'] ?? ''),
@@ -363,6 +366,29 @@ class StoricoTitolarita
                 // Decisione 72: «Non scriverlo» può non avere nota, e la scheda non può leggerlo dalla nota.
                 'conguaglio_non_scritto' => ($subentro->padre ?? $subentro)->conguaglioNonScritto(),
             ] : null,
+        ];
+    }
+
+    /**
+     * Ciò che serve a correggere una riga dallo storico: se si può (`correggibile`), dove (`url_correggi`, la pagina di modifica di sempre) e, per la riga di
+     * proprietà a quota 0, quanti giorni del suo periodo nessuno paga per l'unità (`giorni_scoperti`).
+     *
+     * Correggibile è la riga **chiusa a mano**: ha una data di fine e nessun passaggio la apre o la chiude, non è la continuazione di una riga della stessa
+     * persona né una riga di un erede. Sono le condizioni di {@see TitolaritaImmobile::haStoria()} senza la data di fine, più le righe che il registro di un
+     * passaggio nomina ({@see TitolaritaImmobile::faParteDiUnPassaggio()}). Chi è stata scritta da un passaggio si corregge annullando il passaggio.
+     *
+     * @param \Illuminate\Support\Collection<int, TitolaritaImmobile> $titolarita tutte le righe dell'unità
+     * @return array{correggibile: bool, url_correggi: string|null, giorni_scoperti: int}
+     */
+    private function perLaCorrezione(TitolaritaImmobile $t, Immobile $immobile, CarbonImmutable $oggi, \Illuminate\Support\Collection $titolarita): array
+    {
+        $correggibile = $t->data_fine !== null && ! $t->faParteDiUnPassaggio() && ! $t->eContinuazione() && ! $t->eRigaDiUnErede();
+        $aQuotaZero = (bool) $t->attivo && in_array($t->tipologia, ['proprietario', 'nuda_proprietario'], true) && (float) ($t->quota ?? 0) <= 0.0;
+
+        return [
+            'correggibile' => $correggibile,
+            'url_correggi' => $correggibile ? route('admin.gestionale.immobili.anagrafiche.edit', ['condominio' => $immobile->condominio_id, 'immobile' => $immobile->id, 'titolarita' => $t->id]) : null,
+            'giorni_scoperti' => $aQuotaZero ? $this->righeAQuotaZero->giorniSenzaChiPaga($t, $titolarita->where('tipologia', $t->tipologia), $oggi) : 0,
         ];
     }
 

@@ -12,6 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import { Trash2, FilePenLine, MoreHorizontal, UserPlus } from 'lucide-vue-next'
 import { usePermission } from "@/composables/permissions"
+import { Permission } from "@/enums/Permission"
 import type { Immobile } from '@/types/gestionale/immobili'
 import type { Building } from '@/types/buildings'
 
@@ -22,7 +23,9 @@ const isAlertOpen = ref(false)
 const isDropdownOpen = ref(false)
 const isDeleting = ref(false)
 
-const { generateRoute } = usePermission()
+const { generateRoute, hasPermission } = usePermission()
+// L'unità e i suoi documenti si modificano con «Modifica condomini» (ImmobileController, ImmobileDocumentoController): senza, i pulsanti non ci sono.
+const puoModificare = hasPermission([Permission.EDIT_CONDOMINI])
 
 function handleDelete(targetImmobile: Immobile) {
   immobileID.value = targetImmobile.id
@@ -72,7 +75,7 @@ function deleteImmobile() {
     <DropdownMenuContent align="end">
       <DropdownMenuLabel>Azioni</DropdownMenuLabel>
 
-      <DropdownMenuItem>
+      <DropdownMenuItem v-if="puoModificare">
         <Link
           :href="route(generateRoute('gestionale.immobili.edit'), { condominio: condominio.id, immobile: immobile.id })"
           preserve-state
@@ -95,6 +98,7 @@ function deleteImmobile() {
       </DropdownMenuItem>
 
       <DropdownMenuItem
+        v-if="puoModificare"
         @click="handleDelete(immobile)"
       >
         <Trash2 class="w-4 h-4 text-xs" />

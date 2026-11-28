@@ -49,6 +49,8 @@ beforeEach(function () {
     $permesso = Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
     $ruolo = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'web']);
     $ruolo->givePermissionTo($permesso);
+    // Dalla Coda 714 le tabelle e i millesimi si cambiano con «Modifica condomini».
+    $ruolo->givePermissionTo(Permission::firstOrCreate(['name' => 'Modifica condomini', 'guard_name' => 'web']));
 
     $this->user = User::factory()->create();
     $this->user->assignRole($ruolo);

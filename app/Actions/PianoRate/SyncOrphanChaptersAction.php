@@ -56,6 +56,15 @@ class SyncOrphanChaptersAction
             return 0;
         }
 
+        // Un conto con una voce a € 0 sotto di sé (o la voce stessa) che un piano delle fatture mette già a rate non prende una cifra qui: la stessa spesa
+        // si chiederebbe due volte. Ci si ferma con la frase di «Dalle voci», e il ricalcolo non scrive niente.
+        foreach ($contiOrfani as $conto) {
+            $piani = \App\Services\Gestionale\VoceFuoriDalPreventivo::pianiDelleFattureSulConto((int) $conto->id);
+            if ($piani !== []) {
+                throw new \DomainException(\App\Services\Gestionale\VoceFuoriDalPreventivo::fraseDalleVoci((string) $conto->nome, $piani[0]));
+            }
+        }
+
         // 2. Prepariamo l'array per il Sync con gli importi congelati (Snapshot Architetturale)
         $syncData = [];
         foreach ($contiOrfani as $conto) {
@@ -68,7 +77,38 @@ class SyncOrphanChaptersAction
         // 3. Inserimento sicuro nella pivot con importo valorizzato e congelato
         $pianoRate->capitoli()->syncWithoutDetaching($syncData);
 
+        // 4. Il tetto sulle voci appena aggiunte, dopo la scrittura e nella transazione del ricalcolo: un capitolo libero può avere sotto una sottovoce che
+        // un altro piano dello stesso esercizio chiede già per intero. Il rifiuto annulla la scrittura (`PianoRateGenerationController`).
+        $this->conIlTettoSulleVoci($pianoRate, array_map('intval', array_keys($syncData)));
+
         return $contiOrfani->count();
+    }
+
+    /**
+     * Le voci a cui il piano arriva dalle righe appena aggiunte non vanno oltre il loro tetto (`TettoSulleVoci::primoSforo`, solo da quelle righe: le voci
+     * che il piano aveva già non cambiano).
+     *
+     * @param  list<int>  $righe
+     *
+     * @throws \DomainException con la frase per la pagina
+     */
+    private function conIlTettoSulleVoci(PianoRate $pianoRate, array $righe): void
+    {
+        $esercizio = app(\App\Services\Riparto\CompetenzaDelPiano::class)->esercizioDelPiano($pianoRate);
+        if ($esercizio === null) {
+            return;
+        }
+        $sforo = app(\App\Services\Gestionale\TettoSulleVoci::class)->primoSforo($pianoRate, $esercizio, $righe);
+        if ($sforo === null) {
+            return;
+        }
+        $euro = fn (int $c) => \App\Services\Gestionale\TettoSulleVoci::euro($c);
+        $inizio = \App\Services\Gestionale\TettoSulleVoci::giaChiesta($sforo) . ': restano ' . $euro($sforo['residuo']) . ' da chiedere, e ';
+        throw new \DomainException($inizio . ($sforo['capitolo'] !== null
+            ? 'il capitolo «' . $sforo['capitolo'] . '», aggiunto con il ricalcolo, gliene passerebbe ' . $euro($sforo['chiede'])
+                . '. Il ricalcolo non ha cambiato il piano: per le altre sottovoci del capitolo crea un piano che le sceglie una per una, ognuna con al massimo quello che resta.'
+            : 'il ricalcolo la aggiungerebbe a questo piano con ' . $euro($sforo['chiede'])
+                . '. Il ricalcolo non ha cambiato il piano: chiesta di nuovo, i condòmini la pagherebbero due volte.'));
     }
 
     /**

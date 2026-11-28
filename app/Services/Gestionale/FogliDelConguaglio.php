@@ -163,7 +163,7 @@ final class FogliDelConguaglio
                     'unita' => (string) ($contesto['unita'][$iid] ?? ''), 'giorni' => $contesto['giorni'][$aid][$iid]['giorni'] ?? null,
                     'giorni_per_ruolo' => $contesto['giorni'][$aid][$iid]['giorni_per_ruolo'] ?? [], 'voci' => $voci,
                     'a' => (int) $r['a'], 'gia_versato_unita' => (int) $r['gia_versato_unita'],
-                    'personali' => (int) $r['personali']['non_chieste'], 'personali_righe' => array_map(fn ($p) => ['giorno' => $p['giorno'], 'importo' => (int) $p['importo']], $r['personali']['righe']),
+                    'personali' => (int) $r['personali']['non_chieste'], 'personali_righe' => array_map(fn ($p) => ['giorno' => $p['giorno'], 'importo' => (int) $p['importo'], 'divisa_sui_giorni' => $p['divisa_sui_giorni'] ?? null], $r['personali']['righe']),
                     'competenze_scritte' => array_map(fn ($c) => $c + ['voce' => (string) ($contesto['voci'][$c['conto_id']] ?? '')], $r['competenze_scritte'] ?? []),
                     'b' => $r['b'], 'conguaglio' => $r['conguaglio'], 'posizione' => (int) $r['posizione'], 'fuori' => (int) $r['fuori_dalle_rate'], 'saldo' => $r['saldo'],
                     'non_emesse' => (int) $r['b']['di_cui_non_emesse'] + (int) ($r['personali']['chieste_non_emesse'] ?? 0),

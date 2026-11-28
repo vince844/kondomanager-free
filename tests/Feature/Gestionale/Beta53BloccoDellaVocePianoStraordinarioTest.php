@@ -158,7 +158,7 @@ function b53bsPannello($test, array $s, Conto $voce, string $azione)
  */
 function b53bsScenario($test, string $stato = 'approvato', int $coefficiente = 100): array
 {
-    $s = b53bvScenario($test, ['generali' => ''], false);
+    $s = b53bvScenario($test, ['impianti' => '300,00'], false);
     DB::table('conto_tabella_millesimale')->where('conto_id', $s['scale']->id)->update(['coefficiente' => $coefficiente]);
     $s['f'] = b53bsPianoStraordinario($test, $s, $s['scale'], $stato);
 
@@ -227,7 +227,7 @@ it('associare, aggiornare o rimuovere la tabella di una voce che un piano straor
 })->with(['associa' => ['associa'], 'aggiorna' => ['aggiorna'], 'dissocia' => ['dissocia']]);
 
 it('la voce che il piano straordinario finanzia con una fattura pregressa, cioè con una copertura di sopravvenienza, non cambia tabella', function () {
-    $s = b53bvScenario($this, ['generali' => ''], false);
+    $s = b53bvScenario($this, ['impianti' => '300,00'], false);
     $fornitore = DB::table('fornitori')->insertGetId(['ragione_sociale' => 'Ditta Pregressa', 'soggetto_ritenuta' => false, 'modalita_pagamento_default' => 'bonifico',
         'created_at' => now(), 'updated_at' => now()]);
     $fattura = DB::table('fatture_passive')->insertGetId([
@@ -308,7 +308,7 @@ it('controprova — il piano straordinario in bozza, o che finanzia un\'altra vo
 });
 
 it('controprova — la fattura mista: la riga ordinaria su un\'altra voce non la blocca, perché il motore straordinario legge solo le righe di sopravvenienza', function () {
-    $s = b53bvScenario($this, ['generali' => ''], false);
+    $s = b53bvScenario($this, ['impianti' => '300,00'], false);
     $s['f'] = b53bsPianoStraordinario($this, $s, $s['scale'], 'approvato', 'Facciata 2026', $s['generali']);
     $prima = b53bsPiano($s['f']);
 

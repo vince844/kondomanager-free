@@ -55,6 +55,10 @@ defineEmits(['update:open']);
                   <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
                   <span>Il saldo <em>finale</em> non si scrive mai qui: è sempre calcolato al volo come <em>iniziale + rate emesse − incassi</em>.</span>
                 </li>
+                <li class="flex gap-2">
+                  <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                  <span>Se il debito ereditato verso un fornitore è già a rate con un piano di ripianamento, un pregresso scritto dopo può farlo chiedere due volte: il messaggio lo dice con i numeri, e il compito «Deficit da recuperare» torna aperto. Il piano non cambia da solo.</span>
+                </li>
               </ul>
             </div>
           </section>
@@ -153,6 +157,31 @@ defineEmits(['update:open']);
                 </li>
               </ul>
             </div>
+          </section>
+
+          <section data-testid="guida-saldi-incassabili">
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">Saldi da un altro gestionale</h3>
+            <p class="mb-3">
+              La pagina mostra quanti saldi non sono ancora in un piano rate e il pulsante <strong>«Rendi incassabili questi saldi»</strong>.
+            </p>
+            <ul class="space-y-2">
+              <li class="flex gap-2">
+                <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                <span><strong>Quando</strong>: una gestione ha dei saldi iniziali che nessun piano tiene, anche se ha delle voci.</span>
+              </li>
+              <li class="flex gap-2">
+                <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                <span><strong>Perché</strong>: un incasso si registra solo su una rata.</span>
+              </li>
+              <li class="flex gap-2">
+                <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                <span><strong>Che cosa fa</strong>: crea un piano con i soli saldi; le voci della gestione restano libere per il piano del preventivo.</span>
+              </li>
+              <li class="flex gap-2">
+                <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                <span><strong>Stato patrimoniale</strong>: i saldi entrano quando la rata si emette.</span>
+              </li>
+            </ul>
           </section>
 
           <!-- 5 — Il lucchetto -->

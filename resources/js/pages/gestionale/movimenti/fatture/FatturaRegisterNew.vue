@@ -61,6 +61,9 @@ const { generateRoute, hasPermission } = usePermission();
 // pulsante che risponderebbero 403, e le frasi dicono soltanto che cosa manca.
 const puoModificareFornitori = computed(() => hasPermission([Permission.EDIT_ANAGRAFICHE]));
 const puoCreareFornitori = computed(() => hasPermission([Permission.CREATE_ANAGRAFICHE]));
+// Allegare un file e leggere un XML chiedono «Crea documenti archivio», come «Allega» della scheda della fattura: senza, la fattura si registra
+// a mano, senza il riquadro dell'allegato e senza «Importa XML».
+const puoCaricare = computed(() => hasPermission([Permission.CREATE_ARCHIVE_DOCUMENTS]));
 
 const moneyOptions = ref({
     prefix: '€ ',
@@ -232,7 +235,7 @@ const fileInput = ref<HTMLInputElement | null>(null);
  * subito, così il pulsante in elenco e qualunque collegamento salvato continuano a
  * funzionare.
  */
-const showImportaXmlModal = ref(props.modalita_ingresso === 'xml');
+const showImportaXmlModal = ref(props.modalita_ingresso === 'xml' && puoCaricare.value);
 
 /**
  * Ogni apertura — e ogni chiusura — della modale è una **sessione a sé**, contata.
@@ -1384,6 +1387,17 @@ const giaVersatoNellEsercizio = (c: { gia_versato_cents?: number; gia_versato_pe
     return (per['tutti'] || 0) + (esercizioId ? (per[String(esercizioId)] || 0) : 0);
 };
 
+/**
+ * Quanto chiede il piano integrativo dopo uno sforo, in centesimi: lo sforo (la spesa oltre il residuo della voce) meno il già versato nella parte
+ * che lo sforo ha della voce alzata alla spesa. Voce € 1.200,00, fattura € 6.100,00, € 300,00 di già versato: € 4.900,00 − € 300,00 × 4.900 / 6.100
+ * = € 4.659,02 (la cifra del motore, `IntegrativoDopoSforoTest.php`).
+ */
+const stimaDellIntegrativoCents = (spesoCents: number, residuoCents: number, giaVersatoCents: number): number => {
+    const sforo = spesoCents - residuoCents;
+    if (sforo <= 0 || spesoCents <= 0) return 0;
+    return Math.max(0, sforo - Math.round(giaVersatoCents * sforo / spesoCents));
+};
+
 const budgetImpacts = computed(() => {
     // Le fatture pregresse non impattano il budget corrente
     if (form.is_pregresso) return [];
@@ -1447,11 +1461,12 @@ const budgetImpacts = computed(() => {
         // La regola è una sola, in `sforaBudget` (nota di credito mai; a zero mai; poi lordo contro residuo).
         isOk:        !sforaBudget(i.speso_cents, i.residuo_cents, isNotaCredito.value),
         delta_cents: i.residuo_cents - i.speso_cents,
-        // Stima: presume che questa fattura rappresenti il costo TOTALE reale
-        // della voce (nessun'altra spesa storica quest'anno) — il numero
-        // autorevole resta quello calcolato da CalcoloQuoteService quando il
-        // piano rate viene davvero generato. Vedi ModalOverrideBudget.
-        residuoNettoStimatoCents: Math.max(0, i.speso_cents - i.gia_versato_cents),
+        // La cifra che chiede il piano integrativo dello sforo. Con «Rata integrativa» la voce sale alla spesa
+        // (`FatturaPassivaService`), e il motore toglie il già versato in proporzione alla parte che il piano
+        // chiede della voce (`CalcoloQuoteService::nettingGiaVersato`): lo sforo meno il già versato per
+        // sforo / spesa. Presume che questa fattura sia tutta la spesa della voce nell'anno; il numero
+        // autorevole resta quello del motore quando il piano si genera. Vedi ModalOverrideBudget.
+        residuoNettoStimatoCents: stimaDellIntegrativoCents(i.speso_cents, i.residuo_cents, i.gia_versato_cents),
     }));
 });
 
@@ -2366,7 +2381,7 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                      Nessun `:disabled` durante l'invio, ed è voluto: guardare la coda
                      mentre si aspetta è legittimo, e il documento spedito è già stato
                      catturato da `doSubmit()`. -->
-                <Button type="button" class="h-8 rounded-lg font-medium text-xs px-3 shrink-0 gap-2" @click="showImportaXmlModal = true">
+                <Button v-if="puoCaricare" type="button" class="h-8 rounded-lg font-medium text-xs px-3 shrink-0 gap-2" @click="showImportaXmlModal = true">
                     <UploadCloud class="w-3.5 h-3.5 text-sky-400" />
                     {{ filesPendenti.length ? 'Gestisci i file' : 'Importa XML' }}
                 </Button>
@@ -2764,7 +2779,7 @@ const pageSubtitle = 'Inserisci i dati nel pannello di sinistra e le voci di det
                         </div>
 
                         <!-- Allegato — un XML/P7M qui viene anche letto, non solo allegato (beta.14) -->
-                        <div class="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-4 text-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors" @click="fileInput?.click()">
+                        <div v-if="puoCaricare" class="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl p-4 text-center cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors" @click="fileInput?.click()">
                             <LoaderCircle v-if="importazioneInCorso" class="w-5 h-5 text-primary mx-auto mb-1 animate-spin" />
                             <FileText v-else class="w-5 h-5 text-slate-300 mx-auto mb-1" />
                             <p class="text-[11px] text-slate-400 font-medium">

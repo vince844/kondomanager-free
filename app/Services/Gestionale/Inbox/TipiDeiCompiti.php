@@ -40,8 +40,8 @@ final class TipiDeiCompiti
         'scoperto_documentato' => ['nome' => 'Quote non assegnate', 'azione' => 'Assegna le quote', 'pagina' => true],
         'gia_versato_acconto_dichiarato' => ['nome' => 'Acconti da registrare', 'azione' => 'Registra la fattura', 'pagina' => true],
         // Il debito ereditato verso un fornitore che i pregressi chiesti ai condòmini non coprono: lo scoperto è proprio la parte che nessuna rata chiede, e le rate
-        // scadute non lo recuperano. Si ripiana con un piano rate straordinario del condominio, nell'esercizio aperto di oggi (la stessa pagina dell'azione
-        // consigliata della tesoreria); senza un esercizio aperto, «Segna come fatto». Il collegamento salvato nel compito non conta.
+        // scadute non lo recuperano. Si ripiana con un piano straordinario nell'esercizio della pregressa se è aperto, altrimenti in quello di oggi, dove la
+        // pagina dice perché lì non si prepara (Coda 743); senza un esercizio aperto, «Segna come fatto». Il collegamento salvato nel compito non conta.
         'pianifica_ripianamento_deficit' => ['nome' => 'Deficit da recuperare', 'azione' => 'Prepara il piano di ripianamento', 'pagina' => true,
             'rotta' => 'admin.gestionale.esercizi.piani-rate.create', 'nell_esercizio' => true, 'parametri' => ['tipo' => 'straordinario']],
         'segnalazione_guasto' => ['nome' => 'Segnalazioni', 'azione' => 'Apri la segnalazione', 'pagina' => true],
@@ -154,9 +154,12 @@ final class TipiDeiCompiti
             }
         }
         $voce = self::voce($tipo);
+        // Coda 743: il deficit da ripianare apre lo straordinario con il debito già pronto, nell'esercizio, sulla gestione della pregressa ({@see parametriDelCompito}).
+        $parametri = ($voce['parametri'] ?? []) + ($tipo === \App\Services\Gestionale\RipianamentoDelDeficit::TIPO_DEL_COMPITO
+            ? \App\Services\Gestionale\RipianamentoDelDeficit::parametriDelCompito($compito) : []);
         $url = ! $voce['pagina'] ? null : (isset($voce['rotta'])
             ? self::paginaDelCondominio($voce['rotta'], $compito, isset($voce['della_voce']) ? [$voce['della_voce'], self::vocePerSola($compito)] : null,
-                (bool) ($voce['nell_esercizio'] ?? false), $voce['parametri'] ?? [])
+                (bool) ($voce['nell_esercizio'] ?? false), $parametri)
             : (IndirizzoDelCompito::perIlLink($compito->meta['action_url'] ?? null) ?? self::schedaDellElemento($compito)));
 
         if ($url === null) {
@@ -175,10 +178,10 @@ final class TipiDeiCompiti
     /**
      * La pagina del condominio del compito con quella rotta (le ritenute e l'F24, il già versato, il piano rate del deficit); senza condominio, nessuna. Con
      * `$dellaVoce` ([rotta, voce]) e una voce sola, la pagina di quella voce. Con `$nellEsercizio` la pagina è dell'esercizio aperto di oggi
-     * ({@see DisponibilitaDiOggi::esercizioDiOggi()}), e senza un esercizio aperto nessuna. `$parametri` vanno nell'indirizzo.
+     * ({@see DisponibilitaDiOggi::esercizioDiOggi()}), o quella di `esercizio` fra i parametri (Coda 743), e senza un esercizio nessuna. `$parametri` nell'indirizzo.
      *
      * @param  array{0: string, 1: ?int}|null  $dellaVoce
-     * @param  array<string, string>  $parametri
+     * @param  array<string, string|int>  $parametri
      */
     private static function paginaDelCondominio(string $rotta, Evento $compito, ?array $dellaVoce = null, bool $nellEsercizio = false, array $parametri = []): ?string
     {
@@ -193,12 +196,12 @@ final class TipiDeiCompiti
         }
 
         if ($nellEsercizio) {
-            $esercizio = DisponibilitaDiOggi::esercizioDiOggi((int) $condominio, DateHelper::oggiUtente());
+            $esercizio = $parametri['esercizio'] ?? DisponibilitaDiOggi::esercizioDiOggi((int) $condominio, DateHelper::oggiUtente());
             if ($esercizio === null) {
                 return null;
             }
 
-            return IndirizzoDelCompito::perIlLink(route($rotta, ['condominio' => $condominio, 'esercizio' => $esercizio] + $parametri, false));
+            return IndirizzoDelCompito::perIlLink(route($rotta, ['condominio' => $condominio, 'esercizio' => $esercizio] + array_diff_key($parametri, ['esercizio' => 0]), false));
         }
 
         return IndirizzoDelCompito::perIlLink(route($rotta, ['condominio' => $condominio] + $parametri, false));
@@ -295,7 +298,7 @@ final class TipiDeiCompiti
             'scoperto_documentato' => $insieme($c['piano_rate_nome'] ?? null, $euro($c['importo_cents'] ?? null)),
             'eccedenza_gia_versato_rilevata' => $insieme($c['piano_rate_nome'] ?? null, $euro($c['totale_cents'] ?? null)),
             'gia_versato_acconto_dichiarato' => $insieme($c['conto_nome'] ?? null, $euro($c['importo_cents'] ?? null)),
-            'pianifica_ripianamento_deficit' => isset($m['importo_buco']) ? 'Scoperto di ' . $euro($m['importo_buco']) : '',
+            'pianifica_ripianamento_deficit' => \App\Services\Gestionale\RipianamentoDelDeficit::sottoDelCompito($compito), // la cifra di oggi, come la pagina
             'memo_assemblea' => (string) ($m['riga'] ?? ''),
             'emissione_rata_sopravvenienza' => $insieme('Sopravvenienza', $m['fornitore'] ?? null),
             'da_moderare' => CompitoDaModerare::sotto($m),

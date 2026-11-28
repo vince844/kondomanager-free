@@ -47,6 +47,8 @@ beforeEach(function () {
         Permission::VIEW_ARCHIVE_DOCUMENTS->value,
         Permission::EDIT_ARCHIVE_DOCUMENTS->value,
         Permission::PUBLISH_ARCHIVE_DOCUMENTS->value,
+        // Eliminare una categoria chiede «Elimina documenti archvio» (CategoriaDocumentoPolicy).
+        Permission::DELETE_ARCHIVE_DOCUMENTS->value,
     ] as $nome) {
         SpatiePermission::firstOrCreate(['name' => $nome, 'guard_name' => 'web']);
         $this->admin->givePermissionTo($nome);

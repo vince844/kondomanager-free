@@ -19,10 +19,13 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { shallowMount } from '@vue/test-utils';
 import { router } from '@inertiajs/core';
 
+const chiApre = vi.hoisted(() => ({ roles: ['amministratore'] as string[] }));
+
 vi.mock('@inertiajs/vue3', async (importOriginal) => ({
     ...(await importOriginal<typeof import('@inertiajs/vue3')>()),
     Head: { template: '<div />' },
     Link: { name: 'Link', template: '<a><slot /></a>' },
+    usePage: () => ({ props: { auth: { user: { id: 1, roles: chiApre.roles, permissions: [] } } } }),
 }));
 (globalThis as Record<string, unknown>).route = (nome: string) => `/${nome}`;
 
@@ -56,11 +59,13 @@ function bloccato(campo: { attributes: (nome: string) => string | undefined }): 
     return campo.attributes('disabled') === 'true';
 }
 
-function monta(gestibile: boolean, utente: Record<string, unknown> = contabile) {
+const permessiDiChiApre = [{ id: 9, name: 'Visualizza utenti' }, { id: 12, name: 'Visualizza comunicazioni' }];
+
+function monta(gestibile: boolean, utente: Record<string, unknown> = contabile, permessi: unknown[] = permessiDiChiApre) {
     return shallowMount(ModificaUtente, {
         props: {
             user: utente as never,
-            permissions: [{ id: 9, name: 'Visualizza utenti' }, { id: 12, name: 'Visualizza comunicazioni' }] as never,
+            permissions: permessi as never,
             anagrafiche: [{ id: 31, nome: 'Studio Rossi' }] as never,
             roles: opzioniDellAmministratore as never,
             gestibile,
@@ -139,5 +144,64 @@ describe('ModificaUtente — la difesa per un account fuori portata (Coda 258, d
 
     test('la pagina non offre la revoca dei permessi aggiuntivi', () => {
         expect(monta(false).findAllComponents({ name: 'Link' })).toHaveLength(0);
+    });
+});
+
+describe('ModificaUtente — i permessi aggiuntivi come sono nel database', () => {
+    const giaNelRuolo = { id: 2, name: 'Gestisci impostazioni generali', description: 'x' };
+    const sulleProprieSegnalazioni = { id: 40, name: 'Modifica le proprie segnalazioni', description: 'y' };
+
+    test('un permesso aggiuntivo che il ruolo dà già resta nella scheda, segnato, e si rimanda', () => {
+        const pagina = monta(true, { ...contabile, permissions: [giaNelRuolo, contabile.permissions[0]] },
+            [...permessiDiChiApre, { id: 2, name: 'Gestisci impostazioni generali' }]);
+
+        expect(pagina.text()).toContain('users.badge.anche_dal_ruolo');
+
+        stato(pagina).submit();
+        expect(vi.mocked(router.put).mock.calls.at(-1)![1]).toMatchObject({ permissions: [2, 9] });
+    });
+
+    test('cambiare ruolo non toglie i permessi aggiuntivi che il ruolo nuovo dà già', async () => {
+        const ruoloConIlPermesso = { id: 6, name: 'Segreteria', permissions: [{ id: 9, name: 'Visualizza utenti' }] };
+        const pagina = monta(true, contabile, permessiDiChiApre);
+        await pagina.setProps({ roles: [...opzioniDellAmministratore, ruoloConIlPermesso] as never });
+
+        (stato(pagina) as unknown as { form: { roles: number } }).form.roles = 6;
+        await pagina.vm.$nextTick();
+
+        stato(pagina).submit();
+        expect(vi.mocked(router.put).mock.calls.at(-1)![1]).toMatchObject({ roles: 6, permissions: [9] });
+    });
+
+    test('un permesso aggiuntivo che chi apre la scheda non ha si vede in sola lettura, senza revoca', () => {
+        const pagina = monta(true, { ...contabile, permissions: [contabile.permissions[0], sulleProprieSegnalazioni] });
+
+        expect(pagina.text()).toContain('Modifica le proprie segnalazioni');
+        expect(pagina.text()).toContain('users.label.solo_chi_ha_il_permesso');
+        // La revoca resta solo per il permesso che chi apre la scheda ha (id 9).
+        expect(pagina.findAllComponents({ name: 'Link' })).toHaveLength(1);
+
+        // Non sta nella tendina, e non si manda: il server lo conserva.
+        stato(pagina).submit();
+        expect(vi.mocked(router.put).mock.calls.at(-1)![1]).toMatchObject({ permissions: [9] });
+    });
+});
+
+describe('ModificaUtente — il pannello come permesso aggiuntivo', () => {
+    const pannello = { id: 1, name: 'Accesso pannello amministratore' };
+    const opzioni = (pagina: ReturnType<typeof monta>) =>
+        (pagina.vm as unknown as { $: { setupState: { selectablePermissions: { name: string }[] } } }).$.setupState.selectablePermissions.map(p => p.name);
+
+    test('la tendina non lo propone a chi non è amministratore', () => {
+        chiApre.roles = ['collaboratore'];
+        const pagina = monta(true, contabile, [...permessiDiChiApre, pannello]);
+        expect(opzioni(pagina)).not.toContain('Accesso pannello amministratore');
+        expect(opzioni(pagina)).toContain('Visualizza comunicazioni');
+        chiApre.roles = ['amministratore'];
+    });
+
+    test('la tendina lo propone all\'amministratore', () => {
+        chiApre.roles = ['amministratore'];
+        expect(opzioni(monta(true, contabile, [...permessiDiChiApre, pannello]))).toContain('Accesso pannello amministratore');
     });
 });

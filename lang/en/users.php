@@ -38,7 +38,7 @@ return [
         'list_permissions_head'              => 'Permissions List',
         'list_permissions_description'       => 'View all permissions available within the application.',
         'list_invites_head'                  => 'Invites List',
-        'list_invites_description'           => 'Monitor invites sent to new collaborators and their status.',
+        'list_invites_description'           => 'Monitor invites sent to new residents and suppliers and their status.',
         'edit_user_head'                     => 'Edit user',
         'new_user_head'                      => 'Create new user',
         'new_user_title'                     => 'Create new user',
@@ -113,6 +113,7 @@ return [
         'invite_buildings' => 'Buildings',
         // Coda 258, decisione 134.1: sulla scheda di un account fuori dalla portata di chi la apre.
         'fuori_portata' => 'Only an administrator manages this account: it has a role other than «utente» and «fornitore», or additional permissions you do not have.',
+        'solo_chi_ha_il_permesso' => 'Only someone who has this permission can remove it.',
     ],
 
     /* ------------------------------------------------------------------
@@ -134,6 +135,7 @@ return [
     'actions' => [
         'new_user'      => 'Create user',
         'edit_user'     => 'Edit',
+        'save_user'     => 'Save',
         'delete_user'   => 'Delete',
         'suspend_user'  => 'Suspend',
         'activate_user' => 'Activate',
@@ -161,7 +163,7 @@ return [
     'dialogs' => [
         'no_users_created'         => 'No users created yet',
         'delete_user_title'        => 'Are you sure you want to delete this user?',
-        'delete_user_description'  => 'This action is irreversible. It will delete the user and all associated data.',
+        'delete_user_description'  => 'This action is irreversible. It will delete the user and all associated data: the notices and reports they wrote also disappear, for everyone.',
         'invite_user_title'        => 'Are you sure you want to reinvite this user?',
         'invite_user_description'  => 'The user will receive an email with a new link to create a new password.',
     ],
@@ -180,6 +182,8 @@ return [
      | ------------------------------------------------------------------ */
     'badge' => [
         'previously_direct' => 'previously assigned',
+        'anche_dal_ruolo' => 'also given by the role',
+        'anche_aggiuntivo' => 'also additional',
     ],
 
     'roles' => [
@@ -207,6 +211,6 @@ return [
         'roles_title' => 'Roles and Permissions',
         'roles_desc'  => 'Define authorization levels to protect sensitive data.',
         'invites_title' => 'Invites',
-        'invites_desc'  => 'Send and track invitations for new collaborators.',
+        'invites_desc'  => 'Send and track invitations for new residents and suppliers.',
     ],
 ];

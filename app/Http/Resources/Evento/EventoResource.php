@@ -8,7 +8,7 @@ namespace App\Http\Resources\Evento;
 use App\Http\Resources\Anagrafica\AnagraficaNomeResource;
 use App\Http\Resources\Condominio\CondominioResource;
 use App\Http\Resources\Evento\Categorie\CategoriaEventoResource;
-use App\Http\Resources\User\UserResource;
+use App\Http\Resources\User\AutoreResource;
 use App\Services\Gestionale\CreditoService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -108,7 +108,7 @@ class EventoResource extends JsonResource
                                     }
 
                                     return [
-                                        'user'       => new UserResource($this->createdBy),
+                                        'user'       => new AutoreResource($this->createdBy),
                                         'anagrafica' => $this->createdBy->relationLoaded('anagrafica')
                                             ? new AnagraficaNomeResource($this->createdBy->anagrafica)
                                             : null,

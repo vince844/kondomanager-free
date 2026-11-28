@@ -10,15 +10,19 @@
  * unità (ha una sua successione con l'arretrato agli eredi), la sua parte da erede resta nel piano a nome suo e ai suoi eredi non passa: nessuna frase lo
  * diceva, e dopo le righe legate le voci chiudevano con «Non serve registrare altro». La fermata è una voce che dice il caso, la parte da erede che il
  * programma non passa agli eredi del secondo defunto e che la divisione la decide l'amministratore: la stessa natura dello stato «la divisione la decide
- * l'amministratore», senza cifre per erede e senza la strada del Wallet, e non si chiude con le righe. La regola completa (la parte passa agli eredi per
- * quota) è un'altra Coda: qui le somme del piano non cambiano.
+ * l'amministratore», senza cifre per erede e senza la strada del Wallet, e non si chiude con le righe.
+ *
+ * Coda 481 (1.12.0-beta.15): la regola completa. Quando l'erede defunto ha la sua successione sulla stessa unità, con pesi che si leggono, la sua parte da erede
+ * passa ai suoi eredi per le loro quote, e le voci tornano quelle di sempre, con le cifre e la strada del Wallet. Le prove qui sotto che lo dicono sono quelle che
+ * fino alla beta.14 fissavano la fermata; la fermata resta dove la sostituzione non si fa (più successioni dell'erede con pesi diversi, la divisione del defunto
+ * che non si fa, la successione dell'erede su un'altra unità). Le prove della regola completa dalle rotte sono in `DefuntoEredeDellAltroRegolaCompletaTest.php`.
  *
  * Fonte delle cifre, la regola a mano. Spesa «Spese generali» € 3.650,00 (365000) sull'unità A da 1000 millesimi, 1000 centesimi al giorno per il 100 %, così
  * ogni cifra per persona è esatta e senza resti; 365 giorni nel 2026 (59 fino al 1/3, 61 fino al 1/5, 61 fino al 1/7, 184 dopo).
  * - AD1: Ugo e Ada al 50 %. Ugo muore il 1/3/2026 con eredi Ada 25 e Anna 25. Ada muore il 1/5/2026 con eredi Anna 45 e Bruno 30 (la sua quota, 75).
  *   Ugo 0,5 × 59 × 1000 = 29500, le parti Ada 14750 e Anna 14750. Ada 0,5 × 120 × 1000 + 0,25 × 61 × 1000 = 60000 + 15250 = 75250, le parti Anna 45150
  *   e Bruno 30100. Dopo i decessi Anna 0,25 × 61 × 1000 + 0,7 × 245 × 1000 = 15250 + 171500 = 186750, Bruno 0,3 × 245 × 1000 = 73500. Somma 365000.
- *   La regola completa sarebbe Ada 0, Anna 255500 e Bruno 109500; la fermata non la scrive.
+ *   Con la regola completa la parte di Ada da erede di Ugo (14750) passa ad Anna (8850) e a Bruno (5900): con le righe, Ada 0, Anna 255500 e Bruno 109500.
  * - La catena: Ugo e Ada al 50 %. Ugo muore il 1/3 (eredi Ada 25 e Bruno 25), Ada il 1/5 (eredi Bruno 50 e Anna 25, la sua quota 75), Bruno il 1/7 (eredi
  *   Carla 50 e Anna 25, la sua quota 75). Ugo 29500 (le parti Ada 14750 e Bruno 14750). Ada 60000 + 0,25 × 61 × 1000 = 75250 (le parti Bruno 50167 e Anna
  *   25083: 75250 × 50 / 75 = 50166,67). Bruno 0,25 × 122 × 1000 + 0,5 × 61 × 1000 = 30500 + 30500 = 61000 (le parti Carla 40667 e Anna 20333). Anna 0,25 × 61 × 1000
@@ -158,60 +162,57 @@ function g3fLeSeiRighe($test, Beta51Scenario $s, array $sub): void
     g3fWallet($test, $s, 'bruno', 30100, $sub['ada']);
 }
 
-const G3F_VOCE_DI_ADA = ' Ada è anche erede di Ugo su quest\'unità (decesso del 1 marzo 2026): la sua parte da erede, € 147,50, il programma non la passa ai suoi eredi, Anna e Bruno.';
-const G3F_VOCE_DI_UGO = ' Ada, erede di Ugo, ha a sua volta una successione su quest\'unità (decesso del 1 maggio 2026) con l\'arretrato passato agli eredi: la sua parte da erede, € 147,50, il programma non la passa ai suoi eredi, Anna e Bruno.';
+const G3F_VOCE_DI_ADA = ' Ada è anche erede di Ugo su quest\'unità (decesso del 1 marzo 2026): la sua parte da erede, € 147,50, passa ai suoi eredi con la voce di Ugo.';
+const G3F_VOCE_DI_UGO = ' Ada, erede di Ugo, ha a sua volta una successione su quest\'unità (decesso del 1 maggio 2026) con l\'arretrato passato agli eredi: la sua parte da erede, € 147,50, passa ai suoi eredi per le loro quote, Anna € 88,50 e Bruno € 59,00.';
+/** Le parti delle voci di Ugo e di Ada con la regola completa (Coda 481). */
+const G3F_PARTI_UGO = ' Ne rispondono gli eredi, ciascuno per la sua quota (art. 754 c.c.): Anna € 236,00 e Bruno € 59,00.';
+const G3F_PARTI_ADA = ' Ne rispondono gli eredi, ciascuno per la sua quota (art. 754 c.c.): Anna € 451,50 e Bruno € 301,00.';
+const G3F_V1_UGO = ' Per passare la parte agli eredi registra dal Wallet i saldi legati alla successione del 1 marzo 2026, sulla stessa gestione: € 295,00 a credito di Ugo, € 236,00 a debito di Anna e € 59,00 a debito di Bruno; il piano li assorbe alla prossima generazione.';
+const G3F_V1_ADA = ' Per passare la parte agli eredi registra dal Wallet i saldi legati alla successione del 1 maggio 2026, sulla stessa gestione: € 752,50 a credito di Ada, € 451,50 a debito di Anna e € 301,00 a debito di Bruno; il piano li assorbe alla prossima generazione.';
 
-it('Coda 480 — Ugo e Ada coniugi, Ugo morto il 1/3 con eredi Ada e Anna e Ada morta il 1/5: la voce di Ada dice che è anche erede di Ugo, la sua parte da erede (€ 147,50) che il programma non passa ai suoi eredi, e che la divisione la decide l\'amministratore', function () {
+it('Coda 481 (prima la fermata della Coda 480) — Ugo e Ada coniugi, Ugo morto il 1/3 con eredi Ada e Anna e Ada morta il 1/5: la voce di Ada è quella di sempre, con le sue parti, e dice che la sua parte da erede di Ugo passa ai suoi eredi con la voce di Ugo', function () {
     [$s] = g3fAd1($this);
 
     $voci = g3fVoci(g3fGenera($this, $s));
 
     expect(array_keys($voci))->toBe(['Ugo', 'Ada']);
-    // La voce di Ada: la cifra del motore resta (75250), gli eredi hanno la quota e nessuna parte, nessuna strada del Wallet.
-    expect($voci['Ada']['frase'])->toBe(g3fApertura('Ada', '1 maggio 2026', '€ 752,50') . G3F_VOCE_DI_ADA . G3F_CHIUSURA)
+    expect($voci['Ada']['frase'])->toBe(g3fApertura('Ada', '1 maggio 2026', '€ 752,50') . G3F_PARTI_ADA . G3F_VOCE_DI_ADA . G3F_V1_ADA)
         ->and($voci['Ada']['cifra'])->toBe(75250)
-        ->and($voci['Ada']['parti_da_decidere'])->toBeTrue()
-        ->and(g3fParti($voci['Ada']))->toBe(['Anna' => null, 'Bruno' => null])
+        ->and($voci['Ada']['parti_da_decidere'])->toBeFalse()
+        ->and(g3fParti($voci['Ada']))->toBe(['Anna' => 45150, 'Bruno' => 30100])
         ->and($voci['Ada']['due_serie'])->toBe([])
         ->and($voci['Ada']['immobile_id'])->toBe($s->unita['A']->id)
         ->and($voci['Ada']['defunto']['id'])->toBe($s->persona('ada')->id);
-    expect($voci['Ada']['frase'])->not->toContain('Non serve registrare altro')->not->toContain('registra dal Wallet')->not->toContain('2.555,00');
-    // Il programma sa la parte di Ada come erede (14750 = 29500 × 25 / 50) e la dice; la divisione per erede non la dice.
-    expect($voci['Ada']['frase'])->toContain('€ 147,50');
+    expect($voci['Ada']['frase'])->not->toContain('la decide l\'amministratore');
 });
 
-it('Coda 480 — la voce di Ugo nomina l\'erede che è a sua volta defunta, la sua parte (€ 147,50) che non passa ai suoi eredi, e non chiede più la riga a nome suo', function () {
+it('Coda 481 — la voce di Ugo nomina al posto di Ada i suoi eredi, con la parte di Ada divisa per le loro quote, e non chiede la riga a nome di Ada', function () {
     [$s] = g3fAd1($this);
 
     $voci = g3fVoci(g3fGenera($this, $s));
 
-    expect($voci['Ugo']['frase'])->toBe(g3fApertura('Ugo', '1 marzo 2026', '€ 295,00') . G3F_VOCE_DI_UGO . G3F_CHIUSURA)
+    expect($voci['Ugo']['frase'])->toBe(g3fApertura('Ugo', '1 marzo 2026', '€ 295,00') . G3F_PARTI_UGO . G3F_VOCE_DI_UGO . G3F_V1_UGO)
         ->and($voci['Ugo']['cifra'])->toBe(29500)
-        ->and($voci['Ugo']['parti_da_decidere'])->toBeTrue()
-        ->and(g3fParti($voci['Ugo']))->toBe(['Ada' => null, 'Anna' => null]);
-    expect($voci['Ugo']['frase'])->not->toContain('registra dal Wallet')->not->toContain('a debito di Ada')->not->toContain('Non serve registrare altro');
+        ->and($voci['Ugo']['parti_da_decidere'])->toBeFalse()
+        ->and(g3fParti($voci['Ugo']))->toBe(['Anna' => 23600, 'Bruno' => 5900]);
+    expect($voci['Ugo']['frase'])->not->toContain('a debito di Ada')->not->toContain('la decide l\'amministratore');
 });
 
-it('Coda 480 — la voce non si chiude da sola: con le sei righe legate che le voci di prima chiedevano (Ugo, Ada, Anna, Bruno) le due voci tornano, uguali, e nessuna dice «Non serve registrare altro»', function () {
+it('Coda 481 — con le sei righe che le voci della fermata chiedevano (la parte da erede legata ad Ada) la voce di Ugo chiede la riga di Bruno, la correzione di quella di Anna e di togliere quella di Ada; la voce di Ada si chiude', function () {
     [$s, $sub] = g3fAd1($this);
-    $prima = g3fVoci(g3fGenera($this, $s));
 
     g3fLeSeiRighe($this, $s, $sub);
     $dopo = g3fVoci(g3fGenera($this, $s));
 
     expect(array_keys($dopo))->toBe(['Ugo', 'Ada'])
-        ->and($dopo['Ugo']['frase'])->toBe($prima['Ugo']['frase'])
-        ->and($dopo['Ada']['frase'])->toBe($prima['Ada']['frase']);
-    foreach ($dopo as $voce) {
-        expect($voce['frase'])->not->toContain('Non serve registrare altro')->not->toContain('I saldi ci sono già')->and($voce['parti_da_decidere'])->toBeTrue();
-    }
-    // E ancora dopo che il piano è stato generato con la presa d'atto: il ricalcolo la ripropone.
-    g3fGenera($this, $s, true)->assertSessionHasNoErrors();
-    $ancora = g3fVoci(g3fGenera($this, $s));
-    expect($ancora['Ada']['frase'])->toBe($prima['Ada']['frase']);
+        ->and($dopo['Ugo']['frase'])->toBe(g3fApertura('Ugo', '1 marzo 2026', '€ 295,00') . G3F_PARTI_UGO . G3F_VOCE_DI_UGO
+            . ' Per passare la parte agli eredi registra dal Wallet il saldo legato alla successione del 1 marzo 2026 che manca, sulla stessa gestione: € 59,00 a debito di Bruno; il piano lo assorbe alla prossima generazione.'
+            . ' Per Anna il saldo legato alla successione è di € 147,50 a debito invece di € 236,00 a debito: correggilo dal Wallet. Quello di Ugo c\'è già.'
+            . ' Ada ha già un saldo legato alla successione del 1 marzo 2026 su quest\'unità (€ 147,50 a debito): la sua parte da erede passa ai suoi eredi, e quel saldo si toglie dal Wallet.')
+        ->and($dopo['Ada']['frase'])->toEndWith('Non serve registrare altro.');
 });
 
-it('Coda 480 — la fermata dice, non sposta denaro: senza righe, con la presa d\'atto, le somme del piano sono quelle dei giorni (Ugo 29500, Ada 75250, Anna 186750, Bruno 73500, in tutto € 3.650,00)', function () {
+it('Coda 481 — la voce dice, non sposta denaro: senza righe, con la presa d\'atto, le somme del piano sono quelle dei giorni (Ugo 29500, Ada 75250, Anna 186750, Bruno 73500, in tutto € 3.650,00)', function () {
     [$s] = g3fAd1($this);
 
     g3fGenera($this, $s, true)->assertSessionHasNoErrors();
@@ -219,7 +220,7 @@ it('Coda 480 — la fermata dice, non sposta denaro: senza righe, con la presa d
     expect($s->somme('Preventivo 2026', ['ugo', 'ada', 'anna', 'bruno']))->toBe(['ugo' => 29500, 'ada' => 75250, 'anna' => 186750, 'bruno' => 73500]);
 });
 
-it('Coda 480 — con le sei righe e la presa d\'atto le somme sono quelle di prima della fermata (€ 147,50 a nome di Ada: la regola completa è un\'altra Coda); la fermata non le tocca', function () {
+it('Coda 481 — con le sei righe di prima e la presa d\'atto le somme sono quelle delle righe (€ 147,50 ancora a nome di Ada, che la voce chiede di togliere)', function () {
     [$s, $sub] = g3fAd1($this);
     g3fLeSeiRighe($this, $s, $sub);
 
@@ -229,17 +230,18 @@ it('Coda 480 — con le sei righe e la presa d\'atto le somme sono quelle di pri
     expect($s->somme('Preventivo 2026', ['ugo', 'ada', 'anna', 'bruno']))->toBe(['ugo' => 0, 'ada' => 14750, 'anna' => 246650, 'bruno' => 103600]);
 });
 
-it('Coda 480 — il piano che non applica i saldi dice la stessa fermata: la frase non cambia', function () {
+it('Coda 481 — il piano che non applica i saldi: le stesse parti, con la strada del piano creato di nuovo', function () {
     [$s] = g3fAd1($this, applicaSaldi: false);
 
     $voci = g3fVoci(g3fGenera($this, $s));
 
-    expect($voci['Ada']['frase'])->toBe(g3fApertura('Ada', '1 maggio 2026', '€ 752,50') . G3F_VOCE_DI_ADA . G3F_CHIUSURA)
-        ->and($voci['Ugo']['frase'])->toBe(g3fApertura('Ugo', '1 marzo 2026', '€ 295,00') . G3F_VOCE_DI_UGO . G3F_CHIUSURA)
+    expect(g3fParti($voci['Ugo']))->toBe(['Anna' => 23600, 'Bruno' => 5900])->and(g3fParti($voci['Ada']))->toBe(['Anna' => 45150, 'Bruno' => 30100])
+        ->and($voci['Ugo']['frase'])->toStartWith(g3fApertura('Ugo', '1 marzo 2026', '€ 295,00') . G3F_PARTI_UGO . G3F_VOCE_DI_UGO . ' Questo piano non applica i saldi del Wallet')
+        ->and($voci['Ada']['frase'])->toStartWith(g3fApertura('Ada', '1 maggio 2026', '€ 752,50') . G3F_PARTI_ADA . G3F_VOCE_DI_ADA . ' Questo piano non applica i saldi del Wallet')
         ->and($voci['Ada']['piano_applica_saldi'])->toBeFalse();
 });
 
-it('Coda 480 — alla creazione del piano, quando il cancello annulla la richiesta, la fermata è la stessa', function () {
+it('Coda 481 — alla creazione del piano, quando il cancello annulla la richiesta, le parti sono le stesse', function () {
     [$s] = g3fAd1($this);
     $voci = [];
     try {
@@ -249,8 +251,9 @@ it('Coda 480 — alla creazione del piano, quando il cancello annulla la richies
     }
 
     expect(array_keys($voci))->toBe(['Ugo', 'Ada'])
-        ->and($voci['Ada']['frase'])->toBe(g3fApertura('Ada', '1 maggio 2026', '€ 752,50') . G3F_VOCE_DI_ADA . G3F_CHIUSURA)
-        ->and($voci['Ugo']['frase'])->toBe(g3fApertura('Ugo', '1 marzo 2026', '€ 295,00') . G3F_VOCE_DI_UGO . G3F_CHIUSURA);
+        ->and(g3fParti($voci['Ugo']))->toBe(['Anna' => 23600, 'Bruno' => 5900])->and(g3fParti($voci['Ada']))->toBe(['Anna' => 45150, 'Bruno' => 30100])
+        ->and($voci['Ugo']['frase'])->toStartWith(g3fApertura('Ugo', '1 marzo 2026', '€ 295,00') . G3F_PARTI_UGO . G3F_VOCE_DI_UGO)
+        ->and($voci['Ada']['frase'])->toStartWith(g3fApertura('Ada', '1 maggio 2026', '€ 752,50') . G3F_PARTI_ADA . G3F_VOCE_DI_ADA);
 });
 
 it('Coda 480, controprova — due defunti sulla stessa unità che non sono uno erede dell\'altro (eredi Anna e Bruno di tutti e due): le voci chiedono le righe e, registrate, dicono «Non serve registrare altro», come prima', function () {
@@ -280,7 +283,7 @@ it('Coda 480, controprova — due defunti sulla stessa unità che non sono uno e
     expect($s->somme('Preventivo 2026', ['ugo', 'ada', 'anna', 'bruno']))->toBe(['ugo' => 0, 'ada' => 0, 'anna' => 182500, 'bruno' => 182500]);
 });
 
-it('Coda 480 — con un credito (un\'entrata che supera la spesa) la cifra dei defunti è «un credito» e la parte da erede di Ada è «a credito»', function () {
+it('Coda 481 — con un credito (un\'entrata che supera la spesa) la parte da erede di Ada passa ai suoi eredi «a credito», e le righe hanno il verso rovesciato', function () {
     // Con l'entrata di € 7.300,00 accanto alla spesa il netto è −365000 l'anno, −1000 al giorno per il 100 %: Ugo −29500 (la parte di Ada −14750), Ada
     // 0,5 × 120 × (−1000) + 0,25 × 61 × (−1000) = −60000 − 15250 = −75250.
     [$s] = g3fScenario($this, ['A' => 1000], [['A', 'ugo', 50], ['A', 'ada', 50]],
@@ -289,16 +292,16 @@ it('Coda 480 — con un credito (un\'entrata che supera la spesa) la cifra dei d
     $voci = g3fVoci(g3fGenera($this, $s));
 
     expect($voci['Ugo']['cifra'])->toBe(-29500)->and($voci['Ada']['cifra'])->toBe(-75250)
-        ->and($voci['Ada']['frase'])->toBe(g3fApertura('Ada', '1 maggio 2026', 'un credito di € 752,50')
-            . ' Ada è anche erede di Ugo su quest\'unità (decesso del 1 marzo 2026): la sua parte da erede, € 147,50 a credito, il programma non la passa ai suoi eredi, Anna e Bruno.' . G3F_CHIUSURA)
-        ->and($voci['Ugo']['frase'])->toBe(g3fApertura('Ugo', '1 marzo 2026', 'un credito di € 295,00')
-            . ' Ada, erede di Ugo, ha a sua volta una successione su quest\'unità (decesso del 1 maggio 2026) con l\'arretrato passato agli eredi: la sua parte da erede, € 147,50 a credito, il programma non la passa ai suoi eredi, Anna e Bruno.' . G3F_CHIUSURA);
+        ->and(g3fParti($voci['Ugo']))->toBe(['Anna' => -23600, 'Bruno' => -5900])
+        ->and($voci['Ugo']['frase'])->toContain(' Ada, erede di Ugo, ha a sua volta una successione su quest\'unità (decesso del 1 maggio 2026) con l\'arretrato passato agli eredi: la sua parte da erede, € 147,50 a credito, passa ai suoi eredi per le loro quote, Anna € 88,50 a credito e Bruno € 59,00 a credito.')
+        ->toContain('€ 295,00 a debito di Ugo, € 236,00 a credito di Anna e € 59,00 a credito di Bruno')
+        ->and($voci['Ada']['frase'])->toContain(' Ada è anche erede di Ugo su quest\'unità (decesso del 1 marzo 2026): la sua parte da erede, € 147,50 a credito, passa ai suoi eredi con la voce di Ugo.');
 });
 
-it('Coda 480 — Ada erede di Ugo ed Eva: la voce di Ada dice le due parti (€ 118,00 e € 135,00) e quelle di Ugo e di Eva nominano Ada, ognuna con la sua parte', function () {
+it('Coda 481 — Ada erede di Ugo ed Eva: le voci di Ugo e di Eva passano la parte di Ada ai suoi eredi (€ 118,00 e € 135,00), la voce di Ada lo dice per tutte e due', function () {
     // Ugo 40 %, Eva 30 %, Ada 30 %. Ugo muore il 1/3 (59 giorni, eredi Ada 20 e Anna 20), Eva il 1/4 (90 giorni, eredi Ada 15 e Anna 15), Ada il 1/5 (120 giorni, la sua quota 65,
-    // eredi Bruno 50 e Anna 15). Ugo 0,4 × 59 × 1000 = 23600, la parte di Ada 11800; Eva 0,3 × 90 × 1000 = 27000, la parte di Ada 13500; Ada 0,3 × 120 × 1000 + 0,2 × 61 × 1000
-    // + 0,15 × 30 × 1000 = 36000 + 12200 + 4500 = 52700.
+    // eredi Bruno 50 e Anna 15). Ugo 0,4 × 59 × 1000 = 23600, la parte di Ada 11800 (Bruno 11800 × 50 / 65 = 9076,92 → 9077, Anna 2723); Eva 0,3 × 90 × 1000 = 27000, la parte
+    // di Ada 13500 (Bruno 10384,62 → 10385, Anna 3115); Ada 0,3 × 120 × 1000 + 0,2 × 61 × 1000 + 0,15 × 30 × 1000 = 52700 (Bruno 40538,46 → 40538, Anna 12161,54 → 12162).
     [$s] = g3fScenario($this, ['A' => 1000], [['A', 'ugo', 40], ['A', 'eva', 30], ['A', 'ada', 30]],
         [['A', 'ugo', '2026-03-01', ['ada' => 20, 'anna' => 20], 'ada'], ['A', 'eva', '2026-04-01', ['ada' => 15, 'anna' => 15], 'ada'], ['A', 'ada', '2026-05-01', ['bruno' => 50, 'anna' => 15], 'bruno']]);
 
@@ -306,37 +309,34 @@ it('Coda 480 — Ada erede di Ugo ed Eva: la voce di Ada dice le due parti (€ 
 
     expect(array_keys($voci))->toBe(['Ugo', 'Eva', 'Ada'])
         ->and([$voci['Ugo']['cifra'], $voci['Eva']['cifra'], $voci['Ada']['cifra']])->toBe([23600, 27000, 52700])
-        ->and($voci['Ada']['frase'])->toBe(g3fApertura('Ada', '1 maggio 2026', '€ 527,00')
-            . ' Ada è anche erede di Ugo su quest\'unità (decesso del 1 marzo 2026): la sua parte da erede, € 118,00, il programma non la passa ai suoi eredi, Bruno e Anna.'
-            . ' Ada è anche erede di Eva su quest\'unità (decesso del 1 aprile 2026): la sua parte da erede, € 135,00, il programma non la passa ai suoi eredi, Bruno e Anna.' . G3F_CHIUSURA)
-        ->and($voci['Ugo']['frase'])->toBe(g3fApertura('Ugo', '1 marzo 2026', '€ 236,00')
-            . ' Ada, erede di Ugo, ha a sua volta una successione su quest\'unità (decesso del 1 maggio 2026) con l\'arretrato passato agli eredi: la sua parte da erede, € 118,00, il programma non la passa ai suoi eredi, Bruno e Anna.' . G3F_CHIUSURA)
-        ->and($voci['Eva']['frase'])->toBe(g3fApertura('Eva', '1 aprile 2026', '€ 270,00')
-            . ' Ada, erede di Eva, ha a sua volta una successione su quest\'unità (decesso del 1 maggio 2026) con l\'arretrato passato agli eredi: la sua parte da erede, € 135,00, il programma non la passa ai suoi eredi, Bruno e Anna.' . G3F_CHIUSURA);
+        ->and(g3fParti($voci['Ugo']))->toBe(['Anna' => 14523, 'Bruno' => 9077])
+        ->and(g3fParti($voci['Eva']))->toBe(['Anna' => 16615, 'Bruno' => 10385])
+        ->and(g3fParti($voci['Ada']))->toBe(['Bruno' => 40538, 'Anna' => 12162])
+        ->and($voci['Ugo']['frase'])->toContain('la sua parte da erede, € 118,00, passa ai suoi eredi per le loro quote, Bruno € 90,77 e Anna € 27,23.')
+        ->and($voci['Eva']['frase'])->toContain('la sua parte da erede, € 135,00, passa ai suoi eredi per le loro quote, Bruno € 103,85 e Anna € 31,15.')
+        ->and($voci['Ada']['frase'])->toContain(' Ada è anche erede di Ugo su quest\'unità (decesso del 1 marzo 2026): la sua parte da erede, € 118,00, passa ai suoi eredi con la voce di Ugo.'
+            . ' Ada è anche erede di Eva su quest\'unità (decesso del 1 aprile 2026): la sua parte da erede, € 135,00, passa ai suoi eredi con la voce di Eva.');
 });
 
-it('Coda 480 — la catena Ugo, Ada, Bruno (ognuno erede del precedente e defunto): ogni voce dice le parti dirette da erede, con la cifra dove l\'altra divisione è fatta (€ 501,67 di Bruno da Ada)', function () {
+it('Coda 481 — la catena Ugo, Ada, Bruno (ognuno erede del precedente e defunto): ogni voce divide fra i vivi, Anna e Carla, in profondità; i centesimi tornano', function () {
     [$s] = g3fCatena($this);
 
     $voci = g3fVoci(g3fGenera($this, $s));
 
+    // Ugo 29500: Ada 14750 (Bruno 9833,33 → 9833, Anna 4917) e Bruno 14750; Bruno 24583 (Carla 16388,67 → 16389, Anna 8194). Ada 75250: Bruno 50166,67 → 50167, Anna
+    // 25083; Bruno 50167 (Carla 33444,67 → 33445, Anna 16722). Bruno 61000: Carla 40666,67 → 40667, Anna 20333.
     expect(array_keys($voci))->toBe(['Ugo', 'Ada', 'Bruno'])
         ->and([$voci['Ugo']['cifra'], $voci['Ada']['cifra'], $voci['Bruno']['cifra']])->toBe([29500, 75250, 61000])
-        ->and($voci['Ugo']['frase'])->toBe(g3fApertura('Ugo', '1 marzo 2026', '€ 295,00')
-            . ' Ada, erede di Ugo, ha a sua volta una successione su quest\'unità (decesso del 1 maggio 2026) con l\'arretrato passato agli eredi: la sua parte da erede, € 147,50, il programma non la passa ai suoi eredi, Bruno e Anna.'
-            . ' Bruno, erede di Ugo, ha a sua volta una successione su quest\'unità (decesso del 1 luglio 2026) con l\'arretrato passato agli eredi: la sua parte da erede, € 147,50, il programma non la passa ai suoi eredi, Carla e Anna.' . G3F_CHIUSURA)
-        ->and($voci['Ada']['frase'])->toBe(g3fApertura('Ada', '1 maggio 2026', '€ 752,50')
-            . G3F_VOCE_DI_ADA_CATENA
-            . ' Bruno, erede di Ada, ha a sua volta una successione su quest\'unità (decesso del 1 luglio 2026) con l\'arretrato passato agli eredi: la sua parte da erede, € 501,67, il programma non la passa ai suoi eredi, Carla e Anna.' . G3F_CHIUSURA)
-        ->and($voci['Bruno']['frase'])->toBe(g3fApertura('Bruno', '1 luglio 2026', '€ 610,00')
-            . ' Bruno è anche erede di Ugo su quest\'unità (decesso del 1 marzo 2026): la sua parte da erede, € 147,50, il programma non la passa ai suoi eredi, Carla e Anna.'
-            . ' Bruno è anche erede di Ada su quest\'unità (decesso del 1 maggio 2026): la sua parte da erede, € 501,67, il programma non la passa ai suoi eredi, Carla e Anna.' . G3F_CHIUSURA);
+        ->and(g3fParti($voci['Ugo']))->toBe(['Anna' => 13111, 'Carla' => 16389])
+        ->and(g3fParti($voci['Ada']))->toBe(['Anna' => 41805, 'Carla' => 33445])
+        ->and(g3fParti($voci['Bruno']))->toBe(['Carla' => 40667, 'Anna' => 20333])
+        ->and($voci['Ugo']['frase'])->toContain('Bruno, erede di Ugo, ha a sua volta una successione su quest\'unità (decesso del 1 luglio 2026) con l\'arretrato passato agli eredi: la sua parte da erede, € 245,83, passa ai suoi eredi per le loro quote, Carla € 163,89 e Anna € 81,94.')
+        ->and($voci['Ada']['frase'])->toContain('Bruno, erede di Ada, ha a sua volta una successione su quest\'unità (decesso del 1 luglio 2026) con l\'arretrato passato agli eredi: la sua parte da erede, € 501,67, passa ai suoi eredi per le loro quote, Carla € 334,45 e Anna € 167,22.');
     // Senza righe e con la presa d'atto le somme sono quelle dei giorni.
     g3fGenera($this, $s, true)->assertSessionHasNoErrors();
     expect($s->somme('Preventivo 2026', ['ugo', 'ada', 'bruno', 'anna', 'carla']))->toBe(['ugo' => 29500, 'ada' => 75250, 'bruno' => 61000, 'anna' => 107250, 'carla' => 92000]);
 });
 
-const G3F_VOCE_DI_ADA_CATENA = ' Ada è anche erede di Ugo su quest\'unità (decesso del 1 marzo 2026): la sua parte da erede, € 147,50, il programma non la passa ai suoi eredi, Bruno e Anna.';
 
 it('Coda 480, il piano congela le cifre di sempre: dopo la presa d\'atto `titolarita_alla` ha le due voci con la cifra del motore (Ugo 29500, Ada 75250)', function () {
     [$s] = g3fAd1($this);
@@ -389,7 +389,7 @@ it('Coda 480 e Coda 484 — la successione di Ada è su un\'altra unità (la B):
         ->and($voci['Ugo · Interno A']['cifra'])->toBe(14750)->and(g3fParti($voci['Ugo · Interno A']))->toBe(['Ada' => null, 'Anna' => null])
         ->and($voci['Ugo · Interno A']['parti_da_decidere'])->toBeTrue()
         ->and($voci['Ugo · Interno A']['frase'])->toBe(g3fApertura('Ugo', '1 marzo 2026', '€ 147,50')
-            . ' Ada, erede di Ugo, ha a sua volta una successione su Interno B (decesso del 1 maggio 2026) con l\'arretrato passato agli eredi: la sua parte da erede, € 73,75, il programma non la passa ai suoi eredi, Anna e Bruno.' . G3F_CHIUSURA)
+            . ' Ada, erede di Ugo, ha a sua volta una successione su Interno B (decesso del 1 maggio 2026) con l\'arretrato passato agli eredi: la sua parte da erede, € 73,75, il programma non la passa ai suoi eredi, Anna e Bruno (per le loro quote: Anna € 36,88 e Bruno € 36,87).' . G3F_CHIUSURA)
         ->and($voci['Ada · Interno A']['cifra'])->toBe(37625)->and(g3fParti($voci['Ada · Interno A']))->toBe(['Anna' => null, 'Bruno' => null])
         ->and($voci['Ada · Interno A']['parti_da_decidere'])->toBeTrue()
         ->and($voci['Ada · Interno A']['frase'])->toBe(G3F_ADA_SU_A_DOPO_IL_DECESSO
@@ -421,9 +421,9 @@ it('Coda 484 — la strada che la voce di Ada su A dice: registrata la successio
         ->not->toContain('ancora aperta');
 });
 
-it('Coda 480 — Ada non ha una voce sua (nessuna cifra del motore: il piano straordinario è della delibera del 1/2, prima delle due successioni): la voce di Ugo nomina Ada e la sua parte (€ 600,00)', function () {
+it('Coda 481 — Ada non ha una voce sua (nessuna cifra del motore: il piano straordinario è della delibera del 1/2, prima delle due successioni): la voce di Ugo passa la sua parte (€ 600,00) a Bruno e a Carla', function () {
     // Ugo è l'unico proprietario di A; la delibera dei lavori è del 1/2/2026, quando Ugo è titolare: € 1.200,00 a lui, nulla a Ada (che è erede dall'1/3 e muore l'1/5).
-    // Ada eredita metà della quota di Ugo (50 su 100): la sua parte è 120000 × 50 / 100 = 60000.
+    // Ada eredita metà della quota di Ugo (50 su 100): la sua parte è 120000 × 50 / 100 = 60000, a Bruno 60000 × 30 / 50 = 36000 e a Carla 24000.
     $s = Beta51Scenario::nuovo($this)->tabella('Proprietà', ['A' => 1000])->gestione('Straordinaria', 'straordinaria')->voce('Straordinaria', 'Lavori', 120000, ['Proprietà' => 100])
         ->titolare('A', 'ugo', 'proprietario', 100)->pianoStraordinario('Lavori', 'Straordinaria', ['Lavori' => 120000], '2026-02-01');
     $s->passaggio('successione', 'A', 'ugo', null, '2026-03-01', ['eredi' => ['ada' => 50, 'anna' => 50], 'arretrato' => 'eredi', 'riferimento' => 'ada']);
@@ -433,9 +433,9 @@ it('Coda 480 — Ada non ha una voce sua (nessuna cifra del motore: il piano str
 
     expect(array_keys($voci))->toBe(['Ugo'])
         ->and($voci['Ugo']['cifra'])->toBe(120000)
-        ->and($voci['Ugo']['parti_da_decidere'])->toBeTrue()
-        ->and($voci['Ugo']['frase'])->toBe(g3fApertura('Ugo', '1 marzo 2026', '€ 1.200,00')
-            . ' Ada, erede di Ugo, ha a sua volta una successione su quest\'unità (decesso del 1 maggio 2026) con l\'arretrato passato agli eredi: la sua parte da erede, € 600,00, il programma non la passa ai suoi eredi, Bruno e Carla.' . G3F_CHIUSURA);
+        ->and($voci['Ugo']['parti_da_decidere'])->toBeFalse()
+        ->and(g3fParti($voci['Ugo']))->toBe(['Anna' => 60000, 'Bruno' => 36000, 'Carla' => 24000])
+        ->and($voci['Ugo']['frase'])->toContain(' Ada, erede di Ugo, ha a sua volta una successione su quest\'unità (decesso del 1 maggio 2026) con l\'arretrato passato agli eredi: la sua parte da erede, € 600,00, passa ai suoi eredi per le loro quote, Bruno € 360,00 e Carla € 240,00.');
 });
 
 /**
@@ -513,7 +513,7 @@ it('Coda 480, controprova — Ada è erede di Ugo (l\'arretrato passa) e di Eva 
         ->not->toContain('erede di Eva');
 });
 
-it('Coda 480, controprova — un terzo defunto (Pia) sulla stessa unità, senza legame con gli altri due: la sua voce resta quella di sempre e, con le righe registrate, dice «Non serve registrare altro»; le voci di Ugo e di Ada restano la fermata', function () {
+it('Coda 480, controprova — un terzo defunto (Pia) sulla stessa unità, senza legame con gli altri due: la sua voce resta quella di sempre e, con le righe registrate, dice «Non serve registrare altro»; le voci di Ugo e di Ada (Coda 481: con le loro parti) chiedono ancora le loro righe', function () {
     // Ugo 30 %, Ada 30 %, Pia 40 %. Ugo muore l'1/3 (eredi Ada 15 e Anna 15), Ada l'1/5 (la sua quota 45, eredi Anna 30 e Bruno 15), Pia l'1/5 (eredi Anna 25 e Bruno 15).
     // Ugo 0,3 × 59 × 1000 = 17700; Ada 0,3 × 120 × 1000 + 0,15 × 61 × 1000 = 36000 + 9150 = 45150; Pia 0,4 × 120 × 1000 = 48000, le parti Anna 48000 × 25 / 40 = 30000 e Bruno 18000.
     [$s, $sub] = g3fScenario($this, ['A' => 1000], [['A', 'ugo', 30], ['A', 'ada', 30], ['A', 'pia', 40]],
@@ -523,7 +523,8 @@ it('Coda 480, controprova — un terzo defunto (Pia) sulla stessa unità, senza 
 
     expect(array_keys($voci))->toBe(['Ugo', 'Ada', 'Pia'])
         ->and([$voci['Ugo']['cifra'], $voci['Ada']['cifra'], $voci['Pia']['cifra']])->toBe([17700, 45150, 48000])
-        ->and($voci['Ugo']['parti_da_decidere'])->toBeTrue()->and($voci['Ada']['parti_da_decidere'])->toBeTrue()
+        ->and($voci['Ugo']['parti_da_decidere'])->toBeFalse()->and($voci['Ada']['parti_da_decidere'])->toBeFalse()
+        ->and(g3fParti($voci['Ugo']))->toBe(['Anna' => 14750, 'Bruno' => 2950])
         ->and($voci['Pia']['parti_da_decidere'])->toBeFalse()->and(g3fParti($voci['Pia']))->toBe(['Anna' => 30000, 'Bruno' => 18000]);
     // Le righe che la voce di Pia chiede: il credito di Pia e le parti di Anna e di Bruno, legate alla sua successione.
     g3fWallet($this, $s, 'pia', -48000, $sub['pia']);

@@ -6,10 +6,9 @@
 namespace App\Services\Subentro;
 
 use App\Enums\NaturaGestione;
+use App\Enums\RuoloAnagraficaImmobile;
 use App\Helpers\MoneyHelper;
 use App\Models\Anagrafica;
-use App\Models\Gestionale\Conto;
-use App\Models\Gestionale\ContributoVersato;
 use App\Models\Gestionale\PianoRate;
 use App\Models\Gestionale\RigaRiparto;
 use App\Models\Gestionale\Subentro;
@@ -17,7 +16,7 @@ use App\Services\CalcoloQuoteService;
 use App\Services\Riparto\CompetenzaDelPiano;
 use App\Services\Riparto\DettaglioRiparto;
 use App\Services\Riparto\PeriodoDellaRiga;
-use App\Services\Riparto\QuotaDellaChiamata;
+use App\Services\Riparto\RuoloDellaVoce;
 use App\Support\ImportoInParole;
 use App\Support\InsiemePeriodi;
 use App\Support\PeriodoCompetenza;
@@ -64,8 +63,9 @@ final class ConguaglioPassaggio
     /**
      * Decisione 31.5: quali voci ordinarie ha fatto passare a chi entra un passaggio con «come la voce». Nella riserva
      * d'usufrutto quelle sul «Proprietario» (un piano ricalcolato le dà al nudo proprietario); nella costituzione le altre
-     * (un piano ricalcolato le dà all'usufruttuario). L'addebito diretto all'unità sta dalla parte del «Proprietario»: il
-     * motore lo dà al proprietario, poi al nudo proprietario (`RuoloAnagraficaImmobile::titolariDiDirittoReale()`).
+     * (un piano ricalcolato le dà all'usufruttuario). L'addebito diretto all'unità segue la voce su cui è scritto: sta dalla
+     * parte del «Proprietario», dove il motore lo dà al proprietario, poi al nudo proprietario
+     * (`RuoloAnagraficaImmobile::titolariDiDirittoReale()`), salvo la riga su una voce sul solo «Usufruttuario» (`RuoloDellaVoce`).
      */
     private const VOCI_SUL_PROPRIETARIO = 'proprietario';
     private const VOCI_NON_SUL_PROPRIETARIO = 'non_proprietario';
@@ -75,7 +75,11 @@ final class ConguaglioPassaggio
     /** La riga di riparto sta dalla parte del «Proprietario»? Vedi le costanti qui sopra. */
     private static function latoProprietario(object $riga): bool
     {
-        return ($riga->ruolo_richiesto ?? null) === 'proprietario' || ($riga->tipo ?? null) === RigaRiparto::TIPO_AD_PERSONAM;
+        if (($riga->tipo ?? null) === RigaRiparto::TIPO_AD_PERSONAM) {
+            return RuoloDellaVoce::dellaRigaDiRiparto($riga) !== RuoloAnagraficaImmobile::USUFRUTTUARIO;
+        }
+
+        return ($riga->ruolo_richiesto ?? null) === 'proprietario';
     }
 
     /** Con `$vociPassate`, la riga passa a chi entra? */
@@ -388,10 +392,6 @@ final class ConguaglioPassaggio
             if ($dettaglio === null) {
                 continue;
             }
-            // Coda 160: dove il già versato è sia della persona sia dell'unità, il conguaglio e un piano generato dopo il passaggio danno due cifre.
-            if (! $straordinaria && $decorrenzaAcquisto === null && $entrante !== null && ! isset($entrantiPerUnita[(int) $primo->immobile_id])) {
-                $dettaglio['conti'] = $this->confrontoConIlPiano($dettaglio['conti'], (int) $piano->id, (int) $primo->immobile_id, (int) $primo->righe_di, (int) $entrante->id);
-            }
             $dettagli[$chiave] = [$dettaglio, $decorrenzaAcquisto];
         }
         // DV1 (decisione 59, 1.11.0-beta.43): nell'ultimo anello di una catena le quote di una stessa unità hanno più intestatari
@@ -587,7 +587,10 @@ final class ConguaglioPassaggio
                     };
                 }
                 $voce['giorni'] = ['giorni_uscente' => max(0, $acquisto['giorni_entrante'] - $parti['giorni_entrante']), 'giorni_entrante' => min($parti['giorni_entrante'], $acquisto['giorni_entrante']), 'giorni_periodo' => $acquisto['giorni_entrante']];
-                $voce['uscente'] = MoneyHelper::ripartisciPerQuote(max(0, (int) $acquisto['entrante'] - (int) $parti['entrante']), $pesi);
+                // Con il segno, come il ramo per conto (`scomponiPerConto`): con un netto negativo (l'entrata supera la spesa) la parte di
+                // chi esce è un credito, non zero; a chi esce non meno di zero nel verso della voce.
+                $segnoBase = $quotaArrivata < 0 ? -1 : 1;
+                $voce['uscente'] = MoneyHelper::ripartisciPerQuote($segnoBase * max(0, $segnoBase * ((int) $acquisto['entrante'] - (int) $parti['entrante'])), $pesi);
                 if (! isset($voce['lati'])) {
                     $voce['riconcilia']['arrivata'] = $quotaArrivata;
                     $voce['riconcilia']['acquisto'] = (string) $primo->decorrenza_acquisto;
@@ -936,6 +939,7 @@ final class ConguaglioPassaggio
         $inBozza = collect($quote)->where('in_bozza', true)->where('passa', false)->reject(fn ($q) => ! empty($q['senza_nessuno']))
             ->groupBy(fn ($q) => $q['piano'] . '|' . ($q['intestato_a'] ?? $q['ereditata_da'] ?? $uscente->nome) . '|' . $q['motivo_bozza'])
             ->map(fn (Collection $g) => ['piano' => $g->first()['piano'], 'intestatario' => $g->first()['intestato_a'] ?? $g->first()['ereditata_da'] ?? $uscente->nome, 'n' => $g->count(), 'motivo' => $g->first()['motivo_bozza']]
+                + (($g->first()['giorno_della_fattura'] ?? null) !== null ? ['giorno_della_fattura' => $g->first()['giorno_della_fattura']] : [])
                 // Decisione 56: la parte che non passa è una che chi esce ha già ceduto, non una che tiene (le frasi lo dicono).
                 + ($g->every(fn ($q) => ($q['motivi_quota'] ?? []) !== [] && array_filter($q['motivi_quota'], fn ($m) => ! str_starts_with((string) $m, 'ceduta:')) === []) ? ['ceduta' => true] : [])
                 // Rilievo GT2: una parte già ceduta da chi esce accanto ad altre ragioni; la frase non dice «mai passata».
@@ -1095,6 +1099,10 @@ final class ConguaglioPassaggio
             }
             $quote[$i]['passa'] = $motivo === null;
             $quote[$i]['motivo_bozza'] = $motivo;
+            // La voce della fattura che decide è una spesa di una sola unità su una fattura senza periodo: la frase dice il giorno della fattura.
+            $quote[$i]['giorno_della_fattura'] = in_array($motivo, ['fattura_di_chi_esce', 'fattura_divisa'], true)
+                && $gruppo->every(fn ($x) => collect($x['per_capitolo'] ?? [])->where('gradino', 'dichiarata')->every(fn ($c) => ! empty($c['giorno_della_fattura'])))
+                ? self::giornoDellaFatturaDelGruppo($gruppo) : null;
         }
 
         return $quote;
@@ -1496,7 +1504,7 @@ final class ConguaglioPassaggio
             ->where('decorrenza', '<=', $p->decorrenza->toDateString())->get()->contains(fn (Subentro $c) => $c->ordinariaComeLaVoce());
         $righe = DB::table('righe_riparto')->where('piano_rate_id', (int) $primo->piano_rate_id)->where('immobile_id', (int) $primo->immobile_id)
             ->where('anagrafica_id', (int) ($primo->righe_di ?? $primo->anagrafica_id))->whereIn('tipo', [RigaRiparto::TIPO_RIPARTO, RigaRiparto::TIPO_AD_PERSONAM])
-            ->get(['ruolo_richiesto', 'ruolo_risolto', 'tipo']);
+            ->get(['conto_id', 'riga_fattura_id', 'ruolo_richiesto', 'ruolo_risolto', 'tipo']);
         if ($righe->isEmpty()) {
             return ! $nuda || $voceAMonte;
         }
@@ -1914,10 +1922,10 @@ final class ConguaglioPassaggio
      *   dell'unità abbassa la spesa da dividere; la parte della persona **non entra nella divisione**: è un pagamento
      *   di chi esce e resta suo (`versato_uscente`), tolto dalla sua parte dopo la divisione al lordo. Così `entrante`
      *   può superare `totale`: è l'eccedenza di chi esce, come nel motore. Piani pre-B2 (una riga sola, senza
-     *   descrizione): parte della persona zero. ⚠️ Con **tutte e due** le parti sullo stesso conto i centesimi non
-     *   coincidono con il motore, che toglie prima la parte della persona e divide quella dell'unità sulle righe già
-     *   ridotte (`CalcoloQuoteService::nettingGiaVersato`): qualche euro su € 700,00. Precedente alla beta.35, è
-     *   una scelta di dominio ancora da fare (decisione 17, D8): Coda 160.
+     *   descrizione): parte della persona zero. Con **tutte e due** le parti sullo stesso conto il motore segue lo
+     *   stesso ordine (`CalcoloQuoteService::nettingGiaVersato`: prima la parte dell'unità sui lordi, poi quella di
+     *   ciascuna persona sulla sua riga già ridotta): un piano generato dopo il passaggio dà le cifre del
+     *   conguaglio, salvo il centesimo dell'arrotondamento.
      *
      * @param array<int, InsiemePeriodi> $tratti
      * @param ?InsiemePeriodi $base la competenza del piano quando è risolta (ordinario: base; straordinario: la delibera, usata come ripiego)
@@ -2049,6 +2057,7 @@ final class ConguaglioPassaggio
                 $decorrenzaAcquisto = CarbonImmutable::parse($primo->legame['arrivo']);
             }
             $contoId = (int) ($primo->conto_id ?? 0);
+            $delGiornoDellaFattura = false;
             $lordo = (int) $gruppo->sum('importo');
             $netting = (int) ($nettingPerConto[$k]['netting'] ?? 0);
             $np = (int) ($nettingPerConto[$k]['persona'] ?? 0);
@@ -2062,6 +2071,9 @@ final class ConguaglioPassaggio
             } elseif ($dichiarata($primo)) {
                 $competenza = InsiemePeriodi::uno(new PeriodoCompetenza($giorno($primo->competenza_dal), $giorno($primo->competenza_al)));
                 $gradino = 'dichiarata';
+                // La spesa di una sola unità su una fattura senza periodo: il motore le dà il giorno della fattura, con lo stesso gradino
+                // (`CalcoloQuoteService::giornoDellaSpesaPersonale`). Le cifre sono quelle; le frasi dicono la ragione vera.
+                $delGiornoDellaFattura = $this->delGiornoDellaFattura($primo);
             } else {
                 $tratto = $tratti[$contoId] ?? $tratti[(int) ($primo->conto_radice_id ?? 0)] ?? null;
                 $competenza = $tratto ?? $base;
@@ -2094,9 +2106,6 @@ final class ConguaglioPassaggio
                 : (isset($primo->legame) ? ($primo->legame['esito'] ?? null) : ($fuoriQuota !== null && $primo !== null ? $fuoriQuota($primo) : null));
             $fuori = $motivoQuota !== null;
 
-            // Coda 160 (1.11.0-beta.51): i lordi di chi esce e di chi entra, per giorni, prima di togliere il già versato: servono a dire cosa darebbe un
-            // piano generato dopo il passaggio (`comeLoDarebbeIlPiano`). Solo dove la divisione è quella semplice, per giorni, senza predecessori.
-            $lordiDivisi = null;
             if ($fuori) {
                 $parti = ['uscente' => $decorrenzaAcquisto === null ? $lordo - $nu : 0, 'entrante' => 0, 'giorni_uscente' => null, 'giorni_entrante' => null, 'giorni_periodo' => null, 'giorni_predecessore' => null];
             } elseif ($nonPassa) {
@@ -2130,7 +2139,6 @@ final class ConguaglioPassaggio
                 ];
             } else {
                 $parti = ProRataTemporis::dividi($lordo - $nu, $competenzaRiga, $decorrenza) + ['giorni_predecessore' => null];
-                $lordiDivisi = ProRataTemporis::dividi($lordo, $competenzaRiga, $decorrenza);
             }
             $conti[] = [
                 'conto_id'        => $contoId,
@@ -2142,10 +2150,8 @@ final class ConguaglioPassaggio
                 'importo'         => $importo,
                 'importo_formattato' => MoneyHelper::format($importo),
                 'versato_uscente' => $np,
-                'versato_unita'   => $nu,
-                'lordo_uscente'   => $lordiDivisi !== null ? (int) $lordiDivisi['uscente'] : null,
-                'lordo_entrante'  => $lordiDivisi !== null ? (int) $lordiDivisi['entrante'] : null,
                 'gradino'         => $gradino,
+                'giorno_della_fattura' => $delGiornoDellaFattura ?? false,
                 'periodo'         => $competenzaRiga?->toArray(),
                 'tratto'          => $trattoRiga?->toArray(),
                 'non_risolta'     => $competenzaRiga === null && ! $nonPassa && ! $fuori,
@@ -2394,7 +2400,10 @@ final class ConguaglioPassaggio
             if ($dichiarataInTesta && $g['importo'] === 0 && $g['bozze_passate'] === 0 && count($g['per_periodo']) === 1 && empty($g['per_periodo'][0]['ereditata_da'])) {
                 // Decisione 26: la competenza dichiarata sulla fattura cade tutta prima del passaggio (la pregressa dell'anno
                 // prima): la voce è di chi esce, e le righe voce per voce dicono quale fattura e quale periodo.
-                $frasi[] = sprintf('Sulla %s: nessun conguaglio — %s restano %s: la competenza dichiarata sulla fattura cade prima del passaggio.', $gestione, self::quotaPura((int) $g['quota_pura']), FrasiObbligati::a($uscente));
+                $capitoliDichiarati = collect($g['per_periodo'][0]['per_capitolo'] ?? [])->where('gradino', 'dichiarata');
+                $frasi[] = $capitoliDichiarati->every(fn ($c) => ! empty($c['giorno_della_fattura']))
+                    ? sprintf('Sulla %s: nessun conguaglio — %s restano %s: la fattura non dichiara un periodo, e il suo giorno cade prima del passaggio.', $gestione, self::quotaPura((int) $g['quota_pura']), FrasiObbligati::a($uscente))
+                    : sprintf('Sulla %s: nessun conguaglio — %s restano %s: la competenza dichiarata sulla fattura cade prima del passaggio.', $gestione, self::quotaPura((int) $g['quota_pura']), FrasiObbligati::a($uscente));
                 array_push($frasi, ...$this->frasiPerCapitolo($g['per_periodo'][0]['per_capitolo'], $uscente, $entrante, $decorrenza, false));
                 continue;
             }
@@ -2719,7 +2728,7 @@ final class ConguaglioPassaggio
             }
             $tratti = implode(' + ', array_map(fn ($t) => $t['dal'] === $t['al'] ? $this->data($t['dal']) : $this->data($t['dal']) . '–' . $this->data($t['al']), $c['periodo']));
             $etichetta = match ($c['gradino'] ?? null) {
-                'dichiarata' => 'competenza dichiarata ' . $tratti,
+                'dichiarata' => ! empty($c['giorno_della_fattura']) ? 'fattura del ' . $tratti . ', senza un periodo' : 'competenza dichiarata ' . $tratti,
                 'delibera'   => 'delibera del ' . $tratti,
                 default      => 'competenza ' . $tratti,
             };
@@ -2748,7 +2757,7 @@ final class ConguaglioPassaggio
                 $frasi[] = $parteEntrante === 0
                     ? (! empty($c['resta_per_voce'])
                         ? sprintf('  · %s: %s, %s — emessa %s, resta per la scelta «come dice ogni voce»: nessun conguaglio su questa voce.', $this->nomeVoce($c), $importo, $etichetta, FrasiObbligati::a($emessaA))
-                        : sprintf('  · %s: %s, %s — emessa %s, la competenza finisce prima del %s: nessun conguaglio su questa voce.', $this->nomeVoce($c), $importo, $etichetta, FrasiObbligati::a($emessaA), $this->data($decorrenza->toDateString())))
+                        : sprintf('  · %s: %s, %s — emessa %s, %s prima del %s: nessun conguaglio su questa voce.', $this->nomeVoce($c), $importo, $etichetta, FrasiObbligati::a($emessaA), ! empty($c['giorno_della_fattura']) ? 'la fattura è di' : 'la competenza finisce', $this->data($decorrenza->toDateString())))
                     : sprintf('  · %s: %s, %s — emessa %s: %s → %s.', $this->nomeVoce($c), $importo, $etichetta, FrasiObbligati::a($emessaA), implode(', ', $parti), self::aChiEntra((int) $parteEntrante));
             } elseif ($parteEntrante === 0) {
                 // Straordinario a gradino: era di chi esce se il gradino cade fra il suo acquisto e il passaggio, altrimenti del predecessore.
@@ -2757,7 +2766,7 @@ final class ConguaglioPassaggio
                     ? sprintf('  · %s: %s, %s — %s, quando l\'unità era di %s: la spesa resta sua.', $c['conto'], $importo, $etichetta, ($c['gradino'] ?? null) === 'delibera' ? 'deliberata' : 'maturata', $eraDi)
                     : (! empty($c['resta_per_voce'])
                         ? sprintf('  · %s: %s, %s — resta %s per la scelta «come dice ogni voce».', $this->nomeVoce($c), $importo, $etichetta, FrasiObbligati::a($uscente))
-                        : sprintf('  · %s: %s, %s — resta %s, la competenza finisce prima del %s.', $this->nomeVoce($c), $importo, $etichetta, FrasiObbligati::a($uscente), $this->data($decorrenza->toDateString())));
+                        : sprintf('  · %s: %s, %s — resta %s, %s prima del %s.', $this->nomeVoce($c), $importo, $etichetta, FrasiObbligati::a($uscente), ! empty($c['giorno_della_fattura']) ? 'la fattura è di' : 'la competenza finisce', $this->data($decorrenza->toDateString())));
             } elseif (isset($coperti[$j]) && $coperti[$j][0] === 0) {
                 // R2: nei giorni della voce dopo l'uscita nessuno sta al posto dell'inquilino; la frase dei giorni scoperti dice la parte.
                 $frasi[] = sprintf('  · %s: %s, %s — nei suoi giorni dopo l\'uscita nessuno sta al posto dell\'inquilino: resta nelle rate di %s.', $this->nomeVoce($c), $importo, $etichetta, $uscente);
@@ -2781,214 +2790,8 @@ final class ConguaglioPassaggio
                 ? sprintf('  %s già versati da %s restano suoi: la spesa si attribuisce per competenza al lordo, e il versato torna col conguaglio.', MoneyHelper::format($versato), $intestatario)
                 : sprintf('  %s già versati da %s restano suoi: la spesa è divisa per competenza al lordo, il versato si toglie dalla sua parte.', MoneyHelper::format($versato), $intestatario);
         }
-        // Coda 160 (1.11.0-beta.51): dove il già versato è sia della persona sia dell'unità sullo stesso conto, il conguaglio e un piano generato dopo
-        // il passaggio danno due cifre diverse (il piano toglie prima il versato della persona dalla sua riga, poi quello dell'unità in proporzione
-        // alle righe già ridotte; il conguaglio toglie prima quello dell'unità dal totale). La frase dice le due cifre e la differenza.
-        if (! $straordinaria && $predecessore === null && $entrante !== null) {
-            foreach ($conti as $c) {
-                $frase = $this->fraseDelVersatoDiDue($c, $uscente, $entrante);
-                if ($frase !== null) {
-                    $frasi[] = $frase;
-                }
-            }
-        }
 
         return $frasi;
-    }
-
-    /**
-     * Coda 160: per ogni voce con il già versato della persona **e** dell'unità, cosa darebbe un piano generato dopo il passaggio, messo sulla prima
-     * riga della voce (`confronto_piano`) se differisce dal conguaglio per più di un centesimo. È il solo posto che legge `righe_riparto` degli altri
-     * e `contributi_versati`: la frase (`fraseDelVersatoDiDue`) si limita a dirlo.
-     *
-     * Vale dove ogni riga della voce è una divisione per giorni semplice fra chi esce e chi entra: nessun predecessore, nessuna parte che non passa,
-     * un solo erede. La voce può avere più righe (divisa fra proprietario e inquilino, D8): per il piano contano le persone, non i ruoli, e le righe
-     * di chi esce sommano. Gli altri titolari della voce (un inquilino) restano com'erano e dividono con chi entra il già versato dell'unità: se chi
-     * entra è già sul piano le sue righe si fonderebbero con quelle di prima, e la frase tace. Con la quota minore di 1 (acconto e saldo su due
-     * chiamate) il piano applica una frazione del già versato (`quotaDellaChiamata`), e la frase applica la stessa; se la frazione non si può dire, tace.
-     *
-     * @param list<array<string,mixed>> $conti
-     * @return list<array<string,mixed>>
-     */
-    private function confrontoConIlPiano(array $conti, int $pianoRateId, int $immobileId, int $uscenteId, int $entranteId): array
-    {
-        if ($this->eredi > 1) {
-            return $conti;
-        }
-        $perConto = [];
-        foreach ($conti as $i => $c) {
-            $perConto[(int) ($c['conto_id'] ?? 0)][] = $i;
-        }
-        foreach ($perConto as $contoId => $indici) {
-            $righe = array_map(fn (int $i) => $conti[$i], $indici);
-            if ($contoId === 0 || collect($righe)->contains(fn (array $c) => $c['lordo_uscente'] === null || ! empty($c['non_risolta']) || ! empty($c['resta_per_quota']) || ! empty($c['resta_per_voce']))) {
-                continue;
-            }
-            $lordoUscente = (int) array_sum(array_column($righe, 'lordo_uscente'));
-            $lordoEntrante = (int) array_sum(array_column($righe, 'lordo_entrante'));
-            if ((int) array_sum(array_column($righe, 'versato_uscente')) <= 0 || (int) array_sum(array_column($righe, 'versato_unita')) <= 0 || $lordoUscente <= 0 || $lordoEntrante <= 0) {
-                continue;
-            }
-            // Con la chiamata che è una parte della voce (acconto e saldo) il piano applica la stessa frazione del già versato, della persona e dell'unità,
-            // che ha applicato nelle rate: le cifre di sopra («€ 150,00 già versati da Ugo») e questo confronto parlano dello stesso già versato. Se la
-            // frazione non si può dire, la frase tace.
-            $quota = $this->quotaDellaChiamata($pianoRateId, $contoId);
-            if ($quota === null) {
-                continue;
-            }
-            $applicato = fn (int $versato) => QuotaDellaChiamata::applica($versato, $quota);
-            // Coda 438: il già versato che vale nell'esercizio del piano, quello che un piano generato dopo il passaggio toglierebbe.
-            $versati = array_map($applicato, ContributoVersato::perImmobileESoggetto(Conto::class, $contoId, QuotaDellaChiamata::esercizioDelPiano($pianoRateId))[$immobileId] ?? []);
-            $altri = DB::table('righe_riparto')->where('piano_rate_id', $pianoRateId)->where('immobile_id', $immobileId)->where('conto_id', $contoId)->where('tipo', RigaRiparto::TIPO_RIPARTO)
-                ->where('anagrafica_id', '!=', $uscenteId)->selectRaw('anagrafica_id, SUM(importo) as lordo')->groupBy('anagrafica_id')->pluck('lordo', 'anagrafica_id');
-            if ($altri->has($entranteId)) {
-                continue;
-            }
-            $lordi = ['uscente' => $lordoUscente, 'entrante' => $lordoEntrante];
-            $versatiPersona = ['uscente' => (int) ($versati[$uscenteId] ?? 0), 'entrante' => (int) ($versati[$entranteId] ?? 0)];
-            foreach ($altri as $id => $lordo) {
-                $lordi['p' . $id] = (int) $lordo;
-                $versatiPersona['p' . $id] = (int) ($versati[(int) $id] ?? 0);
-            }
-            $unita = (int) ($versati[''] ?? 0);
-            $dopo = self::comeLoDarebbeIlPiano($lordi, $versatiPersona, $unita);
-            $conguaglio = ['uscente' => (int) array_sum(array_column($righe, 'uscente')), 'entrante' => (int) array_sum(array_column($righe, 'entrante'))];
-            if ($dopo === null || $versatiPersona['uscente'] <= 0 || abs($conguaglio['entrante'] - $dopo['entrante']) <= 1) {
-                continue;
-            }
-            // Gli altri titolari della voce (un comproprietario, un inquilino) non cambiano riga, ma il già versato dell'unità si divide su righe diverse: nel piano
-            // di dopo pagano una quota diversa da quella di adesso, e la frase lo dice. «Adesso» è lo stesso conto con chi esce che tiene tutta la voce.
-            $terzi = [];
-            if ($altri->isNotEmpty()) {
-                $ora = self::comeLoDarebbeIlPiano(['uscente' => $lordoUscente + $lordoEntrante] + array_diff_key($lordi, ['uscente' => 1, 'entrante' => 1]),
-                    array_diff_key($versatiPersona, ['entrante' => 1]), $unita);
-                $nomi = Anagrafica::whereIn('id', $altri->keys()->all())->pluck('nome', 'id');
-                foreach ($altri->keys() as $id) {
-                    if ($ora !== null && abs(($dopo['p' . $id] ?? 0) - ($ora['p' . $id] ?? 0)) > 1) {
-                        $terzi[] = ['nome' => (string) ($nomi[$id] ?? '?'), 'ora' => (int) $ora['p' . $id], 'dopo' => (int) $dopo['p' . $id]];
-                    }
-                }
-            }
-            $conti[$indici[0]]['confronto_piano'] = [
-                'persona'         => $versatiPersona['uscente'],
-                'unita'           => $unita,
-                'conguaglio'      => $conguaglio,
-                'piano'           => ['uscente' => $dopo['uscente'], 'entrante' => $dopo['entrante']],
-                'lordo_uscente'   => $lordoUscente,
-                'resta_a_persona' => max(0, $versatiPersona['uscente'] - $lordoUscente),
-                'terzi'           => $terzi,
-            ];
-        }
-
-        return $conti;
-    }
-
-    /**
-     * Coda 160: la quota di questa chiamata sul budget della voce, come la calcola `CalcoloQuoteService::nettingGiaVersato` per applicare il già versato
-     * (seconda fonte dichiarata, come `comeLoDarebbeIlPiano`). Il conto sta in `QuotaDellaChiamata`, che serve anche all'atteso del badge «Disallineato».
-     *
-     * @return float|null null se la frazione non si può dire
-     */
-    private function quotaDellaChiamata(int $pianoRateId, int $contoId): ?float
-    {
-        return QuotaDellaChiamata::perConto($pianoRateId, $contoId);
-    }
-
-    /**
-     * Coda 160: «Su «Spese generali» il già versato è di Ugo (€ 300,00) e dell'unità (€ 200,00): il conguaglio dà € 671,23 a Elsa e € 28,77 a Ugo; un
-     * piano generato dopo il passaggio toglierebbe prima il versato di Ugo e poi quello dell'unità dalle quote che restano, e darebbe € 626,48 a Elsa
-     * e € 73,52 a Ugo: la differenza è € 44,75, e vale il conguaglio.» Comincia con due spazi come la riga del già versato, così il pannello la tiene
-     * nel calcolo (si nasconde con «Non scriverlo»). Le cifre sono quelle di `confrontoConIlPiano`, che c'è solo dove le due strade si confrontano.
-     *
-     * Quando il già versato di chi esce supera la sua parte lorda, il conguaglio gli dà un credito (la cifra si dice con le parole, mai «€ -171,23»)
-     * e il piano si ferma alla sua parte: la frase dice anche quanto resta suo.
-     *
-     * @param array<string, mixed> $c il conto, da `scomponiPerConto`, con `confronto_piano` se c'è
-     */
-    private function fraseDelVersatoDiDue(array $c, string $uscente, string $entrante): ?string
-    {
-        $f = $c['confronto_piano'] ?? null;
-        if ($f === null) {
-            return null;
-        }
-        $resta = $f['resta_a_persona'] > 0
-            ? sprintf(' (fino alla sua parte lorda di %s: i restanti %s restano suoi)', MoneyHelper::format($f['lordo_uscente']), MoneyHelper::format($f['resta_a_persona']))
-            : '';
-
-        // Gli altri titolari della voce che nel piano di dopo pagano una quota diversa: «Nello stesso piano cambia anche la quota di Anna: € 480,33 invece di € 466,67.»
-        $terzi = '';
-        if (($f['terzi'] ?? []) !== []) {
-            $uno = count($f['terzi']) === 1;
-            $quote = array_map(fn (array $t) => sprintf($uno ? '%2$s invece di %3$s' : '%1$s (%2$s invece di %3$s)', $t['nome'], MoneyHelper::format($t['dopo']), MoneyHelper::format($t['ora'])), $f['terzi']);
-            $terzi = $uno
-                ? sprintf(' Nello stesso piano cambia anche la quota di %s: %s.', $f['terzi'][0]['nome'], $quote[0])
-                : sprintf(' Nello stesso piano cambiano anche le quote di %s.', self::elencoNomi($quote));
-        }
-
-        return sprintf('  Su «%s» il già versato è di %s (%s) e dell\'unità (%s): il conguaglio dà %s %s e %s %s; un piano generato dopo il passaggio toglierebbe prima il versato di %s%s e poi quello dell\'unità dalle quote che restano, e darebbe %s %s e %s %s: la differenza è %s, e vale il conguaglio.%s',
-            $this->nomeVoce($c), $uscente, MoneyHelper::format($f['persona']), MoneyHelper::format($f['unita']),
-            ImportoInParole::cifraInParole($f['conguaglio']['entrante']), FrasiObbligati::a($entrante), ImportoInParole::cifraInParole($f['conguaglio']['uscente']), FrasiObbligati::a($uscente),
-            $uscente, $resta, MoneyHelper::format($f['piano']['entrante']), FrasiObbligati::a($entrante), MoneyHelper::format($f['piano']['uscente']), FrasiObbligati::a($uscente),
-            MoneyHelper::format(abs($f['conguaglio']['entrante'] - $f['piano']['entrante'])), $terzi);
-    }
-
-    /** «Anna», «Anna e Ines», «Anna, Ines e Dora». @param list<string> $voci */
-    private static function elencoNomi(array $voci): string
-    {
-        return count($voci) <= 1 ? ($voci[0] ?? '') : implode(', ', array_slice($voci, 0, -1)) . ' e ' . $voci[count($voci) - 1];
-    }
-
-    /**
-     * Coda 160: cosa darebbe un piano generato dopo il passaggio, a chi esce, a chi entra e agli altri titolari della voce, con il già versato della
-     * persona e dell'unità sullo stesso conto. È una SECONDA FONTE dichiarata di `CalcoloQuoteService::nettingGiaVersato`, che è privato e legge
-     * `ContributoVersato`: non si può chiamare su cifre ipotetiche, e estrarlo toccherebbe la generazione. Lo stesso ordine: prima ogni persona sulla
-     * sua riga, col tetto del suo lordo (quel che avanza resta suo, non entra nelle quote); poi l'unità in proporzione alle righe già ridotte, con i
-     * resti maggiori (a pari resto chi viene prima nell'ordine delle chiavi: chi esce, chi entra, gli altri). Il test differenziale la confronta con
-     * il piano generato davvero dopo la vendita.
-     *
-     * @param array<string,int> $lordi il lordo di ogni riga dopo il passaggio: `uscente`, `entrante`, e `p<id>` per gli altri titolari
-     * @param array<string,int> $versatiPersona il già versato della persona (grezzo) per le stesse chiavi
-     * L'unità assorbe al più le righe che restano: con un già versato dell'unità maggiore, le righe vanno a zero e l'eccedenza resta all'unità.
-     *
-     * @return array<string,int>|null le quote nette per chiave; null se il lordo di una riga è negativo (una nota di credito: il netting non si applica e la frase tace)
-     */
-    private static function comeLoDarebbeIlPiano(array $lordi, array $versatiPersona, int $versatoUnita): ?array
-    {
-        if ($lordi === [] || min($lordi) < 0 || array_sum($lordi) <= 0) {
-            return null;
-        }
-        $righe = $lordi;
-        foreach ($versatiPersona as $chiave => $versato) {
-            if (isset($righe[$chiave])) {
-                $righe[$chiave] = $lordi[$chiave] - min($versato, max(0, $lordi[$chiave]));
-            }
-        }
-        $totale = (int) array_sum($righe);
-        if ($totale <= 0) {
-            return array_map(fn () => 0, $righe);
-        }
-        $applicata = min($versatoUnita, $totale);
-        $quote = [];
-        $frazioni = [];
-        foreach ($righe as $chiave => $lordo) {
-            $quote[$chiave] = min((int) floor($applicata * $lordo / $totale), $lordo);
-            $frazioni[$chiave] = fmod($applicata * $lordo / $totale, 1);
-        }
-        $resto = $applicata - array_sum($quote);
-        if ($resto > 0) {
-            $ordine = array_keys($righe);
-            usort($ordine, fn (string $a, string $b) => $frazioni[$b] <=> $frazioni[$a]);
-            foreach ($ordine as $chiave) {
-                $capienza = $righe[$chiave] - $quote[$chiave];
-                if ($resto > 0 && $capienza > 0) {
-                    $aggiunta = min($capienza, $resto);
-                    $quote[$chiave] += $aggiunta;
-                    $resto -= $aggiunta;
-                }
-            }
-        }
-
-        return array_map(fn (string $chiave) => $righe[$chiave] - $quote[$chiave], array_combine(array_keys($righe), array_keys($righe)));
     }
 
     /**
@@ -3039,6 +2842,43 @@ final class ConguaglioPassaggio
         };
     }
 
+    /** @var array<int, bool> le fatture senza un periodo, per riga della fattura */
+    private array $senzaPeriodoPerRiga = [];
+
+    /**
+     * La riga del riparto con il gradino «dichiarata» è una spesa di una sola unità su una fattura senza periodo: il motore le ha dato il giorno della
+     * fattura (`CalcoloQuoteService::giornoDellaSpesaPersonale`), un periodo di un giorno, mentre la fattura non dichiara niente.
+     */
+    private function delGiornoDellaFattura(object $r): bool
+    {
+        if (($r->tipo ?? null) !== RigaRiparto::TIPO_AD_PERSONAM || empty($r->riga_fattura_id) || $r->competenza_dal === null
+            || substr((string) $r->competenza_dal, 0, 10) !== substr((string) $r->competenza_al, 0, 10)) {
+            return false;
+        }
+        $id = (int) $r->riga_fattura_id;
+        if (! array_key_exists($id, $this->senzaPeriodoPerRiga)) {
+            $f = DB::table('righe_fattura')->join('fatture_passive', 'fatture_passive.id', '=', 'righe_fattura.fattura_passiva_id')
+                ->where('righe_fattura.id', $id)->first(['fatture_passive.competenza_dal', 'fatture_passive.competenza_al']);
+            $this->senzaPeriodoPerRiga[$id] = $f !== null && ($f->competenza_dal === null || $f->competenza_al === null);
+        }
+
+        return $this->senzaPeriodoPerRiga[$id];
+    }
+
+    /** Il giorno della fattura delle voci di un gruppo di quote, per la frase: il primo periodo di una voce «del giorno della fattura». */
+    private static function giornoDellaFatturaDelGruppo(Collection $gruppo): ?string
+    {
+        foreach ($gruppo as $x) {
+            foreach ((array) ($x['per_capitolo'] ?? []) as $c) {
+                if (! empty($c['giorno_della_fattura']) && ! empty($c['periodo'][0]['dal'])) {
+                    return (string) $c['periodo'][0]['dal'];
+                }
+            }
+        }
+
+        return null;
+    }
+
     /**
      * Perché un gruppo di bozze resta a chi le ha (decisione 21, e dalla B3a la decisione 25 che ne fa passare le
      * altre): la frase dice a chi resteranno intestate e, quando c'è, la ragione.
@@ -3062,8 +2902,12 @@ final class ConguaglioPassaggio
             'straordinaria_di_chi_esce' => sprintf('%s del piano «%s» non ancora %s %s %s: la spesa straordinaria è sua.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, FrasiObbligati::a($b['intestatario'])),
             'straordinaria_divisa' => sprintf('%s: la spesa straordinaria si divide fra chi esce e chi entra per competenza, quindi %s %s e %s qui.', $comprese, $resteranno, FrasiObbligati::a($b['intestatario']), $siConguagliano),
             // Decisione 26: sull'ordinaria, la voce con la competenza dichiarata sulla fattura.
-            'fattura_di_chi_esce' => sprintf('%s del piano «%s» non ancora %s %s %s: la competenza dichiarata sulla fattura cade prima del passaggio, la spesa è sua.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, FrasiObbligati::a($b['intestatario'])),
-            'fattura_divisa' => sprintf('%s: una voce del piano ha la competenza dichiarata sulla fattura e la spesa si divide voce per voce fra chi esce e chi entra, quindi %s %s e %s qui.', $comprese, $resteranno, FrasiObbligati::a($b['intestatario']), $siConguagliano),
+            'fattura_di_chi_esce' => ! empty($b['giorno_della_fattura'])
+                ? sprintf('%s del piano «%s» non ancora %s %s %s: la fattura non dichiara un periodo, ed è del %s, prima del passaggio: la spesa è sua.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, FrasiObbligati::a($b['intestatario']), $this->data($b['giorno_della_fattura']))
+                : sprintf('%s del piano «%s» non ancora %s %s %s: la competenza dichiarata sulla fattura cade prima del passaggio, la spesa è sua.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, FrasiObbligati::a($b['intestatario'])),
+            'fattura_divisa' => ! empty($b['giorno_della_fattura'])
+                ? sprintf('%s: una voce del piano è di una fattura senza un periodo, che va a chi era titolare il giorno della fattura, e la spesa si divide voce per voce fra chi esce e chi entra, quindi %s %s e %s qui.', $comprese, $resteranno, FrasiObbligati::a($b['intestatario']), $siConguagliano)
+                : sprintf('%s: una voce del piano ha la competenza dichiarata sulla fattura e la spesa si divide voce per voce fra chi esce e chi entra, quindi %s %s e %s qui.', $comprese, $resteranno, FrasiObbligati::a($b['intestatario']), $siConguagliano),
             // R12: le quote che il conguaglio non tocca non «si conguagliano qui».
             'straordinaria_del_nudo' => sprintf('%s del piano «%s» non ancora %s %s %s: le spese straordinarie sono del nudo proprietario (art. 1005 c.c.), il passaggio non le tocca.', $Quote, $b['piano'], $uno ? 'emessa' : 'emesse', $resteranno, FrasiObbligati::a($b['intestatario'])),
             // Decisione 28.4: non «non ne risponde» — verso il condominio ne risponde in solido (art. 67 ult. co.).

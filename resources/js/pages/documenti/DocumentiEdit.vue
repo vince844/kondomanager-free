@@ -483,7 +483,8 @@ const submit = (): void => {
                                 :placeholder="trans('documenti.placeholder.category')"
                                 @update:modelValue="form.clearErrors('categorie')"
                             />
-                            <Sheet>
+                            <!-- Il «+» crea una categoria: chiede «Crea documenti archivio» (CategoriaDocumentoPolicy). -->
+                            <Sheet v-if="hasPermission([Permission.CREATE_ARCHIVE_DOCUMENTS])">
                                 <SheetTrigger as-child>
                                     <button type="button" class="p-2 rounded-md border bg-white dark:bg-slate-950 hover:bg-slate-50 transition shadow-sm h-8">
                                         <Plus class="w-4 h-4 text-slate-500 hover:text-primary" />

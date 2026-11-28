@@ -114,6 +114,22 @@ class PianoRate extends Model
     }
 
     /**
+     * Un piano di soli saldi iniziali: nessuna voce, i saldi che tiene, e le sue quote non chiedono altro che i saldi. Non è un piano «senza voci»: le voci non le
+     * ha mai avute, non le prende, e non si ricalcola prima di crearne un altro. La sua rata chiede i saldi.
+     */
+    public function eDiSoliSaldi(): bool
+    {
+        if (\Illuminate\Support\Facades\DB::table('piano_rate_capitoli')->where('piano_rate_id', $this->id)->exists()
+            || ! \App\Models\Saldo::query()->where('piano_rate_id', $this->id)->exists()) {
+            return false;
+        }
+        $chiesto = (int) \Illuminate\Support\Facades\DB::table('rate_quote')->join('rate', 'rate.id', '=', 'rate_quote.rata_id')->where('rate.piano_rate_id', $this->id)
+            ->sum('rate_quote.importo');
+
+        return $chiesto === (int) \App\Models\Saldo::query()->where('piano_rate_id', $this->id)->sum('saldo_iniziale');
+    }
+
+    /**
      * Il nome di un addebito a una persona sola nelle stampe e negli elenchi: la sua causale con «— addebito». Il numero della rata nel piano degli addebiti
      * («Rata n.1», «rata 2») si confonderebbe con le rate del preventivo.
      */
@@ -585,7 +601,9 @@ class PianoRate extends Model
             }
         }
 
-        if ($this->tipo === 'straordinario' || \Illuminate\Support\Facades\DB::table('piano_rate_capitoli')->where('piano_rate_id', $this->id)->exists()) {
+        // Il piano di soli saldi non prende voci, con o senza righe: il suo ricalcolo chiede i soli saldi, e non c'è niente da rifare.
+        if ($this->tipo === 'straordinario' || \Illuminate\Support\Facades\DB::table('piano_rate_capitoli')->where('piano_rate_id', $this->id)->exists()
+            || $this->eDiSoliSaldi()) {
             return null;
         }
         // L'esercizio che il programma legge per ogni piano della gestione; è nullo solo per una gestione senza esercizi, e allora lo è per tutti i suoi piani
@@ -593,13 +611,13 @@ class PianoRate extends Model
         $competenza = app(\App\Services\Riparto\CompetenzaDelPiano::class);
         $mio = $competenza->esercizioDelPiano($this);
         // Solo i piani che prendono voci (rilievo 1 del secondo scettico della tappa 1 della 1.12.0-beta.14): lo straordinario prende le fatture e il piano
-        // degli addebiti le somme chieste a una persona, senza la riga delle voci. Questo piano non può chiedere di nuovo le loro voci, e la guardia del già
+        // degli addebiti le somme chieste a una persona, senza la riga delle voci; il piano di soli saldi non ne prende nessuna. Questo piano non può chiedere di nuovo le loro voci, e la guardia del già
         // versato non li conta (`CalcoloQuoteService::rifiutoDelGiaVersato`): con loro la ragione del rifiuto non c'è, e un «Spese fuori preventivo» o il
         // primo addebito individuale di un altro esercizio farebbero di un piano della 1.10 senza voci un piano da rifare, senza passare dal fermo della
         // creazione (decisione 691 (2)).
         $altri = self::where('gestione_id', $this->gestione_id)->where('id', '!=', $this->id)->delRiparto()
             ->whereIn('stato', [StatoPianoRate::BOZZA->value, StatoPianoRate::APPROVATO->value])->orderBy('id')->get()
-            ->reject(fn (self $p) => $p->tipo === 'straordinario')
+            ->reject(fn (self $p) => $p->tipo === 'straordinario' || $p->eDiSoliSaldi())
             ->map(fn (self $p) => ['piano' => $p, 'esercizio' => $competenza->esercizioDelPiano($p)])
             ->filter(fn (array $x) => $x['esercizio']?->id !== $mio?->id)
             ->values();

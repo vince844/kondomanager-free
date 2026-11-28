@@ -31,6 +31,10 @@ beforeEach(function () {
     $ruolo->givePermissionTo(Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']));
     $this->user = User::factory()->create(['email_verified_at' => now()]);
     $this->user->assignRole($ruolo);
+    // Caricare un file nel gestionale chiede anche «Crea documenti archivio», che l'amministratore di serie ha.
+    foreach (['Crea documenti archivio'] as $nomeDelPermesso) {
+        $ruolo->givePermissionTo(\Spatie\Permission\Models\Permission::firstOrCreate(['name' => $nomeDelPermesso, 'guard_name' => 'web']));
+    }
 });
 
 /** Un file caricato vero: il tipo lo legge `finfo` dal contenuto. */

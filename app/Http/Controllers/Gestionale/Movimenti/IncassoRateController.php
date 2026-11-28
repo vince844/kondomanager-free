@@ -184,16 +184,18 @@ class IncassoRateController extends Controller
             ->with('contoCorrente')
             ->get();
 
-        $condomini = Anagrafica::whereHas('immobili', fn($q) => $q->where('condominio_id', $condominio->id))
+        // Chi si sceglie come pagante: la regola del server (`StoreIncassoRateRequest::personaDelCondominio`), una sola fonte con l'estratto conto
+        // (`Anagrafica::delCondominio`). Anche chi è stato tolto dal condominio o dissociato dall'unità con rate ancora sue.
+        $condomini = Anagrafica::delCondominio((int) $condominio->id)
             ->orderBy('nome')->get(['id', 'nome', 'indirizzo', 'codice_fiscale']);
 
         $immobili = Immobile::where('condominio_id', $condominio->id)
             ->orderBy('interno')->get(['id', 'interno', 'descrizione', 'nome']);
 
         // Coda 167, beta.40: chi può essere «Versato da» — le persone del condominio, con la stessa regola del pagante
-        // (`StoreIncassoRateRequest::personaDelCondominio()`: titolari di un'unità o associati al condominio). Più ampio
-        // di `$condomini`, che guarda solo le unità: il figlio che paga per la madre è associato senza unità. `ha_rate`
-        // serve al modulo per avvisare prima del rifiuto, quando la parte in più non avrebbe dove stare (decisione 30.3).
+        // (`Anagrafica::delCondominio`: associati al condominio, titolari di un'unità, chi ha quote nelle sue rate): il figlio che
+        // paga per la madre è associato senza unità. `ha_rate` serve al modulo per avvisare prima del rifiuto, quando la parte in
+        // più non avrebbe dove stare (decisione 30.3).
         $conRate = RataQuote::whereHas('rata.pianoRate', fn ($p) => $p->where('condominio_id', $condominio->id))
             ->whereHas('rata', fn ($r) => $r->where('stato', 'emessa'))
             ->where('importo', '>', 0)
@@ -201,9 +203,7 @@ class IncassoRateController extends Controller
             ->pluck('anagrafica_id')
             ->flip();
 
-        $persone = Anagrafica::where(fn ($q) => $q
-                ->whereHas('immobili', fn ($i) => $i->where('condominio_id', $condominio->id))
-                ->orWhereHas('condomini', fn ($c) => $c->where('condomini.id', $condominio->id)))
+        $persone = Anagrafica::delCondominio((int) $condominio->id)
             ->orderBy('nome')
             ->get(['id', 'nome', 'indirizzo', 'codice_fiscale'])
             ->map(fn (Anagrafica $a) => [
@@ -292,8 +292,15 @@ class IncassoRateController extends Controller
      */
     public function store(StoreIncassoRateRequest $request, Condominio $condominio, StoreIncassoRateAction $action) 
     {
+        // Senza un esercizio aperto non c'è dove registrare: si torna al modulo compilato con il motivo. L'azione vuole l'esercizio, e senza
+        // questa guardia la richiesta finiva in una pagina 500.
+        $aperto = $this->getEsercizioCorrente($condominio);
+        if ($aperto === null) {
+            return back()->withInput()->withErrors(['esercizio' => 'Non c\'è un esercizio aperto: riapri l\'esercizio o creane uno nuovo.']);
+        }
+
         try {
-            $scrittura = $action->execute($request->validated(), $condominio, $this->getEsercizioCorrente($condominio));
+            $scrittura = $action->execute($request->validated(), $condominio, $aperto);
         } catch (IncassoNonRegistrabileException $e) {
             // Conflitto di dominio, non guasto: l'incasso **non si poteva registrare**, e niente è
             // stato scritto. Si torna al modulo compilato con il motivo, invece della pagina 500

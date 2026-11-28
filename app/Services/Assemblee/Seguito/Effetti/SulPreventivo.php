@@ -53,7 +53,7 @@ final class SulPreventivo implements Effetto
         $deficit = $c->scheda('compito');
         if ($deficit !== null && (((array) $deficit->getAttribute('meta'))['type'] ?? null) === 'pianifica_ripianamento_deficit') {
             $righe[] = RigaDelSeguito::cosa($c, TipoCosaDaFare::PREPARA_RIPIANAMENTO, 'deficit', 'Deficit da ripianare: prepara il piano di ripianamento',
-                'Approvato, ma resta da fare: il piano straordinario si prepara con la delibera già scelta, e salvato si chiude anche il compito del deficit.',
+                'Approvato, ma resta da fare: il piano straordinario si prepara con la delibera già scelta; salvato, il compito del deficit si chiude se non resta niente da ripianare.',
                 'Prepara il piano di ripianamento', true, $deficit);
         }
         if ($c->materia() !== MateriaPunto::PREVENTIVO || $c->punto === null) {

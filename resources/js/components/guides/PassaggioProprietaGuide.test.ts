@@ -310,7 +310,10 @@ describe('PassaggioProprietaGuide — il conduttore entrato dopo un cambio d\'in
             + 'finisce quando chi era entrato esce con la sua fine o con un cambio verso chi era uscito: da lì, anche prima del rientro di chi era uscito o senza rientro, chi entra rimborsa la sua '
             + 'parte a chi ha pagato quei giorni, e se chi era uscito rientra, chi entra nei suoi giorni gli rimborsa la sua parte come senza l\'accordo. Se invece chi era entrato con il cambio '
             + 'passa i suoi giorni a un altro, l\'accordo prosegue con chi ne prende il posto, e finisce allo stesso modo quando questi esce con la sua fine o con un cambio verso chi era uscito: '
-            + 'chi entra nei giorni dell\'accordo non rimborsa niente, chi entra dopo sì. Se chi era uscito aveva quei giorni nelle sue rate, restano lì, e chi entra non li rimborsa. L\'uscita dopo di chi è rientrato, quando '
+            + 'chi entra nei giorni dell\'accordo non rimborsa niente, chi entra dopo sì. Se chi era uscito aveva quei giorni nelle sue rate, l\'accordo finisce allo stesso modo, con l\'uscita di chi '
+            + 'era entrato con il cambio o di chi ne ha preso il posto: chi entra nei giorni dell\'accordo non rimborsa niente, chi entra dopo rimborsa a chi era uscito la sua parte dei giorni nelle '
+            + 'sue rate, sui piani che il cambio aveva preso o che non si ricalcolano più. Se a prendere il posto nell\'accordo è chi era uscito (con «Non scriverlo») e poi esce con «Scrivi il '
+            + 'conguaglio», chi entra dopo rimborsa chi ne ha preso la coppia, e lui rimborsa a chi era entrato con il cambio i giorni dopo la sua uscita, che aveva ceduto. L\'uscita dopo di chi è rientrato, quando '
             + 'chiede la scelta del conguaglio, si legge come ogni uscita: chi entra dopo rimborsa chi ha pagato quei giorni. '
             + 'Con «Non scriverlo» i giorni sono rimasti a chi è uscito, nelle sue rate o con il conguaglio che aveva, e chi entra li rimborsa a lui; se chi è entrato con quel cambio li aveva ceduti con un cambio prima ed esce poi con '
             + '«Scrivi il conguaglio», chi entra dopo la sua uscita rimborsa chi ne ha preso la coppia, e lui rimborsa a chi era uscito con «Non scriverlo» tutti i giorni dopo quell\'uscita.');
@@ -320,8 +323,9 @@ describe('PassaggioProprietaGuide — il conduttore entrato dopo un cambio d\'in
         // cambio (decisione 144), anche in una voce che comincia dopo (Coda 405). Se chi era uscito li aveva con il conguaglio, finisce alla sua uscita (Coda 406, `Beta55ProspettoCambioCoinquilinoTest`:
         // la fine di Zoe il 1/11, Elsa dal 5/11 rimborsa a Sara anche prima del rientro), e chi entra nei giorni del rientro rimborsa come senza l'accordo; se chi era entrato passa i suoi
         // giorni a un altro l'accordo prosegue con chi ne prende il posto (decisione 148.1, la storia Zoe → Elsa) e finisce con la sua uscita, come quella della parte: al rientro di chi era
-        // uscito (decisioni 144 e 148.2) e con la sua fine (decisione 153.3, Coda 413: `Beta59ProspettoAccordoTest`, Teo rimborsa a Sara € 7,19 e € 30,58). Se li aveva nelle sue rate, restano
-        // lì (il pezzo di chi ha la riga non si divide, `giorniDellaParte`; la domanda D-a, decisione 153.4, alla 1.12). L'uscita dopo il rientro si legge come ogni uscita (Coda 379); dopo «Non scriverlo» i giorni restano a chi è uscito, nelle sue rate (Coda 358) o con il conguaglio
+        // uscito (decisioni 144 e 148.2) e con la sua fine (decisione 153.3, Coda 413: `Beta59ProspettoAccordoTest`, Teo rimborsa a Sara € 7,19 e € 30,58). Se li aveva nelle sue rate,
+        // dalla 1.12.0-beta.15 l'accordo finisce allo stesso modo (la D-a, decisioni 144 e 153.4: Elsa rimborsa a Ines € 76,93), e se chi ne prende il posto è chi aveva le righe, che esce poi
+        // con «Scrivi», chi entra rimborsa chi ha la coppia (la lettura P della decisione 145: Teo € 30,58 a Ugo, Ines € 30,58 a Sara). L'uscita dopo il rientro si legge come ogni uscita (Coda 379); dopo «Non scriverlo» i giorni restano a chi è uscito, nelle sue rate (Coda 358) o con il conguaglio
         // che aveva (Code 365 e 380), e l'uscita «Scrivi» di chi aveva già ceduto quei giorni la segue il prospetto (Coda 380, decisione 145).
         expect(testoDellaGuida()).not.toContain('e non rimborsa nessuno; con «Non scriverlo»');
         // Le forme di prima: «Finito l'accordo» valeva anche per il cambio verso un altro e per chi aveva i giorni nelle sue rate; «nelle rate di chi è uscito» anche per chi li aveva con il conguaglio.
@@ -334,12 +338,11 @@ describe('PassaggioProprietaGuide — il conduttore entrato dopo un cambio d\'in
     test('la voce che matura dopo un cambio regolato fra le parti resta a chi era uscito fino alla sua prossima uscita con un conguaglio suo, nelle sue rate o con il conguaglio che aveva', () => {
         // Code 379 e 406 (`Beta55ProspettoCambioCoinquilinoTest`, «Coda 405 — il «Riscaldamento» dal 15/10…» e «Coda 406 — due voci…»): la voce di Sara resta a lei, con il conguaglio del 1/7, fino alla
         // sua fine del 1/12; chi entra dopo la fine dell'accordo le rimborsa la sua parte, dopo il suo rientro (Elsa € 9,46 del «Riscaldamento») e anche prima, senza rientro (dopo la fine di Zoe,
-        // Elsa dal 5/11: € 34,62, nello stesso test). Se l'ha nelle sue rate, chi entra non rimborsa niente.
+        // Elsa dal 5/11: € 34,62, nello stesso test). Se l'ha nelle sue rate, dalla 1.12.0-beta.15 lo stesso (la D-a).
         expect(testoDellaGuida()).toContain(
             'salvo dopo un cambio che le parti hanno regolato fra loro senza un\'uscita con «Scrivi il conguaglio» di chi era entrato: lì resta a chi era uscito, nelle sue rate o, se l\'aveva ricevuta '
-            + 'con il conguaglio di un cambio, con quel conguaglio, fino alla sua prossima uscita con un conguaglio suo. Se l\'ha con il conguaglio, chi entra dopo la fine dell\'accordo, prima o dopo '
-            + 'il suo rientro, gli rimborsa la sua parte; '
-            + 'nelle sue rate restano i giorni di chi ha la riga.',
+            + 'con il conguaglio di un cambio, con quel conguaglio, fino alla sua prossima uscita con un conguaglio suo. Chi entra dopo la fine dell\'accordo, prima o dopo il suo rientro, gli '
+            + 'rimborsa la sua parte, che l\'abbia con il conguaglio o nelle sue rate.',
         );
         // La forma di prima diceva solo «nelle sue rate», senza dove finisce e senza chi l'ha con il conguaglio.
         expect(testoDellaGuida()).not.toContain('di chi era entrato, dove resta nelle sue rate.');

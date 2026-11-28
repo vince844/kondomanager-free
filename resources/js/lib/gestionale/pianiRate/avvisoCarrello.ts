@@ -27,6 +27,8 @@ export interface VoceCarrello {
     ha_competenza: boolean;
     competenza?: string | null;
     senza_periodo?: boolean;
+    /** Una fattura non pregressa senza competenza, con la data prima dell'inizio dell'esercizio: una spesa vecchia senza periodo. */
+    spesa_vecchia?: boolean;
     periodo_nell_esercizio?: boolean;
     selezionata?: boolean;
 }
@@ -45,6 +47,7 @@ export interface AvvisoCarrello {
 }
 
 const STORNA = 'Una pregressa non si modifica: si storna e si registra di nuovo con il periodo.';
+const PAGA_CHI_ERA_TITOLARE = 'Per farla pagare a chi era titolare allora, scrivi il periodo sulla fattura';
 
 export function avvisoFatturaNelCarrello(f: VoceCarrello, c: ContestoCarrello): AvvisoCarrello | null {
     if (f.ha_competenza) {
@@ -71,7 +74,13 @@ export function avvisoFatturaNelCarrello(f: VoceCarrello, c: ContestoCarrello): 
             return { tono: 'avviso', testo: 'Pregressa senza periodo dichiarato: la paga per intero chi è titolare alla data della delibera, non chi lo era quando il costo è maturato.' };
         }
 
-        return { tono: 'avviso', testo: 'Pregressa senza periodo dichiarato: si ripartirà sui giorni di quest\'anno, non su quelli in cui il costo è maturato.' };
+        return { tono: 'avviso', testo: `Pregressa senza periodo dichiarato: si ripartirà sui giorni di quest'anno, non su quelli in cui il costo è maturato, anche la parte di una sola unità. ${PAGA_CHI_ERA_TITOLARE}: una pregressa si storna e si registra di nuovo con il periodo.` };
+    }
+
+    // La spesa vecchia senza periodo, non pregressa: sull'ordinaria il riparto non indovina chi era titolare quando il costo è maturato, e divide sui giorni
+    // di quest'anno anche la parte di una sola unità (`CalcoloQuoteService::giornoDellaSpesaPersonale`). Sulla straordinaria decide la delibera.
+    if (f.spesa_vecchia && !c.gestioneStraordinaria) {
+        return { tono: 'avviso', testo: `Fattura di prima dell'esercizio, senza competenza dichiarata: si ripartirà sui giorni di quest'anno, anche la parte di una sola unità. ${PAGA_CHI_ERA_TITOLARE}.` };
     }
 
     if (giorno && f.selezionata) {

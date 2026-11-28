@@ -381,6 +381,14 @@ trait ValidaConcessioneRuoli
                     continue;
                 }
 
+                // «Accesso pannello amministratore» apre il gestionale di tutti i condomini: come permesso aggiuntivo lo concede
+                // solo l'amministratore. Gli altri permessi restano concedibili da chi li ha: chi riceve «Crea utenti» o «Modifica
+                // utenti» senza essere amministratore passa da questa stessa regola, e il pannello non lo può dare a nessuno.
+                if ($permesso->name === \App\Enums\Permission::ACCESS_ADMIN_PANEL->value
+                    && ! $attore->hasRole(RoleEnum::AMMINISTRATORE->value)) {
+                    return $fail(__('validation.custom.permissions.admin_panel_only_admin'));
+                }
+
                 if (! $attore->hasPermissionTo($permesso->name)) {
                     return $fail(__('validation.custom.permissions.not_allowed'));
                 }

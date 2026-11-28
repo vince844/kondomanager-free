@@ -10,6 +10,7 @@ use App\Models\Gestionale\ContoContabile;
 use App\Models\Gestionale\Rata;
 use App\Models\Gestionale\RataQuote;
 use App\Models\Gestionale\ScritturaContabile;
+use App\Services\RegistroModifiche\RigheDelTratto;
 use Illuminate\Support\Collection;
 
 /**
@@ -59,16 +60,20 @@ final class ScritturaDiEmissione
         ]);
 
         $righeScritte = 0;
+        $quoteScritte = 0;
         $totaleGestione = 0;
         $totalePregresso = 0;
         $perQuota = RataQuote::scritturaDiEmissione($daEmettere, $contoPassate?->id);
+        $legate = [];
         foreach ($daEmettere as $quota) {
             $daScrivere = $perQuota[(int) $quota->id];
-            if ($daScrivere['righe'] === []) {
+            if ($daScrivere['righe'] === [] && $daScrivere['anticipazione'] <= 0) {
                 // Niente da portare: una quota a zero senza spesa né riporto, o un credito già usato per intero prima dell'emissione. La quota resta
                 // senza scrittura; se uno storno poi restituisce quel credito, la scrive lo storno con una figlia di questa emissione.
                 continue;
             }
+            // Una quota a zero con la parte ad personam (Coda 426) non ha righe a nome della persona, ma chiude l'anticipazione della sua
+            // unità (le righe di chiusura, più sotto) con la contropartita su «Gestione rate», e prende la scrittura come le altre.
             foreach ($daScrivere['righe'] as $i => [$verso, $importoRiga]) {
                 $scrittura->righe()->create([
                     'conto_contabile_id' => $contoCrediti->id,
@@ -81,16 +86,19 @@ final class ScritturaDiEmissione
                 ]);
                 $righeScritte++;
             }
-            $quota->update(['scrittura_contabile_id' => $scrittura->id]);
+            $legate[] = $quota;
+            $quoteScritte++;
             $totaleGestione += $daScrivere['gestione'];
             $totalePregresso += $daScrivere['pregresso'];
         }
 
-        if ($righeScritte === 0) {
+        if ($righeScritte === 0 && $quoteScritte === 0) {
             $scrittura->forceDelete();
 
             return null;
         }
+
+        $this->legaAllaScrittura($legate, (int) $scrittura->id);
 
         if ($totalePregresso !== 0 && ! $contoPassate) {
             throw new \RuntimeException(self::ERRORE_PASSATE_GESTIONI);
@@ -121,5 +129,25 @@ final class ScritturaDiEmissione
         DoubleEntryValidator::validateOrFail($scrittura->id);
 
         return $scrittura;
+    }
+
+    /**
+     * Il legame fra le quote e la scrittura che le porta a giornale, con un aggiornamento solo per rata: in un condominio grande un aggiornamento
+     * per quota sono decine di migliaia di istruzioni. Le quote in memoria prendono lo stesso valore, e ognuna si conta nel gesto del registro
+     * delle modifiche come la contava il suo `update()`.
+     *
+     * @param list<RataQuote> $quote
+     */
+    private function legaAllaScrittura(array $quote, int $scritturaId): void
+    {
+        if ($quote === []) {
+            return;
+        }
+        RataQuote::whereIn('id', array_map(fn (RataQuote $q) => (int) $q->id, $quote))->update(['scrittura_contabile_id' => $scritturaId]);
+        foreach ($quote as $quota) {
+            $quota->scrittura_contabile_id = $scritturaId;
+            $quota->syncOriginalAttribute('scrittura_contabile_id');
+            RigheDelTratto::scritturaDiUnGesto($quota, 'modificata');
+        }
     }
 }

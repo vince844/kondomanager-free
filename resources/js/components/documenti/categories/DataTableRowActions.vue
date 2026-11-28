@@ -16,6 +16,7 @@ import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Trash2, FilePenLine, MoreHorizontal } from 'lucide-vue-next';
 import { usePermission } from '@/composables/permissions';
+import { Permission } from '@/enums/Permission';
 import { trans, transChoice } from 'laravel-vue-i18n';
 import { Link } from '@inertiajs/vue3';
 import { ChevronRight } from 'lucide-vue-next';
@@ -42,7 +43,11 @@ const isBloccataOpen = ref(false)
 const isDropdownOpen = ref(false)
 const isDeleting = ref(false)
 
-const { generateRoute } = usePermission()
+const { generateRoute, hasPermission } = usePermission()
+
+// Rinominare e eliminare una categoria chiedono i permessi dei documenti dell'archivio (CategoriaDocumentoPolicy): senza, la voce non c'è.
+const puoModificare = hasPermission([Permission.EDIT_ARCHIVE_DOCUMENTS])
+const puoEliminare = hasPermission([Permission.DELETE_ARCHIVE_DOCUMENTS])
 
 function handleEdit(categoria: Categoria) {
   categoriaID.value = categoria.id
@@ -127,7 +132,7 @@ const editCategory = () => {
 </script>
 
 <template>
-  <DropdownMenu>
+  <DropdownMenu v-if="puoModificare || puoEliminare">
     <DropdownMenuTrigger as-child>
       <Button variant="ghost" class="w-8 h-8 p-0" :aria-label="trans('documenti.table.categories.actions')">
         <MoreHorizontal class="w-4 h-4" />
@@ -138,6 +143,7 @@ const editCategory = () => {
       <DropdownMenuLabel>{{ trans('documenti.table.categories.actions') }}</DropdownMenuLabel>
 
       <DropdownMenuItem
+        v-if="puoModificare"
         @click="handleEdit(categoria)"
       >
 
@@ -146,6 +152,7 @@ const editCategory = () => {
       </DropdownMenuItem>
 
       <DropdownMenuItem
+        v-if="puoEliminare"
         @click="handleDelete(categoria)"
       >
         <Trash2 class="w-4 h-4 text-xs" />

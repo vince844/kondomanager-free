@@ -373,19 +373,19 @@ describe('bassi della pagina del piano con le quote non assegnate (Coda 414)', (
     });
 
     // Coda 433 (decisione 162): la causa, con i giorni quando sono gli stessi per tutte, la dice l'intestazione del gruppo.
-    test('i giorni senza titolare: il rimedio è registrare il passaggio solo se qualcuno è entrato', async () => {
+    test('i giorni senza titolare: il rimedio è registrare il passaggio solo se qualcuno è entrato, o correggere la data di chi è entrato dalla vendita', async () => {
         const giorni = { ...CANTINA, motivo: 'giorni_senza_titolare', giorni: 184 };
         await monta({ voci: [giorni] });
 
         expect(riquadro()).toContain('Per 184 giorni del periodo di competenza nessun titolare è in vigore — 1 unità sulla voce Riscaldamento Cantina 1: € 75,00');
-        expect(riquadro()).toContain('→ Registra il passaggio a chi è entrato (se qualcuno è entrato), poi usa il tasto Ricalcola per includere la quota nel piano.');
+        expect(riquadro()).toContain('→ Registra il passaggio a chi è entrato (se qualcuno è entrato) o, se il nuovo proprietario lo è dalla vendita, correggi la sua data di inizio, poi usa il tasto Ricalcola per includere la quota nel piano.');
         pagina?.unmount();
         pagina = null;
         document.body.innerHTML = '';
 
         // Con le rate emesse il rimedio sta in mezzo alla frase, all'infinito.
         await monta({ voci: [giorni], ratePure: EMESSA, fermo: FERMO });
-        expect(riquadro()).toContain('poi registrare il passaggio a chi è entrato (se qualcuno è entrato) e premere Ricalcola.');
+        expect(riquadro()).toContain('poi registrare il passaggio a chi è entrato (se qualcuno è entrato) o, se il nuovo proprietario lo è dalla vendita, correggere la sua data di inizio e premere Ricalcola.');
     });
 });
 

@@ -29,7 +29,8 @@ vi.mock('@inertiajs/vue3', async (importOriginal) => ({
     ...(await importOriginal<typeof import('@inertiajs/vue3')>()),
     Head: { template: '<span />' },
     usePage: () => ({
-        props: { flash: {}, auth: { user: { roles: ['collaboratore'], get permissions() { return chiGuarda.permessi; } } } },
+        // Chi guarda legge il file della fattura: ha sempre «Crea documenti archivio», che il riquadro dell'allegato chiede.
+        props: { flash: {}, auth: { user: { roles: ['collaboratore'], get permissions() { return [...chiGuarda.permessi, 'Crea documenti archivio']; } } } },
     }),
 }));
 

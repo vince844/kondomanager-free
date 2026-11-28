@@ -176,6 +176,20 @@ final class RiepilogoPerCompetenza
             $entrate = [];
             foreach ($vociG->whereNull('parent_id') as $radice) {
                 $figli = $this->foglie($vociG, (int) $radice->id);
+                // Le voci di tipo diverso dal capitolo (un'entrata sotto un capitolo di spesa, dalle versioni che lo permettevano) hanno una riga loro
+                // nell'altra sezione, «Servizi — entrate»: dentro il capitolo le loro colonne (l'incassato) non ci sono, e la cifra sparirebbe.
+                $entrataRadice = $radice->tipo === 'entrata';
+                $stessoTipo = array_values(array_filter($figli, fn ($f) => ($f->tipo === 'entrata') === $entrataRadice));
+                $altroTipo = array_values(array_filter($figli, fn ($f) => ($f->tipo === 'entrata') !== $entrataRadice));
+                if ($altroTipo !== []) {
+                    $misto = $this->capitoloMisto($radice, array_map($leggi, $altroTipo));
+                    if ($misto['tipo'] === 'entrata') {
+                        $entrate[] = $misto;
+                    } else {
+                        $spese[] = $misto;
+                    }
+                    $figli = $stessoTipo;
+                }
                 $capitolo = $figli === [] ? $leggi($radice) : $this->capitolo($leggi($radice), array_map($leggi, $figli));
                 if ($capitolo['tipo'] === 'entrata') {
                     // La voce che riceve solo gli interessi e le spese versati dai condòmini resta fuori dalle entrate da terzi, dove sarebbe una riga a
@@ -260,7 +274,9 @@ final class RiepilogoPerCompetenza
             'blocchi' => $blocchi,
             'fuori_capitoli' => $fuori,
             'quote' => ['totale' => $totaleQuote],
-            'risultato' => ['quote_emesse' => $risultato['quote_emesse'], 'costi' => $risultato['costi'], 'risultato' => $risultato['risultato']],
+            // La rettifica di esercizi precedenti ha la sua riga: le quote registrate sono quelle chieste in questo esercizio (il raccordo le lega ai piani).
+            'risultato' => ['quote_emesse' => $risultato['quote_emesse'], 'rettifica_esercizi_precedenti' => $risultato['rettifica_esercizi_precedenti'],
+                'costi' => $risultato['costi'], 'risultato' => $risultato['risultato']],
             'raccordo_quote' => $this->raccordoQuote($totaleQuote, $risultato['quote_emesse'], $esercizio, $piani->pluck('id')->map(fn ($id) => (int) $id)->all()),
             'riconciliazione' => [
                 'costi' => $risultato['costi'], 'capitoli_netti' => $capitoliNetti,
@@ -311,7 +327,10 @@ final class RiepilogoPerCompetenza
             ->where('sc.esercizio_id', $esercizio->id)
             ->whereNotNull('rs.voce_spesa_id')
             ->whereNotExists(fn ($q) => SpesaPerVoceService::legataAContestata($q))
-            ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('fattura_scrittura as fc')->whereColumn('fc.scrittura_contabile_id', 'sc.id')->where('fc.tipo', 'competenza'))
+            // Coda 743: anche la scrittura legata alla fattura come `rettifica` (il ripianamento del debito ereditato, e il suo storno) è una parte del costo della
+            // fattura, con il suo pagato (`PagatoAllaData`): letta qui era «pagata» alla sua data, con il fornitore ancora da pagare.
+            ->whereNotExists(fn ($q) => $q->select(DB::raw(1))->from('fattura_scrittura as fc')->whereColumn('fc.scrittura_contabile_id', 'sc.id')
+                ->whereIn('fc.tipo', ['competenza', \App\Enums\TipoAllocazioneFattura::RETTIFICA->value]))
             // Gli incassi da terzi e i loro storni sono l'incassato della voce di entrata, non una spesa da pagare (`SpesaPerVoceService::perTipo`).
             ->where(fn ($q) => $q->whereNull('sc.tipo_movimento')->orWhereNotIn('sc.tipo_movimento', [TipoMovimentoContabile::INCASSO_DIVERSO->value, TipoMovimentoContabile::STORNO_INCASSO_DIVERSO->value]))
             // Il versato per interessi e spese, e il suo storno, non è una spesa da pagare: si dice a parte (`SpesaPerVoceService::perTipo`).
@@ -553,6 +572,27 @@ final class RiepilogoPerCompetenza
         // Il capitolo porta l'asterisco del deliberato ricostruito solo se non ha un importo suo nel piano (`DeliberatoRicostruito`): fissato, il suo totale
         // è quello del piano e la divisione fra le voci no (D3 della decisione 240).
         $capitolo = array_merge($radice, array_intersect_key($somme, $radice), ['voci' => $voci]);
+        unset($capitolo['dettaglio']);
+
+        return $capitolo;
+    }
+
+    /**
+     * La riga delle voci di un capitolo che sono di tipo diverso dal capitolo: il nome del capitolo con la sezione («Servizi — entrate»), le cifre
+     * somme delle voci, nessuna cifra sua (quelle del capitolo stanno nella riga del capitolo). L'id è quello della prima voce, perché la riga del
+     * capitolo tiene il suo.
+     */
+    private function capitoloMisto(object $radice, array $voci): array
+    {
+        $tipo = $voci[0]['tipo'];
+        $somme = $this->somma($voci, ['preventivo', 'deliberato', 'consuntivo', 'incassato', 'spese_sulla_voce', 'anno_prima', 'scostamento', 'scostamento_preventivo', 'pagato', 'da_pagare',
+            'pagato_in_piu', 'ritenute_da_versare']);
+        $capitolo = array_merge($voci[0], array_intersect_key($somme, $voci[0]), [
+            'nome' => $radice->nome.' — '.($tipo === 'entrata' ? 'entrate' : 'spese'),
+            'capitolo_id' => (int) $radice->id,
+            'misto' => true,
+            'voci' => $voci,
+        ]);
         unset($capitolo['dettaglio']);
 
         return $capitolo;

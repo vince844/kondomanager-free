@@ -20,7 +20,7 @@
  *
  * Cosa resta scoperto: con la settimanale nei giorni scelti e con la mensile nei giorni della settimana scelti la data scelta non prende il
  * posto di niente (settimanale il giovedì, scelta martedì 20/01: 20/01, 22/01, 29/01; primo lunedì, scelta venerdì 02/01: 02/01, 05/01,
- * 02/02), e non è deciso se debba; il giorno del mese 29 e 30, che la regola porta all'ultimo del mese; `recurrence_until`; le regole salvate
+ * 02/02), e non è deciso se debba; `recurrence_until`; le regole salvate
  * da strade diverse dal form; i fusi orari diversi da Europe/Rome; MySQL.
  */
 
@@ -223,6 +223,25 @@ it('Coda 419 — con la prima scadenza scelta il 10/02 e il giorno del mese 31 l
 
     // il 28/02 (l'ultimo di febbraio 2026) è nello stesso mese della data scelta: la scelta lo sostituisce
     expect(b59pScadenze($piano))->toBe(['2026-02-10', '2026-03-31', '2026-04-30']);
+});
+
+it('con il giorno del mese 30 la ricorrenza mensile scade il 30 di ogni mese e l\'ultimo di febbraio: 30/01, 28/02, 30/03 e 30/04, come il ramo senza ricorrenza', function () {
+    $s = b59pScenarioBase($this);
+
+    $piano = b59pCreaDallaPagina($this, $s, ['numero_rate' => 4, 'giorno_scadenza' => 30, 'data_prima_scadenza' => '2026-01-30',
+        'recurrence_enabled' => true, 'recurrence_frequency' => 'MONTHLY', 'recurrence_interval' => '1']);
+
+    // il giorno scelto, o l'ultimo del mese se il mese è più corto: min(30, giorni del mese), non l'ultimo del mese (il 31/03)
+    expect(b59pScadenze($piano))->toBe(['2026-01-30', '2026-02-28', '2026-03-30', '2026-04-30']);
+});
+
+it('con il giorno del mese 29 la ricorrenza mensile scade il 29 di ogni mese e l\'ultimo di febbraio: 29/01, 28/02, 29/03', function () {
+    $s = b59pScenarioBase($this);
+
+    $piano = b59pCreaDallaPagina($this, $s, ['numero_rate' => 3, 'giorno_scadenza' => 29, 'data_prima_scadenza' => '2026-01-29',
+        'recurrence_enabled' => true, 'recurrence_frequency' => 'MONTHLY', 'recurrence_interval' => '1']);
+
+    expect(b59pScadenze($piano))->toBe(['2026-01-29', '2026-02-28', '2026-03-29']);
 });
 
 it('Coda 419 — il ricalcolo di un piano con la prima scadenza scelta il 03/01, generato con le date di prima, dà una rata per mese', function () {

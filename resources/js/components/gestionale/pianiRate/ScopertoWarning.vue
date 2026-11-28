@@ -131,7 +131,7 @@ const descrizione = (s: ScopertoCents): { cosa: string; azione: string } => {
     if (s.motivo === 'giorni_senza_titolare') {
         return {
             cosa: `${s.immobile_nome ?? 'Un\'unità'}: per ${s.giorni ?? '?'} giorni del periodo di competenza nessun titolare è in vigore (chi è uscito non ha un successore registrato)`,
-            azione: 'Registra il passaggio a chi è entrato (Titolari → «Registra passaggio»); se l\'unità è davvero rimasta senza titolare, procedi con una nota: la parte resta scoperta',
+            azione: 'Registra il passaggio a chi è entrato (Titolari → «Registra passaggio»); se il nuovo proprietario lo è dalla vendita, correggi la sua data di inizio; se l\'unità è davvero rimasta senza titolare, procedi con una nota: la parte resta scoperta',
         };
     }
 

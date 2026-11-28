@@ -280,6 +280,52 @@ it('il modello con tutte le quote scritte che fanno 90: l\'avviso dice ancora ch
         ->and($avvisi[0]->rimedio)->toStartWith('Le importo come sono:');
 });
 
+it('il modello con un proprietario al 100 e un inquilino al 100: nessun avviso, le quote si sommano per ruolo', function () {
+    $avvisi = b14qAvvisiDelModello([
+        ['B1/2', 'BIANCHI ANNA', '', 'Via Roma 2, Roma', 'proprietario', 100, '', ''],
+        ['B1/2', 'VERDI LUCA', '', 'Via Roma 2, Roma', 'inquilino', 100, '', ''],
+    ], 'modello.quote_non_fanno_cento');
+
+    expect($avvisi)->toBe([]);
+});
+
+it('il modello con i proprietari a 150 e l\'inquilino al 100: un avviso solo, che nomina il ruolo', function () {
+    $avvisi = b14qAvvisiDelModello([
+        ['B1/2', 'BIANCHI ANNA', '', 'Via Roma 2, Roma', 'proprietario', 100, '', ''],
+        ['B1/2', 'VERDI LUCA', '', 'Via Roma 2, Roma', 'proprietario', 50, '', ''],
+        ['B1/2', 'NERI PAOLA', '', 'Via Roma 2, Roma', 'inquilino', 100, '', ''],
+    ], 'modello.quote_non_fanno_cento');
+
+    expect($avvisi)->toHaveCount(1)
+        ->and($avvisi[0]->messaggio)->toMatch('/^Le quote dei proprietari dell\'unità «.+» sommano a 150 invece che a 100\.$/u')
+        ->and($avvisi[0]->rimedio)->toStartWith('Le importo come sono:');
+});
+
+it('il modello con le nude proprietà a 50 e gli usufruttuari a 100: l\'avviso è sui nudi proprietari, e la riga senza quota di un altro ruolo non cambia il rimedio', function () {
+    $avvisi = b14qAvvisiDelModello([
+        ['B1/2', 'BIANCHI ANNA', '', 'Via Roma 2, Roma', 'nudo proprietario', 50, '', ''],
+        ['B1/2', 'VERDI LUCA', '', 'Via Roma 2, Roma', 'usufruttuario', 100, '', ''],
+        ['B1/2', 'NERI PAOLA', '', 'Via Roma 2, Roma', 'inquilino', '', '', ''],
+    ], 'modello.quote_non_fanno_cento');
+
+    expect($avvisi)->toHaveCount(1)
+        ->and($avvisi[0]->messaggio)->toContain('Le quote dei nudi proprietari dell\'unità')
+        ->and($avvisi[0]->messaggio)->toContain('sommano a 50 invece che a 100')
+        ->and($avvisi[0]->rimedio)->toStartWith('Le importo come sono:');
+});
+
+it('il modello con gli inquilini a 80 e gli usufruttuari a 60: un avviso per ruolo', function () {
+    $messaggi = collect(b14qAvvisiDelModello([
+        ['B1/2', 'BIANCHI ANNA', '', 'Via Roma 2, Roma', 'inquilino', 40, '', ''],
+        ['B1/2', 'VERDI LUCA', '', 'Via Roma 2, Roma', 'inquilino', 40, '', ''],
+        ['B1/2', 'NERI PAOLA', '', 'Via Roma 2, Roma', 'usufruttuario', 60, '', ''],
+    ], 'modello.quote_non_fanno_cento'))->pluck('messaggio')->all();
+
+    expect($messaggi)->toHaveCount(2)
+        ->and($messaggi[0])->toStartWith('Le quote degli inquilini dell\'unità')
+        ->and($messaggi[1])->toStartWith('Le quote degli usufruttuari dell\'unità');
+});
+
 it('l\'avviso delle quote scritte nelle note di Danea non promette più il 100 % al primo intestatario', function () {
     $fogli = (new \App\Services\Import\SpreadsheetReader)->leggi(base_path('tests/Fixtures/import/danea/elenco_unita.xls'));
     $riconosciuto = (new \App\Services\Import\ReportRecognizer)->riconosci($fogli[0]);

@@ -44,6 +44,8 @@ class AvvisiDiSicurezza
 
     public const CODICI_RIGENERATI = 'codici_rigenerati';
 
+    public const ACCESSO_DA_DISPOSITIVO_NUOVO = 'accesso_da_dispositivo_nuovo';
+
     /**
      * Avvisa il titolare al suo indirizzo di adesso.
      *
@@ -54,6 +56,22 @@ class AvvisiDiSicurezza
         $avviso = new AvvisoDiSicurezzaNotification($evento, (string) $titolare->name, $this->nomeDi($autore, $titolare));
 
         $this->spedisci(fn () => $titolare->notify($avviso), $titolare, $evento);
+    }
+
+    /**
+     * Avvisa il titolare di un accesso da un dispositivo che il programma non conosce (Coda 385), con il browser e
+     * il sistema e l'indirizzo già approssimato (`AvvisaDispositivoNuovo::indirizzoApprossimato()`).
+     */
+    public function accessoDaDispositivoNuovo(User $titolare, string $dispositivo, ?string $indirizzo): void
+    {
+        $avviso = new AvvisoDiSicurezzaNotification(
+            self::ACCESSO_DA_DISPOSITIVO_NUOVO,
+            (string) $titolare->name,
+            dispositivo: $dispositivo,
+            indirizzo: $indirizzo,
+        );
+
+        $this->spedisci(fn () => $titolare->notify($avviso), $titolare, self::ACCESSO_DA_DISPOSITIVO_NUOVO);
     }
 
     /**

@@ -35,7 +35,8 @@ describe('le guide del passaggio e del piano rate, tappa 2 della beta.14', () =>
     });
 
     test('484 — il defunto che è anche erede di un altro defunto, anche con la successione registrata su un\'altra unità, in tutte e due le guide', () => {
-        const frase = 'Se un defunto è anche erede di un altro defunto, anche con la successione registrata su un\'altra unità, e tutte e due le successioni passano l\'arretrato agli eredi';
+        // Con la regola completa (`DefuntoNelPiano::sostituisci`) la successione sull'altra unità è il caso che resta nella fermata: le due guide lo dicono.
+        const frase = 'Con la sua successione su un\'altra unità, o con più successioni sull\'unità e quote diverse, il cancello lo dice';
 
         expect(testo(PassaggioProprietaGuide)).toContain(frase);
         expect(testo(PianoRateGuide)).toContain(frase);

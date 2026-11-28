@@ -243,13 +243,18 @@ it('inv. 20 — il conguaglio guarda la competenza, non i pagamenti: con la quot
     $rossi = personaDelCondominio($this->condominio, 'Rossi Mario');
     $bianchi = personaDelCondominio($this->condominio, 'Bianchi Anna');
     $riga = rigaTitolarita($this->immobile, $rossi, 'proprietario', '2019-03-03');
-    pianoConQuotaSu($this->gestione, $this->condominio, $this->immobile, $rossi, 41200, emessa: true);
+    pianoConQuotaSu($this->gestione, $this->condominio, $this->immobile, $rossi, 41200, emessa: false);
     // La quota è scaduta e non pagata, e porta dentro un saldo pregresso di € 100,00: quota pura € 312,00.
     DB::table('rate_quote')->update([
         'data_scadenza' => '2026-03-31', 'importo_pagato' => 0,
         'regole_calcolo' => json_encode(['origine' => 'calcolo_automatico', 'importi' => ['quota_pura_gestione' => 31200, 'saldo_usato' => 10000, 'totale_calcolato' => 41200]]),
     ]);
     DB::table('rate')->update(['data_scadenza' => '2026-03-31']);
+    // L'emissione dalla rotta vera, con le righe a giornale: la morosità del pannello è lo scaduto della lettura comune dei debiti.
+    $piano = \App\Models\Gestionale\PianoRate::where('gestione_id', $this->gestione->id)->firstOrFail();
+    $piano->update(['stato' => 'approvato']);
+    $this->actingAs($this->user)->post(route('admin.gestionale.piani-rate.emetti', [$this->condominio, $piano]), ['rate_ids' => DB::table('rate')->where('piano_rate_id', $piano->id)->pluck('id')->all(),
+        'data_emissione' => '2026-03-01', 'invia_notifiche' => false])->assertSessionHasNoErrors();
 
     $json = $this->actingAs($this->user)
         ->postJson(route('admin.gestionale.immobili.passaggi.anteprima', [$this->condominio, $this->immobile]), corpoAnteprimaVendita($riga, $bianchi))

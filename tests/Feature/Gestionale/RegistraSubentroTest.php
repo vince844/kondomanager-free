@@ -45,6 +45,10 @@ beforeEach(function () {
     }
     $this->user = User::factory()->create();
     $this->user->assignRole($ruolo);
+    // L'unità si crea e si modifica con «Modifica condomini», che l'amministratore di serie ha.
+    foreach (['Modifica condomini'] as $nomeDelPermesso) {
+        $ruolo->givePermissionTo(\Spatie\Permission\Models\Permission::firstOrCreate(['name' => $nomeDelPermesso, 'guard_name' => 'web']));
+    }
 
     $this->condominio = Condominio::factory()->create();
     $this->esercizio = Esercizio::factory()->create(['condominio_id' => $this->condominio->id, 'nome' => 'Esercizio 2026', 'data_inizio' => '2026-01-01', 'data_fine' => '2026-12-31', 'stato' => 'aperto']);

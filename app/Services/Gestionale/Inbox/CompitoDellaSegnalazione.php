@@ -109,9 +109,9 @@ final class CompitoDellaSegnalazione
 
     /**
      * Chi segue le segnalazioni dei compiti di una pagina (decisioni 486 e 487): per ogni id di segnalazione il nome di chi la segue (null se nessuno),
-     * se è chi guarda, e se può ancora riceverla (ha il pannello e non è sospeso: la regola di {@see AssegnazioneSegnalazioni::puoRicevere()}).
+     * se è chi guarda, e se può ancora riceverla (ha il pannello, vede le segnalazioni e non è sospeso: la regola di {@see AssegnazioneSegnalazioni::puoRicevere()}).
      * Si legge dalla segnalazione, non da una copia nel compito, con due letture per tutta la pagina: le segnalazioni con il nome, e chi fra
-     * loro ha il pannello. Un permesso che a database non c'è vale «non attivo», come nella scheda.
+     * loro ha il pannello e vede le segnalazioni. Un permesso che a database non c'è vale «non attivo», come nella scheda.
      *
      * @param  iterable<int>  $idSegnalazioni
      * @return array<int, array{nome: ?string, te: bool, attivo: bool}>
@@ -129,8 +129,8 @@ final class CompitoDellaSegnalazione
         $conIlPannello = [];
         if ($assegnatari !== []) {
             try {
-                $conIlPannello = User::permission(Permission::ACCESS_ADMIN_PANEL->value)->whereIn('users.id', $assegnatari)
-                    ->pluck('users.id')->map(fn ($id) => (int) $id)->all();
+                $conIlPannello = User::permission(Permission::ACCESS_ADMIN_PANEL->value)->permission(Permission::VIEW_SEGNALAZIONI->value)
+                    ->whereIn('users.id', $assegnatari)->pluck('users.id')->map(fn ($id) => (int) $id)->all();
             } catch (PermissionDoesNotExist) {
                 $conIlPannello = [];
             }

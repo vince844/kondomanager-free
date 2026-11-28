@@ -12,12 +12,16 @@
  * pagina con `ruolo_registrazione_modificabile`. Aperta e mandata senza toccare niente, la pagina rimanda il
  * ruolo com'era.
  *
+ * In più: le tre card in testa prendono titoli e frasi dai file di lingua, e i quattro menu della pagina (lingua, condominio predefinito, ruolo, righe per
+ * pagina) sono `v-select` come nel resto del programma, con lo stesso comportamento.
+ *
  * Le traduzioni non sono caricate: `trans()` restituisce la chiave.
  */
 
-import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { shallowMount } from '@vue/test-utils';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { flushPromises, mount, shallowMount, type VueWrapper } from '@vue/test-utils';
 import { router } from '@inertiajs/core';
+import vSelect from 'vue-select';
 
 const pagina = vi.hoisted(() => ({ props: {} as Record<string, unknown> }));
 
@@ -37,8 +41,16 @@ vi.mock('laravel-vue-i18n', () => ({
 
 const ImpostazioniGenerali = (await import('./impostazioniGenerali.vue')).default;
 
-function monta(modificabile: boolean) {
-    pagina.props = {
+function monta(modificabile: boolean, altro: Record<string, unknown> = {}) {
+    pagina.props = datiDellaPagina(modificabile, altro);
+
+    return shallowMount(ImpostazioniGenerali, {
+        global: { renderStubDefaultSlot: true, mocks: { route: (n: string) => `/${n}` } },
+    });
+}
+
+function datiDellaPagina(modificabile: boolean, altro: Record<string, unknown> = {}) {
+    return {
         flash: {},
         can_register: true,
         language: 'it',
@@ -53,16 +65,13 @@ function monta(modificabile: boolean) {
         per_page_disponibili: [10, 30, 50],
         roles: [{ id: 1, name: 'utente' }, { id: 2, name: 'amministratore' }],
         ruolo_registrazione_modificabile: modificabile,
+        ...altro,
     };
-
-    return shallowMount(ImpostazioniGenerali, {
-        global: { renderStubDefaultSlot: true, mocks: { route: (n: string) => `/${n}` } },
-    });
 }
 
 /** La tendina del ruolo della registrazione: l'unica il cui valore è il ruolo. */
 function tendinaDelRuolo(wrapper: ReturnType<typeof monta>) {
-    return wrapper.findAllComponents({ name: 'Select' }).find((tendina) => tendina.props('modelValue') === 'utente')!;
+    return wrapper.findAllComponents(vSelect).find((tendina) => tendina.props('modelValue') === 'utente')!;
 }
 
 beforeEach(() => {
@@ -105,5 +114,122 @@ describe('impostazioniGenerali — la prossima azione non è più qui', () => {
         expect(wrapper.text()).not.toContain('Il programma propone il passo');
         (wrapper.vm as unknown as { $: { setupState: { submit: () => void } } }).$.setupState.submit();
         expect(Object.keys(vi.mocked(router.post).mock.calls.at(-1)![1] as Record<string, unknown>)).not.toContain('passo_proposto');
+    });
+});
+
+const mandato = (w: ReturnType<typeof monta>) => {
+    (w.vm as unknown as { $: { setupState: { submit: () => void } } }).$.setupState.submit();
+
+    return vi.mocked(router.post).mock.calls.at(-1)![1] as Record<string, unknown>;
+};
+
+describe('impostazioniGenerali — le tre card in testa', () => {
+    test('titoli e frasi vengono dai file di lingua', () => {
+        const w = monta(true);
+        const card = (w.findComponent({ name: 'PageHeaderGuide' }).props('guides') as { title: string; description: string }[]);
+
+        expect(card.map((c) => [c.title, c.description])).toEqual(
+            ['program_access', 'reports_communications', 'security'].map((k) => [`impostazioni.guides.${k}_title`, `impostazioni.guides.${k}_desc`]),
+        );
+    });
+
+    test('la pagina apre la guida a cassetto', async () => {
+        const w = monta(true);
+        const guida = () => w.findComponent({ name: 'ImpostazioniGeneraliGuide' });
+        expect(guida().props('open')).toBe(false);
+
+        w.findComponent({ name: 'PageHeaderGuide' }).vm.$emit('open-text-guide');
+        await w.vm.$nextTick();
+
+        expect(guida().props('open')).toBe(true);
+    });
+});
+
+describe('impostazioniGenerali — i quattro menu sono v-select', () => {
+    test('con l\'apertura del condominio accesa sono quattro, nessuno si svuota o cerca fuori dal condominio, e le scelte sono quelle di prima', async () => {
+        const w = monta(true, { open_condominio_on_login: true, default_condominio_id: 3, condomini: [{ id: 3, nome: 'Aurora' }, { id: 5, nome: 'Belvedere' }] });
+        await flushPromises();
+        const menu = w.findAllComponents(vSelect);
+
+        expect(menu).toHaveLength(4);
+        expect(menu.map((m) => m.props('clearable'))).toEqual([false, false, false, false]);
+        expect(menu.map((m) => m.props('searchable'))).toEqual([false, true, false, false]);
+        const [lingua, condominio, ruolo, righe] = menu;
+        expect(lingua.props('modelValue')).toBe('it');
+        expect((lingua.props('options') as { valore: string }[]).map((o) => o.valore)).toEqual(['it', 'en', 'pt', 'es']);
+        expect(condominio.props('modelValue')).toBe('3');
+        expect((condominio.props('options') as { id: string; nome: string }[]).map((o) => [o.id, o.nome])).toEqual([['3', 'Aurora'], ['5', 'Belvedere']]);
+        expect((ruolo.props('options') as { nome: string }[]).map((o) => o.nome)).toEqual(['utente', 'amministratore']);
+        expect(righe.props('modelValue')).toBe(30);
+        expect(righe.props('options')).toEqual([10, 30, 50]);
+    });
+
+    test('ciò che si sceglie parte col salvataggio: la lingua, il condominio come testo, il ruolo, le righe come numero', async () => {
+        const w = monta(true, { open_condominio_on_login: true, default_condominio_id: null, condomini: [{ id: 5, nome: 'Belvedere' }] });
+        await flushPromises();
+        const [lingua, condominio, ruolo, righe] = w.findAllComponents(vSelect);
+        // Il menu è un segnaposto: si manda ciò che manderebbe scegliendo quella voce (con la sua `reduce`, se l'ha).
+        const scegli = (m: typeof lingua, opzione: unknown) => {
+            const riduci = m.props('reduce') as ((o: unknown) => unknown);
+            m.vm.$emit('update:modelValue', typeof opzione === 'object' ? riduci(opzione) : opzione);
+        };
+
+        expect(condominio.props('modelValue')).toBe('');
+        scegli(lingua, (lingua.props('options') as unknown[])[1]);
+        scegli(condominio, (condominio.props('options') as unknown[])[0]);
+        scegli(ruolo, (ruolo.props('options') as unknown[])[1]);
+        scegli(righe, 50);
+        await w.vm.$nextTick();
+
+        expect(mandato(w)).toMatchObject({ language: 'en', default_condominio_id: '5', default_user_role: 'amministratore', default_per_page: 50 });
+    });
+
+    test('con l\'apertura del condominio spenta il menu del condominio non c\'è', async () => {
+        const w = monta(true);
+        await flushPromises();
+
+        expect(w.findAllComponents(vSelect)).toHaveLength(3);
+    });
+});
+
+describe('impostazioniGenerali — i menu a video', () => {
+    let w: VueWrapper | null = null;
+    afterEach(() => { w?.unmount(); w = null; document.body.innerHTML = ''; });
+
+    const montaTutto = async (altro: Record<string, unknown> = {}) => {
+        pagina.props = datiDellaPagina(true, altro);
+        w = mount(ImpostazioniGenerali, {
+            attachTo: document.body,
+            global: {
+                stubs: { AppLayout: { template: '<div><slot /></div>' }, Head: true, PageHeaderGuide: true, ImpostazioniGeneraliGuide: true, Switch: true },
+                mocks: { route: (n: string) => `/${n}` },
+            },
+        });
+        await flushPromises();
+    };
+
+    test('chiuso, il ruolo si legge com\'è scritto; aperto, le scelte con l\'iniziale maiuscola, come prima; e la riga rossa dell\'errore sul condominio', async () => {
+        await montaTutto();
+        const ruolo = w!.findAllComponents(vSelect).find((m) => m.props('modelValue') === 'utente')!;
+        const scelto = ruolo.get('.vs__selected');
+        expect(scelto.text()).toBe('utente');
+        expect(scelto.find('.capitalize').exists()).toBe(false);
+
+        await ruolo.get('input').trigger('focus');
+        await flushPromises();
+        const voci = ruolo.findAll('.vs__dropdown-option span');
+        expect(voci.map((v) => [v.text(), v.classes().includes('capitalize')])).toEqual([['utente', true], ['amministratore', true]]);
+    });
+
+    test('i menu stanno nel riquadro dei campi, alti come i campi accanto, e il condominio con un errore ha il bordo rosso', async () => {
+        await montaTutto({ open_condominio_on_login: true, default_condominio_id: null, condomini: [{ id: 5, nome: 'Belvedere' }] });
+        const menu = w!.findAllComponents(vSelect);
+        expect(menu.every((m) => m.element.parentElement!.classList.contains('menu-campo') && m.element.parentElement!.classList.contains('menu-impostazioni'))).toBe(true);
+        expect(menu[1].find('input').attributes('placeholder')).toBe('impostazioni.placeholder.select_building');
+
+        (w!.vm as unknown as { $: { setupState: { form: { setError: (c: string, m: string) => void } } } }).$.setupState.form.setError('default_condominio_id', 'Devi selezionare un condominio.');
+        await flushPromises();
+        expect(menu[1].element.parentElement!.classList.contains('menu-errore')).toBe(true);
+        expect(w!.text()).toContain('Devi selezionare un condominio.');
     });
 });

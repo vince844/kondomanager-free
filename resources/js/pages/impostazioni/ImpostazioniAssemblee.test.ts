@@ -93,7 +93,10 @@ describe('le impostazioni delle assemblee', () => {
 
     test('nell\'elenco delle impostazioni la card «Assemblee» c\'è solo per l\'amministratore', () => {
         const s = readFileSync(resolve(process.cwd(), 'resources/js/pages/impostazioni/impostazioni.vue'), 'utf8');
-        expect(s).toMatch(/hasRole\(\['amministratore'\]\)[\s\S]*?assemblee_title[\s\S]*?\/impostazioni\/assemblee/);
+        // La card c'è per chi apre la sua rotta (il ruolo amministratore): lo decide il server, nell'elenco delle schede della pagina.
+        expect(s).toMatch(/mostra\('assemblee'\)[\s\S]*?assemblee_title[\s\S]*?\/impostazioni\/assemblee/);
+        const schede = readFileSync(resolve(process.cwd(), 'app/Http/Controllers/Impostazioni/ImpostazioniController.php'), 'utf8');
+        expect(schede).toContain("'assemblee'     => Role::AMMINISTRATORE");
         const lingua = readFileSync(resolve(process.cwd(), 'lang/it/impostazioni.php'), 'utf8');
         expect(lingua).toContain('\'assemblee_title\' => \'Assemblee\'');
     });

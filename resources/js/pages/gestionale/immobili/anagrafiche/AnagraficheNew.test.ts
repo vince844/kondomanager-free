@@ -11,6 +11,9 @@
  * anagrafica» chiede «Crea anagrafiche» (`AnagraficaPolicy`). Le pagine del gestionale si aprono con il solo accesso al pannello
  * (decisione 138.2): il collegamento e «per crearlo» compaiono solo con tutti e due i permessi; senza, la frase dice soltanto
  * quali persone compaiono nella tendina, che è vero in ogni caso. I ruoli di serie hanno tutti e due, e per loro non cambia niente.
+ *
+ * Lo stesso vale per «Salva e crea un nuovo immobile»: «Nuovo immobile» chiede «Modifica condomini» (`ImmobileController::create`),
+ * e il pulsante compare solo con quel permesso. Gli altri due salvataggi restano a chi apre la pagina.
  */
 
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -97,5 +100,25 @@ describe('«Manca qualcuno?» nel modulo dell\'unità — il collegamento per cr
         expect(riquadro.testo).not.toContain('per crearlo');
         expect(riquadro.testo).not.toContain('gestione anagrafiche');
         expect(riquadro.testo).toBe('Manca qualcuno? Qui compaiono solo le anagrafiche legate a questo condominio.');
+    });
+});
+
+/** I testi dei pulsanti del modulo, nell'ordine in cui compaiono. */
+function pulsanti() {
+    return modulo().findAll('button').map((b) => b.text().replace(/\s+/g, ' ').trim()).filter((t) => t.startsWith('Salva'));
+}
+
+describe('«Salva e crea un nuovo immobile» solo a chi può aprire «Nuovo immobile»', () => {
+    test('con «Modifica condomini» ci sono i tre salvataggi', () => {
+        chiGuarda.permessi = ['Accesso pannello amministratore', 'Modifica condomini'];
+
+        expect(pulsanti()).toEqual(['Salva e aggiungi un\'altra persona', 'Salva e crea un nuovo immobile', 'Salva associazione']);
+    });
+
+    test('senza «Modifica condomini» il nuovo immobile non è offerto; gli altri due restano', () => {
+        chiGuarda.ruoli = ['Segreteria'];
+        chiGuarda.permessi = ['Accesso pannello amministratore'];
+
+        expect(pulsanti()).toEqual(['Salva e aggiungi un\'altra persona', 'Salva associazione']);
     });
 });

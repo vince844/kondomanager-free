@@ -290,6 +290,21 @@ defineEmits(['update:open']);
                         </div>
 
                         <section>
+                            <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Chi si può scegliere in «Versato da»</h3>
+                            <ul class="ml-5 list-disc space-y-1.5">
+                                <li>I titolari di oggi: proprietario, nudo proprietario, usufruttuario.</li>
+                                <li>Chi lo è stato, per esempio chi ha venduto: accanto al nome c'è il periodo. L'inquilino non c'è.</li>
+                                <li>La pagina non ha la data del versamento: a chi va lo decidi tu.</li>
+                                <li>Senza persona è dell'unità: dopo una vendita si divide in proporzione a quello che il piano chiede a ciascuno.</li>
+                                <li>Quello che una persona ha versato oltre la sua parte resta suo, anche se ha venduto.</li>
+                                <li>La sua parte si conta per i giorni dell'esercizio in cui è stata titolare, come nel piano: metà anno, metà spesa.</li>
+                                <li>Dopo una vendita nell'esercizio la pagina propone «L'unità», non chi ha comprato: scegli tu la persona.</li>
+                                <li>Chi non ha una riga paga la sua parte: la riga «Gli altri titolari dell'unità» dice quanto.</li>
+                                <li>I giorni in cui nessuno è titolare, fra chi esce e chi entra, non si chiedono a nessuno: la riga «Giorni senza titolare» dice quanto.</li>
+                            </ul>
+                        </section>
+
+                        <section>
                             <h3 class="mb-2 font-bold text-slate-900 dark:text-slate-100">Spegnere l'interruttore non cancella niente</h3>
                             <p>
                                 Se hai già registrato dei versamenti e poi spegni l'interruttore, la voce

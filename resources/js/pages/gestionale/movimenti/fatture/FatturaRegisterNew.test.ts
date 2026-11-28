@@ -44,7 +44,8 @@ vi.mock('@inertiajs/vue3', async (importOriginal) => {
         ...originale,
         Head: { template: '<span />' },
         usePage: () => ({
-            props: { auth: { user: { roles: ['amministratore'], permissions: [] } } },
+            // Chi registra la fattura in queste prove allega e legge i file: ha «Crea documenti archivio», come l'amministratore di serie.
+            props: { auth: { user: { roles: ['amministratore'], permissions: ['Crea documenti archivio'] } } },
         }),
         useForm: ((...args: unknown[]) => {
             const form = (originale.useForm as (...a: unknown[]) => Record<string, unknown>)(...args);

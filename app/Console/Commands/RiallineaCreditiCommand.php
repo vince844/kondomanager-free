@@ -19,8 +19,9 @@ use Illuminate\Console\Command;
  * rate miste (DC2-b); le rate di soli crediti segnate «emesse» senza righe le elenca, e le emette l'amministratore dalla pagina
  * del piano. Dice che cosa resta com'è e perché. Con --dry-run mostra che cosa scriverebbe, senza scrivere niente.
  *
- * Elenca anche, con e senza --dry-run, le emissioni con la spesa ad personam addebitata due volte e i piani per cui la cifra non si
- * può calcolare (Coda 313, decisione 153.1): non le scrive.
+ * Scrive anche, dopo le altre, la chiusura dell'anticipazione delle emissioni con la spesa ad personam addebitata due volte (Coda 313):
+ * nell'esercizio dell'emissione se è aperto, altrimenti nell'esercizio aperto alla data di oggi, con la data di oggi. Elenca soltanto
+ * quelle che non si possono scrivere e i piani per cui la cifra non si può calcolare.
  */
 class RiallineaCreditiCommand extends Command
 {
@@ -63,6 +64,11 @@ class RiallineaCreditiCommand extends Command
                     $this->line(sprintf('  emissione delle quote a credito rimaste fuori dalla rata %d (%s): %s', $r['numero_rata'], $r['piano'],
                         collect($r['persone'])->pluck('nome')->join(', ')));
                 }
+                foreach (collect($rilevato['ad_personam'])->where('azione', 'scrivi') as $v) {
+                    $this->line(sprintf('  chiusura dell\'anticipazione ad personam della rata %d (%s), %s, emessa il %s: %s, DARE «Gestione rate» e AVERE «Crediti verso condomini» dell\'unità, nell\'esercizio «%s» il %s%s',
+                        $v['numero_rata'], $v['piano'], $v['unita'], $v['data'] ?? '—', $v['importo_formattato'], $v['nell_esercizio'], $v['data_rettifica'],
+                        $v['esercizio_aperto'] ? '' : " (viene dall'esercizio «{$v['esercizio']}», chiuso, che resta com'è)"));
+                }
             } else {
                 $this->line("«{$condominio->nome}»: niente da scrivere.");
             }
@@ -81,12 +87,12 @@ class RiallineaCreditiCommand extends Command
                 }
             }
 
-            if ($rilevato['ad_personam'] !== []) {
+            $adPersonamResta = collect($rilevato['ad_personam'])->where('azione', 'resta');
+            if ($adPersonamResta->isNotEmpty()) {
                 $this->line('  Spesa ad personam addebitata due volte su «Crediti verso condomini» (con la fattura e con l\'emissione) e contata fra le '
-                    . 'entrate di «Gestione rate»; le rate dei condòmini sono giuste. Resta com\'è: il riallineamento non la scrive.');
-                foreach ($rilevato['ad_personam'] as $v) {
-                    $this->line(sprintf('    rata %d (%s), %s, emessa il %s: %s%s', $v['numero_rata'], $v['piano'], $v['unita'], $v['data'] ?? '—', $v['importo_formattato'],
-                        $v['esercizio_aperto'] ? '' : " (esercizio «{$v['esercizio']}», chiuso)"));
+                    . 'entrate di «Gestione rate»; le rate dei condòmini sono giuste. Resta com\'è:');
+                foreach ($adPersonamResta as $v) {
+                    $this->line(sprintf('    rata %d (%s), %s, emessa il %s: %s; %s', $v['numero_rata'], $v['piano'], $v['unita'], $v['data'] ?? '—', $v['importo_formattato'], $v['motivo']));
                 }
             }
 
@@ -121,13 +127,14 @@ class RiallineaCreditiCommand extends Command
      * Che cosa ha scritto, con il singolare e il plurale giusti e solo i tipi scritti (rilievo LDA-6 della Fase 1-bis): «scritta 1
      * rettifica (…)», «scritte 2 emissioni di quote a credito (…)», le due insieme, o niente.
      *
-     * @param array{rettifiche: list<string>, emissioni: list<string>} $fatto
+     * @param array{rettifiche: list<string>, emissioni: list<string>, chiusure?: list<string>} $fatto
      */
     private static function riepilogo(array $fatto): string
     {
         $parti = [];
-        foreach ([['rettifiche', 'rettifica', 'rettifiche', ''], ['emissioni', 'emissione', 'emissioni', ' di quote a credito']] as [$chiave, $una, $piu, $coda]) {
-            $n = count($fatto[$chiave]);
+        foreach ([['rettifiche', 'rettifica', 'rettifiche', ''], ['emissioni', 'emissione', 'emissioni', ' di quote a credito'],
+            ['chiusure', 'chiusura', 'chiusure', ' dell\'anticipazione ad personam']] as [$chiave, $una, $piu, $coda]) {
+            $n = count($fatto[$chiave] ?? []);
             if ($n > 0) {
                 $parti[] = ($n === 1 ? "1 {$una}" : "{$n} {$piu}") . $coda . ' (prot. ' . implode(', ', $fatto[$chiave]) . ')';
             }
@@ -135,7 +142,7 @@ class RiallineaCreditiCommand extends Command
         if ($parti === []) {
             return 'niente da scrivere: le voci sono già state riallineate.';
         }
-        $totale = count($fatto['rettifiche']) + count($fatto['emissioni']);
+        $totale = count($fatto['rettifiche']) + count($fatto['emissioni']) + count($fatto['chiusure'] ?? []);
 
         return ($totale === 1 ? 'scritta ' : 'scritte ') . implode(' e ', $parti) . '.';
     }

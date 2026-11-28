@@ -18,11 +18,14 @@ use Illuminate\Support\Str;
 class CreateUserAnagraficaRequest extends FormRequest
 {
     /**
-     * Determine if the user is authorized to make this request.
+     * Il modulo crea l'anagrafica di chi non ce l'ha ancora, una volta sola: chi ne ha già una riceve il rifiuto, prima dei campi.
+     * La rotta sta fuori da `CheckHasAnagrafica` proprio perché serve a chi non l'ha.
      */
     public function authorize(): bool
     {
-        return true;
+        $utente = $this->user();
+
+        return $utente !== null && ! Anagrafica::where('user_id', $utente->getKey())->exists();
     }
 
     /**

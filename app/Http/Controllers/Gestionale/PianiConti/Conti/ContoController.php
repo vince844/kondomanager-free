@@ -49,7 +49,7 @@ class ContoController extends Controller
                 
         } catch (\Exception $e) {
             DB::rollBack();
-            return back()->withInput()->with($this->flashError($e->getMessage()));
+            return back()->withInput()->with($this->flashError(\App\Support\Errori\MessaggioPerLaPagina::di($e, 'ContoController@store')));
         }
     }
 
@@ -352,7 +352,7 @@ class ContoController extends Controller
         } catch (\Exception $e) {
             // Per errori generici o di database
             DB::rollBack();
-            return back()->with($this->flashError($e->getMessage()));
+            return back()->with($this->flashError(\App\Support\Errori\MessaggioPerLaPagina::di($e, 'ContoController@update')));
         }
     }
 
@@ -372,6 +372,14 @@ class ContoController extends Controller
 
         if ($righeDiFattura > 0) {
             return back()->with($this->flashError(BloccoDellaVoce::rifiutoDelleRigheDiFattura($righeDiFattura)));
+        }
+
+        // Una voce con dei movimenti a giornale (le regolazioni immediate, gli incassi da terzi) non si elimina: la riga del giornale resterebbe
+        // senza voce, e la spesa uscirebbe dal consuntivo per voce e dal riparto. Stornati i movimenti, la voce si elimina.
+        $movimenti = BloccoDellaVoce::movimentiAGiornale([(int) $conto->id])['movimenti'];
+
+        if ($movimenti > 0) {
+            return back()->with($this->flashError(BloccoDellaVoce::rifiutoDeiMovimentiAGiornale($movimenti)));
         }
 
         // Prevenzione 3: una voce che un piano approvato, emesso o chiuso tiene, con la sua riga o con quella di un capitolo sopra di lei, non si

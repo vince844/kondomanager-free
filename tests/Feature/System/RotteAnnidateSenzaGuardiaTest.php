@@ -245,7 +245,6 @@ const SCOPERTI_NOTI = [
     'App\Http\Controllers\Gestionale\PianiRate\PianoRateController@detachCapitolo',
     'App\Http\Controllers\Gestionale\PianiRate\PianoRateController@fetchSaldiAnalitici',
     'App\Http\Controllers\Gestionale\PianiRate\PianoRateController@index',
-    'App\Http\Controllers\Gestionale\PianiRate\PianoRateController@show',
     'App\Http\Controllers\Gestionale\PianiRate\PianoRateController@store',
     'App\Http\Controllers\Gestionale\PianiRate\PianoRateController@updateStato',
     'App\Http\Controllers\Gestionale\PianiRate\PianoRateGenerationController@__invoke',

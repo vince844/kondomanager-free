@@ -10,6 +10,7 @@
  * dell'archivio, quelli senza un proprietario. Il nome del documento scarica il file da
  * `admin.gestionale.immobili.documenti.download`, con il condominio, l'unità e il documento; il pallino
  * dell'approvazione, con «Approva documenti archivio», chiama `admin.gestionale.immobili.documenti.toggle-approval`.
+ * Il collegamento (e «Scarica») c'è solo per chi ha «Visualizza documenti archivio», che la rotta chiede.
  */
 
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -61,5 +62,23 @@ describe('i documenti dell\'unità si scaricano e si approvano dalla scheda dell
 
         expect(inertia.put).toHaveBeenCalledTimes(1);
         expect(inertia.put.mock.calls[0][0]).toBe('/admin.gestionale.immobili.documenti.toggle-approval?condominio=18&immobile=24&documento=31');
+    });
+});
+
+describe('chi non apre i documenti dell\'archivio non vede il collegamento per scaricarli', () => {
+    test('senza «Visualizza documenti archivio» il nome è testo, senza collegamento e senza «Scarica»: la rotta risponderebbe 403', () => {
+        chiGuarda.permessi = ['Accesso pannello amministratore'];
+        const cella = cellaDelNome();
+
+        expect(cella.find('a').exists()).toBe(false);
+        expect(cella.text()).toContain('Titolo di provenienza');
+        expect(cella.text()).not.toContain('Scarica');
+    });
+
+    test('con «Visualizza documenti archivio» il nome scarica il file e «Scarica» c\'è', () => {
+        const cella = cellaDelNome();
+
+        expect(cella.find('a').exists()).toBe(true);
+        expect(cella.text()).toContain('Scarica');
     });
 });

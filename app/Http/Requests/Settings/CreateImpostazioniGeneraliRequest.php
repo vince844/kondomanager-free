@@ -37,6 +37,7 @@ class CreateImpostazioniGeneraliRequest extends FormRequest
             'segnalazioni_assegnazione_porta_in_lavorazione' => 'sometimes|boolean',
             'comunicazioni_registra_aperture' => 'sometimes|boolean',
             'errori_avviso_dalla_pagina' => 'sometimes|boolean',
+            'due_fattori_obbligatoria_pannello' => 'sometimes|boolean',
             'language'                   => 'required|in:it,en,pt,es',
             'app_name'                   => 'required|string|max:255',
             'open_condominio_on_login'   => 'required|boolean',

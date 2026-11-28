@@ -28,11 +28,13 @@ class AssegnazioneSegnalazioni
     }
 
     /**
-     * Chi può ricevere: ha «Accesso pannello amministratore» e non è sospeso.
+     * Chi può ricevere: ha «Accesso pannello amministratore» e «Visualizza segnalazioni», e non è sospeso. Senza il secondo permesso la scheda gli
+     * risponde 403 e la segnalazione non è nei suoi elenchi: assegnargliela non serve a nessuno (Coda 696).
      */
     public static function puoRicevere(User $user): bool
     {
         return self::ha($user, Permission::ACCESS_ADMIN_PANEL->value)
+            && self::ha($user, Permission::VIEW_SEGNALAZIONI->value)
             && $user->suspended_at === null;
     }
 
@@ -54,6 +56,7 @@ class AssegnazioneSegnalazioni
     {
         return User::permission(Permission::ACCESS_ADMIN_PANEL->value)
             ->whereNull('suspended_at')
+            ->with(['roles.permissions', 'permissions'])
             ->get()
             ->filter(fn (User $u) => static::puoRicevere($u))
             ->sortBy(fn (User $u) => mb_strtolower($u->name), SORT_NATURAL)
@@ -67,15 +70,19 @@ class AssegnazioneSegnalazioni
 
     /**
      * I nomi per il filtro dell'elenco: chi può ricevere, più chi segue ancora almeno una
-     * segnalazione pur non potendo più (sospeso o senza pannello).
+     * segnalazione pur non potendo più ({@see puoRicevere()}: sospeso, senza pannello o senza «Visualizza segnalazioni»).
      *
      * @return array<int, array{id: int, name: string, attivo: bool}>
      */
     public static function assegnatari(): array
     {
+        // I permessi di tutti insieme: `puoRicevere()` li legge per ognuno.
         $attivi = User::permission(Permission::ACCESS_ADMIN_PANEL->value)
             ->whereNull('suspended_at')
-            ->get();
+            ->with(['roles.permissions', 'permissions'])
+            ->get()
+            ->filter(fn (User $u) => static::puoRicevere($u))
+            ->values();
 
         $assegnatiIds = Segnalazione::whereNotNull('assigned_to')
             ->distinct()

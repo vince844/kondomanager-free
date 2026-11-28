@@ -25,10 +25,10 @@
  * Si monta la guida con i segnaposto del foglio e si legge il testo del primo foglio, quello aperto di default, con gli spazi normalizzati; la guida è
  * solo in italiano.
  *
- * I piani straordinari. Lì il menu della sorgente elenca le fatture (`PianoRateController`, il ramo delle sorgenti del piano straordinario), ma il
- * server legge la sorgente come una voce (`BudgetMovementController`): la guida dice di non usare «Sposta spesa» in quei piani.
+ * I piani straordinari. Lì le voci del piano sono le fatture: la pagina non offre «Sposta spesa» e il server lo rifiuta (`BudgetMovementController::store`);
+ * la guida dice che lì non c'è, e perché.
  *
- * Cosa resta scoperto: il comportamento di «Sposta spesa» nei piani straordinari (aperto in roadmap); le altre schede della guida; la traduzione.
+ * Cosa resta scoperto: le altre schede della guida; la traduzione.
  */
 import { describe, expect, test } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -50,8 +50,8 @@ function testoDellaGuida(): string {
 }
 
 describe('PianoRateDettaglioGuide — «Sposta spesa» e le voci di entrata', () => {
-    test('nei piani straordinari la guida dice di non usare «Sposta spesa», e perché', () => {
-        expect(testoDellaGuida()).toContain('Nei piani straordinari «Sposta spesa» non funziona: il menu della sorgente elenca le fatture, ma lo spostamento lavora sulle voci, e il programma lo rifiuta sempre.');
+    test('nei piani straordinari la guida dice che «Sposta spesa» non c\'è, e perché', () => {
+        expect(testoDellaGuida()).toContain('Nei piani straordinari «Sposta spesa» non c\'è: le voci del piano sono le fatture.');
     });
 
     test('un capitolo che il piano divide fra spese ed entrate non si sposta e non riceve budget', () => {

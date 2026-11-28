@@ -38,7 +38,8 @@ return [
         'hint' => '{0} Formatos permitidos: :formati, máximo :limite por archivo. No se pueden añadir más archivos.|{1} Formatos permitidos: :formati, máximo :limite por archivo. Se puede añadir 1 archivo más (máximo :massimo).|[2,*] Formatos permitidos: :formati, máximo :limite por archivo. Se pueden añadir :rimasti archivos más (máximo :massimo).',
         // Nel riquadro della scheda, sotto la zona «Aggiungi allegati» (decisione 464).
         'hint_zona' => '{0} :formati, hasta :limite cada uno. No se pueden añadir más archivos.|{1} :formati, hasta :limite cada uno. Se puede añadir un archivo más (como máximo :massimo).|[2,*] :formati, hasta :limite cada uno. Se pueden añadir :rimasti archivos más (como máximo :massimo).',
-        'no_slots' => 'Se ha alcanzado el límite de :massimo adjuntos.',
+        // Il limite raggiunto, al singolare con un allegato solo.
+        'no_slots' => '{1} Se ha alcanzado el límite de :massimo adjunto.|[2,*] Se ha alcanzado el límite de :massimo adjuntos.',
         'button' => 'Subir adjuntos',
         'uploading' => 'Subiendo…',
         'take_photo' => 'Hacer una foto',

@@ -52,6 +52,7 @@ defineEmits(['update:open']);
                                 <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><span><strong>«Crediti verso i condòmini»</strong>: le quote emesse e non incassate, e le spese anticipate per singole unità. «Chi deve che cosa: le rate scadute» apre l'elenco delle rate scadute alla stessa data; «Le posizioni di ognuno» apre la scheda «Condòmini».</span></li>
                                 <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><span><strong>«Debiti»</strong>: verso i fornitori e verso l'Erario. Il numero delle fatture aperte porta al loro elenco, più sotto.</span></li>
                                 <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><span><strong>L'avanzo o il disavanzo di gestione</strong>: le quote registrate in questo esercizio meno i costi di questo esercizio. Che cosa farne lo decide l'assemblea.</span></li>
+                                <li class="flex gap-2"><ChevronRight class="w-4 h-4 text-blue-500 shrink-0 mt-0.5" /><span><strong>«Rettifica di esercizi precedenti»</strong>, quando c'è: La spesa di una sola unità contata due volte nelle rate di un esercizio chiuso si toglie in questo esercizio: non è una quota chiesta qui, quindi sta in una riga sua, e il risultato la conta. Nel blocco per gestione ha una colonna sua.</span></li>
                             </ul>
                         </div>
                     </section>

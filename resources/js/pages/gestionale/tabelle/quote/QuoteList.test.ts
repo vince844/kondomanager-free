@@ -46,11 +46,14 @@ import { mount } from '@vue/test-utils';
  * `useForm` resta autentico: è lui che tiene le righe su cui il totale si somma, ed è proprio
  * quel legame che questo file verifica.
  */
+// I permessi di chi guarda: «Modifica condomini» salva i millesimi; senza, la pagina si legge soltanto.
+const permessi = vi.hoisted(() => ({ elenco: ['Modifica condomini'] as string[] }));
+
 vi.mock('@inertiajs/vue3', async (importOriginal) => ({
     ...(await importOriginal<typeof import('@inertiajs/vue3')>()),
     Head: { template: '<span />' },
     usePage: () => ({
-        props: { auth: { user: { roles: ['amministratore'], permissions: [] } } },
+        props: { auth: { user: { roles: ['amministratore'], permissions: permessi.elenco } } },
     }),
 }));
 
@@ -527,6 +530,19 @@ describe('nessun comando della riga salva la tabella di nascosto', () => {
             .map((b) => b.text().trim().toLowerCase());
 
         expect(invianti).toEqual(['salva quote']);
+    });
+
+    test('senza «Modifica condomini» la pagina si legge: «Salva quote» non c\'è e la frase dice il permesso', () => {
+        permessi.elenco = [];
+        try {
+            const w = monta([500, 300, 200]);
+            const invianti = w.findAll('button').filter((b) => (b.element as HTMLButtonElement).type === 'submit');
+
+            expect(invianti).toHaveLength(0);
+            expect(w.text()).toContain('Per cambiare i millesimi serve il permesso «Modifica condomini».');
+        } finally {
+            permessi.elenco = ['Modifica condomini'];
+        }
     });
 });
 

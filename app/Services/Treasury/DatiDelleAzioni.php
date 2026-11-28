@@ -136,8 +136,8 @@ final class DatiDelleAzioni
         foreach ($righe as $riga) {
             $m = $riga->meta;
             $dati = is_array($m) ? $m : (array) json_decode((string) $m, true);
-            $c = is_numeric($dati[$chiave] ?? null) ? (int) $dati[$chiave] : 0;
-            if ($tipo === 'verifica_pagamento' && $c <= 0 && filter_var($dati['intent_usa_credito'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            $c = $tipo === \App\Services\Gestionale\RipianamentoDelDeficit::TIPO_DEL_COMPITO ? self::cifraDelDeficit($condominioId, (int) $riga->id, $dati) : (is_numeric($dati[$chiave] ?? null) ? (int) $dati[$chiave] : 0);
+            if ($c === null || ($tipo === 'verifica_pagamento' && $c <= 0 && filter_var($dati['intent_usa_credito'] ?? false, FILTER_VALIDATE_BOOLEAN))) {
                 continue;
             }
             $quanti++;
@@ -293,5 +293,22 @@ final class DatiDelleAzioni
             ->pluck('cifra', 'rata_id')
             ->mapWithKeys(fn ($cifra, $rata) => [(int) $rata => (int) $cifra])
             ->all();
+    }
+
+    /**
+     * La cifra di un compito del deficit ereditato: quella di oggi, come la pagina del piano (`RipianamentoDelDeficit::cifraDiOggiDi`: un pregresso scritto
+     * dopo la cambia), o, se oggi non si legge, quella scritta nel compito. Null per un compito che oggi non ha niente da ripianare (anche il debito a rate
+     * oltre lo scoperto): non è un deficit, e la tesoreria non lo conta.
+     *
+     * @param  array<string, mixed>  $dati  i dati del compito
+     */
+    private static function cifraDelDeficit(int $condominioId, int $compitoId, array $dati): ?int
+    {
+        $oggi = \App\Services\Gestionale\RipianamentoDelDeficit::cifraDiOggiDi($condominioId, $compitoId, $dati);
+        if ($oggi === null) {
+            return is_numeric($dati['importo_buco'] ?? null) ? (int) $dati['importo_buco'] : 0;
+        }
+
+        return $oggi['parte'] > 0 ? $oggi['parte'] : null;
     }
 }

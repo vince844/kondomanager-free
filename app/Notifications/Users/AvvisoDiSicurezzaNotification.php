@@ -7,6 +7,7 @@ namespace App\Notifications\Users;
 
 use App\Notifications\Concerns\TestoScrittoDaAltri;
 use App\Notifications\LocalizedNotification;
+use App\Services\Notifiche\AvvisiDiSicurezza;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -14,13 +15,15 @@ use Illuminate\Notifications\Messages\MailMessage;
 /**
  * L'avviso al titolare di un account quando cambia qualcosa della sua sicurezza (Coda 267): password
  * cambiata o reimpostata, email cambiata, autenticazione a due fattori attivata o disattivata, codici
- * di recupero rigenerati. Lo spedisce solo `App\Services\Notifiche\AvvisiDiSicurezza`, che sceglie il
+ * di recupero rigenerati; e l'accesso da un dispositivo nuovo (Coda 385). Lo spedisce solo `App\Services\Notifiche\AvvisiDiSicurezza`, che sceglie il
  * destinatario e non lascia che un invio fallito fermi l'azione.
  *
  * Nel testo ci sono data e ora e, quando la modifica non l'ha fatta il titolare, il nome di chi l'ha
  * fatta. L'indirizzo IP no: è un dato personale di chi ha fatto la modifica, e su un'installazione
- * condivisa finirebbe nella casella di un altro. Nessun link: l'avviso dice che cosa fare, non porta
- * da nessuna parte.
+ * condivisa finirebbe nella casella di un altro. L'eccezione è l'accesso da un dispositivo nuovo (Coda 385):
+ * lì chi ha fatto l'accesso dovrebbe essere il titolare stesso, e l'avviso porta l'indirizzo approssimato
+ * (93.45.x.x), che basta a riconoscere la rete e non la persona. Nessun link: l'avviso dice che cosa fare,
+ * non porta da nessuna parte.
  *
  * I due nomi li scrive qualcun altro — chi ha fatto la modifica sceglie il proprio dal profilo, il nome
  * del titolare lo corregge chi gestisce la sua scheda — e il messaggio è Markdown: arrivano come testo
@@ -43,12 +46,16 @@ class AvvisoDiSicurezzaNotification extends LocalizedNotification implements Sho
      * @param  string  $nome  Il nome del titolare, per il saluto.
      * @param  string|null  $autore  Chi ha fatto la modifica, solo se non è il titolare.
      * @param  string|null  $emailNuova  Il nuovo indirizzo, già mascherato (solo per l'email cambiata).
+     * @param  string|null  $dispositivo  Browser e sistema (solo per l'accesso da un dispositivo nuovo).
+     * @param  string|null  $indirizzo  L'indirizzo dell'accesso, già approssimato (solo per l'accesso da un dispositivo nuovo).
      */
     public function __construct(
         public string $evento,
         public string $nome,
         public ?string $autore = null,
         public ?string $emailNuova = null,
+        public ?string $dispositivo = null,
+        public ?string $indirizzo = null,
     ) {
         parent::__construct();
 
@@ -76,6 +83,7 @@ class AvvisoDiSicurezzaNotification extends LocalizedNotification implements Sho
             'data'    => $this->data,
             'ora'     => $this->ora,
             'email'   => (string) $this->emailNuova,
+            'dispositivo' => (string) $this->dispositivo,
         ];
 
         $mail = (new MailMessage)
@@ -87,9 +95,18 @@ class AvvisoDiSicurezzaNotification extends LocalizedNotification implements Sho
             $mail->line(__('notifications.security_alert.autore', ['autore' => $this->autore]));
         }
 
-        return $mail
-            ->line(__("{$chiave}.consiglio"))
-            ->line(__('notifications.security_alert.sempre'));
+        if ($this->indirizzo !== null) {
+            $mail->line(__('notifications.security_alert.indirizzo', ['indirizzo' => $this->indirizzo]));
+        }
+
+        $mail->line(__("{$chiave}.consiglio"));
+
+        // Un browser che non tiene i cookie è nuovo a ogni accesso: chi riceve l'avviso ogni volta deve sapere perché.
+        if ($this->evento === AvvisiDiSicurezza::ACCESSO_DA_DISPOSITIVO_NUOVO) {
+            $mail->line(__("{$chiave}.cookie"));
+        }
+
+        return $mail->line(__('notifications.security_alert.sempre'));
     }
 
     /**

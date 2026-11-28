@@ -127,6 +127,16 @@ class CreateContoRequest extends FormRequest
                 }
             }
 
+            // Una voce va sotto un capitolo del suo tipo: un'entrata sotto un capitolo di spesa sparirebbe dalle colonne del capitolo nel riepilogo.
+            if ($this->filled('parent_id') && ($padre = Conto::find($this->parent_id)) !== null && $this->filled('tipo')
+                && Conto::segnoDelTipo((string) $padre->tipo) !== Conto::segnoDelTipo((string) $this->input('tipo'))) {
+                // Il tipo del capitolo si cambia dalla sua scheda se nessun piano approvato lo tiene e non ha voci del suo tipo (`UpdateContoRequest` non lo
+                // rifiuta, e le sue voci finirebbero sotto un capitolo dell'altro tipo).
+                $siCambia = (Conto::pianiCheBloccanoLaVoce([(int) $padre->id])[(int) $padre->id] ?? []) === []
+                    && ! Conto::where('parent_id', $padre->id)->get(['tipo'])->contains(fn (Conto $f) => Conto::segnoDelTipo((string) $f->tipo) === Conto::segnoDelTipo((string) $padre->tipo));
+                $validator->errors()->add('tipo', BloccoDellaVoce::rifiutoDelTipoSottoIlCapitolo((string) $this->input('tipo'), (string) $padre->nome, $siCambia));
+            }
+
             // Il meno si rifiuta su ogni voce, di spesa o di entrata: il segno lo decide il tipo, e il motore legge il valore assoluto.
             if (! $this->boolean('isCapitolo') && ImportoSenzaSegno::eNegativo($this->input('importo'))) {
                 ImportoSenzaSegno::rifiuta($validator, 'importo', ImportoSenzaSegno::rifiutoPerIlTipo($this->input('tipo')));

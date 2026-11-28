@@ -296,12 +296,14 @@ test('Coda 313 — controllo: prima di un incasso lo storno si rifiuta con la sc
 test('Coda 313 — dopo una vendita, con la rata 1 di Rossi e la rata 2 di Anna emesse e pagate, lo storno si rifiuta', function () {
     // Rossi paga la rata 1 e vende ad Anna dal 1° maggio: la bozza della rata 2 passa ad Anna, che la paga. Le due rate hanno chiesto la
     // spesa: rifiuto, e gli estratti conto restano quelli di prima (il conguaglio del passaggio non è di questa Coda); l'unità 0, «Anticipi»
-    // 0 per tutti e due. Il piano da fatture sta su una gestione ordinaria, come in `RiassegnazioneBozzeTest`.
+    // 0 per tutti e due. Il piano da fatture sta su una gestione ordinaria, come in `RiassegnazioneBozzeTest`. La fattura è del 10 giugno,
+    // dopo la vendita: la riga sull'unità è di chi è titolare quel giorno (Coda 610), e solo così la bozza passa (decisione 26.4); con la
+    // fattura del 10/03 la spesa sarebbe di Rossi e la rata 2 resterebbe sua.
     $s = b59apBase(tipoGestione: 'ordinaria');
     $rossi = $s['persone']['mario'];
     $anna = Anagrafica::forceCreate(['nome' => 'Anna Neri', 'email' => 'b59sf-anna@test.it', 'indirizzo' => 'Via Po 2', 'codice_fiscale' => 'B59SFANNAXXXXXXX']);
     $anna->condomini()->syncWithoutDetaching([$s['c']->id]);
-    $fattura = b59apFattura($this, $s, [b59apRigaAdPersonam($s)]);
+    $fattura = b59apFattura($this, $s, [b59apRigaAdPersonam($s)], data: '2026-06-10');
     $piano = b59apPiano($this, $s, $fattura);
     b59apEmetti($this, $s, $piano, [1])->assertSessionHas('message.type', 'success');
     b59apIncassa($this, $s, $piano, $rossi, [1 => 61000]);
@@ -1008,12 +1010,13 @@ test('Coda 313 — dopo una vendita che ha preso il piano nel conguaglio, il pia
     // rata 2. La strada «annulla le emissioni, riporta il piano in bozza ed eliminalo» si ferma all'eliminazione (decisione 38, `PianoRateController::destroy`):
     // la frase rimanda ai passi che il pulsante «Ricalcola» elenca sulla pagina del piano (`PianoRate::rimediDelFermo`). Percorsi: stornati i due
     // incassi, annullate le emissioni, il piano in bozza, annullato il passaggio, il piano eliminato; lo storno passa e gira tutto com'era (unità 0,
-    // Rossi 0, Anna 0, «Anticipi» 0: l'anticipazione di FT-313, 122000, la chiude per intero).
+    // Rossi 0, Anna 0, «Anticipi» 0: l'anticipazione di FT-313, 122000, la chiude per intero). La fattura è del 10 giugno, dopo la vendita,
+    // perché la bozza della rata 2 passi ad Anna (Coda 610, decisione 26.4: vedi il caso «dopo una vendita, con la rata 1 di Rossi…»).
     $s = b59apBase(tipoGestione: 'ordinaria');
     $rossi = $s['persone']['mario'];
     $anna = Anagrafica::forceCreate(['nome' => 'Anna Neri', 'email' => 'b59sf-anna2@test.it', 'indirizzo' => 'Via Po 2', 'codice_fiscale' => 'B59SFANNAYYYYYYY']);
     $anna->condomini()->syncWithoutDetaching([$s['c']->id]);
-    $fattura = b59apFattura($this, $s, [b59apRigaAdPersonam($s)]);
+    $fattura = b59apFattura($this, $s, [b59apRigaAdPersonam($s)], data: '2026-06-10');
     $piano = b59apPiano($this, $s, $fattura);
     b59apEmetti($this, $s, $piano, [1])->assertSessionHas('message.type', 'success');
     $incassoRossi = b59apIncassa($this, $s, $piano, $rossi, [1 => 61000]);

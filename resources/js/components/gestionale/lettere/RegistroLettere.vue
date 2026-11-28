@@ -30,6 +30,7 @@ import { router, usePage } from '@inertiajs/vue3';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import { usePermission } from '@/composables/permissions';
+import { Permission } from '@/enums/Permission';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { apriPdfInUnaScheda, fraseDaErroreConFile, frasePerErrore } from '@/lib/gestionale/incassi/ricevute';
@@ -76,7 +77,9 @@ const props = withDefaults(defineProps<{
     personaId?: number | null;
 }>(), { documenti: () => [], personaId: null });
 
-const { generateRoute } = usePermission();
+const { generateRoute, hasPermission } = usePermission();
+// La ricevuta e la prova sono file nel gestionale: chiedono «Crea documenti archivio», come «Allega» della fattura. Senza, la zona e il pulsante non ci sono.
+const puoCaricare = hasPermission([Permission.CREATE_ARCHIVE_DOCUMENTS]);
 const rotta = (nome: string, altro: Record<string, unknown> = {}) => route(generateRoute(`gestionale.lettere.${nome}`), { condominio: props.condominioId, ...altro });
 const messaggio = ref<string | null>(null);
 const errore = ref<string | null>(null);
@@ -294,7 +297,7 @@ const eventoTesto = (e: LetteraDelRegistro['eventi'][number]) => {
                     </Button>
                     <Button v-if="r.pec?.stampabile" size="sm" variant="outline" class="h-7 text-xs" :data-testid="`stampa-per-la-posta-${r.id}`" @click="stampaPerLaPosta(r.id)">Stampala per la posta</Button>
                     <!-- La ricevuta di consegna: si trascina sulla zona, o si sceglie con «Carica la ricevuta» (al telefono, e per chi non trascina). -->
-                    <div v-if="r.pec?.ricevibile" class="w-full space-y-1 rounded-lg border border-dashed p-2 text-xs"
+                    <div v-if="r.pec?.ricevibile && puoCaricare" class="w-full space-y-1 rounded-lg border border-dashed p-2 text-xs"
                         :class="sopra === r.id ? 'border-sky-500 bg-sky-50 dark:bg-sky-950/40' : 'border-slate-300 dark:border-slate-600'" :data-testid="`zona-ricevuta-${r.id}`"
                         @dragover.prevent="sopra = r.id" @dragleave="sopra = null" @drop.prevent="sceltoIlFile(r, ($event as DragEvent).dataTransfer?.files?.[0])">
                         <p class="font-medium">{{ r.pec.provata ? 'Un\'altra ricevuta di consegna? Trascinala qui (.eml)' : 'Trascina qui la ricevuta di consegna (.eml)' }}</p>
@@ -333,7 +336,7 @@ const eventoTesto = (e: LetteraDelRegistro['eventi'][number]) => {
                         @click="apriCorrezione(r)">Correggi la spedizione</Button>
                     <Button v-if="r.rimandabile" size="sm" variant="ghost" class="h-7 text-xs" data-testid="invia-di-nuovo" @click="inviaDiNuovo(r.id)">Invia di nuovo, con le cifre di oggi</Button>
                     <!-- La prova di una PEC è la ricevuta, nella sua zona: «Allega la prova» è delle lettere su carta e per email. -->
-                    <label v-if="r.canale !== 'pec' && r.stato !== 'in_coda' && r.stato !== 'non_partita'" class="cursor-pointer underline text-xs" :data-testid="`allega-prova-${r.id}`">
+                    <label v-if="puoCaricare && r.canale !== 'pec' && r.stato !== 'in_coda' && r.stato !== 'non_partita'" class="cursor-pointer underline text-xs" :data-testid="`allega-prova-${r.id}`">
                         Allega la prova
                         <input type="file" class="hidden" accept=".pdf,.jpg,.jpeg,.png,.eml,.p7m" @change="allega(r.id, $event)" />
                     </label>

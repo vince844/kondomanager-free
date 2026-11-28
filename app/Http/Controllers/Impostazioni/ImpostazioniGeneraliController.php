@@ -54,6 +54,7 @@ class ImpostazioniGeneraliController extends Controller
             'segnalazioni_assegnazione_porta_in_lavorazione' => (bool) $settings->segnalazioni_assegnazione_porta_in_lavorazione,
             'comunicazioni_registra_aperture' => (bool) $settings->comunicazioni_registra_aperture,
             'errori_avviso_dalla_pagina' => (bool) $settings->errori_avviso_dalla_pagina,
+            'due_fattori_obbligatoria_pannello' => (bool) $settings->due_fattori_obbligatoria_pannello,
             'aperture_registrate'      => ComunicazioneLettura::whereNotNull('aperta_il')->count(),
             'default_per_page'         => (int) $settings->default_per_page,
             // Il 100 resta fuori: il portale condòmino non ha un selettore per le righe, quindi un
@@ -126,6 +127,9 @@ class ImpostazioniGeneraliController extends Controller
             }
             if (array_key_exists('errori_avviso_dalla_pagina', $validated)) {
                 $settings->errori_avviso_dalla_pagina = (bool) $validated['errori_avviso_dalla_pagina'];
+            }
+            if (array_key_exists('due_fattori_obbligatoria_pannello', $validated)) {
+                $settings->due_fattori_obbligatoria_pannello = (bool) $validated['due_fattori_obbligatoria_pannello'];
             }
             $settings->default_per_page = $validated['default_per_page'];
             $settings->save();

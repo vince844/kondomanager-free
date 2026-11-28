@@ -1723,15 +1723,22 @@ it('Coda 371 — il rientro di Ines il 1/11 all\'80 % al posto dell\'inizio di T
         ->and(pcc360PagateDa($s, 'Ines'))->toBe(['Ugo' => 24016]);
 });
 
-it('Coda 371 — le guardie: senza la fine di Sara, o con la fine «Non scriverlo», la voce resta nelle rate di Ines (decisioni 43 e 46); la voce che comprende il cambio resta com\'era', function () {
-    // Senza una fine «Scrivi» dopo il cambio regolato fra le parti, la 83.3 non vale: Ines 36000 + 18000 = 54000 per 365 + 61 giorni, Teo nessuna sezione, il pannello «regolato».
-    foreach ([null, 'non_scrivere'] as $fine) {
-        $s = pcc371Scenario($this);
-        $frasi = pcc371Storia($this, $s, $fine);
-        expect($frasi)->toContain('il conguaglio dei giorni dopo la sua uscita le parti lo hanno regolato fra loro')
-            ->and(fclSaldi($s))->toBe([], (string) $fine)
-            ->and(fclProspetto($s))->toBe(['conduttori' => ['ines' => [54000, 54000, 0, 426]], 'senza' => [0, 0]], (string) $fine);
-    }
+it('Coda 371 — le guardie: senza la fine di Sara la voce resta nelle rate di Ines (decisioni 43 e 46), con la fine «Non scriverlo» Teo gliela rimborsa (la D-a); la voce che comprende il cambio resta com\'era', function () {
+    // Senza una fine «Scrivi» dopo il cambio regolato fra le parti, la 83.3 non vale: Ines 36000 + 18000 = 54000 per 365 + 61 giorni. Senza la fine di Sara l'accordo copre tutti i giorni
+    // dopo il cambio: Teo nessuna sezione, il pannello «regolato». Con la fine di Sara «Non scriverlo» del 1/10, dalla 1.12.0-beta.15 l'accordo con chi ha la riga finisce lì (decisioni 144
+    // e 153.4, la D-a): Teo rimborsa a Ines la sua parte dei giorni fuori dall'accordo, nelle rate di Ines, € 18,55 delle «Spese generali» e tutto il «Riscaldamento», € 180,00 (le cifre della
+    // divisione per quota e per giorni di `chiEntraDopoIlCambio`), e il pannello lo dice. Era: come senza la fine.
+    $s = pcc371Scenario($this);
+    $frasi = pcc371Storia($this, $s, null);
+    expect($frasi)->toContain('il conguaglio dei giorni dopo la sua uscita le parti lo hanno regolato fra loro')
+        ->and(fclSaldi($s))->toBe([])
+        ->and(fclProspetto($s))->toBe(['conduttori' => ['ines' => [54000, 54000, 0, 426]], 'senza' => [0, 0]]);
+    $s = pcc371Scenario($this);
+    $frasi = pcc371Storia($this, $s, 'non_scrivere');
+    expect($frasi)->toContain('i giorni dopo la sua uscita li rimborsa Teo a Ines, con il prospetto degli oneri accessori')
+        ->and(fclSaldi($s))->toBe([])
+        ->and(fclProspetto($s))->toBe(['conduttori' => ['ines' => [34145, 54000, -19855, 426], 'teo' => [19855, 0, 19855, 122]], 'senza' => [0, 0]])
+        ->and(pcc360PagateDa($s, 'Teo'))->toBe(['Ines' => 19855]);
 
     // Il «Riscaldamento» dal 6/6 comprende il cambio: la catena lo legge già nella voce. Ines 18000 × 25/209 = 2153,11 → 2153; il resto 15847, al 1/10 7923,5 → 7924 regolati a Sara (a pari resto
     // chi esce) e 7923 dopo, Teo 61 giorni su 92, 5253,34 → 5253, ottobre 2670. Ines 17852 + 2153 = 20005, Sara 9074 + 7924 = 16998, Teo 6016 + 5253 = 11269, senza 3058 + 2670 = 5728.
@@ -1752,9 +1759,18 @@ it('Coda 371 — un piano con la sola voce dei mesi dopo (il «Riscaldamento» 1
         $s = pcc371Scenario($this, soloLaVoce: true);
         $frasi = pcc371Storia($this, $s, $fine);
         expect($frasi)->not->toContain('lo decide l\'amministratore');
-        if ($fine !== 'scrivi') {
+        if ($fine === null) {
             expect($frasi)->toContain('il conguaglio dei giorni dopo la sua uscita le parti lo hanno regolato fra loro')
-                ->and(fclProspetto($s))->toBe(['conduttori' => ['ines' => [18000, 18000, 0, 61]], 'senza' => [0, 0]], (string) $fine);
+                ->and(fclProspetto($s))->toBe(['conduttori' => ['ines' => [18000, 18000, 0, 61]], 'senza' => [0, 0]]);
+
+            continue;
+        }
+        if ($fine === 'non_scrivere') {
+            // Dalla 1.12.0-beta.15 (la D-a, decisioni 144 e 153.4) l'accordo con chi ha la riga finisce con la fine di Sara: la voce, tutta dopo, è nelle rate di Ines, e Teo, solo nei suoi
+            // giorni, gliela rimborsa tutta, 18000.
+            expect($frasi)->toContain('i giorni dopo la sua uscita li rimborsa Teo a Ines, con il prospetto degli oneri accessori')
+                ->and(fclProspetto($s))->toBe(['conduttori' => ['ines' => [0, 18000, -18000, 61], 'teo' => [18000, 0, 18000, 61]], 'senza' => [0, 0]])
+                ->and(pcc360PagateDa($s, 'Teo'))->toBe(['Ines' => 18000]);
 
             continue;
         }
@@ -1934,13 +1950,18 @@ it('Coda 372 — tre cambi «Scrivi» annullati tutti e tre (Ines → Sara il 1/
 
 it('Coda 372 — le guardie: la fine di Pia «Non scriverlo» o nessuna fine dopo i due annullati (decisioni 43 e 46), e un solo cambio annullato o nessuno, come prima', function () {
     // Senza la coppia della fine la catena si ferma al primo cambio, regolato fra le parti: Ines 36000 per 365 giorni, Teo nessuna sezione, il pannello «regolato».
-    foreach (['non_scrivere', null] as $fine) {
-        $s = pcc372Storia($this, ['c2', 'c1'], $fine);
-        $frasi = pcc361Inizio($this, $s, 'Teo', '2026-12-01', 20);
-        expect($frasi)->toContain('il conguaglio dei giorni dopo la sua uscita le parti lo hanno regolato fra loro')
-            ->and(fclSaldi($s))->toBe([], (string) $fine)
-            ->and(fclProspetto($s))->toBe(['conduttori' => ['ines' => [36000, 36000, 0, 365]], 'senza' => [0, 0]], (string) $fine);
-    }
+    // Con la fine di Pia «Non scriverlo», dalla 1.12.0-beta.15 l'accordo con chi ha la riga finisce con l'uscita di Pia, che ha preso il posto di Sara (decisioni 144, 148.1 e 153.4, la
+    // D-a): Teo dal 1/12 al 20 % rimborsa a Ines la sua parte di dicembre, € 8,59 (la divisione per quota e per giorni di `chiEntraDopoIlCambio`). Senza la fine, come prima.
+    $s = pcc372Storia($this, ['c2', 'c1'], null);
+    $frasi = pcc361Inizio($this, $s, 'Teo', '2026-12-01', 20);
+    expect($frasi)->toContain('il conguaglio dei giorni dopo la sua uscita le parti lo hanno regolato fra loro')
+        ->and(fclSaldi($s))->toBe([])
+        ->and(fclProspetto($s))->toBe(['conduttori' => ['ines' => [36000, 36000, 0, 365]], 'senza' => [0, 0]]);
+    $s = pcc372Storia($this, ['c2', 'c1'], 'non_scrivere');
+    $frasi = pcc361Inizio($this, $s, 'Teo', '2026-12-01', 20);
+    expect($frasi)->toContain('i giorni dopo la sua uscita li rimborsa Teo a Ines, con il prospetto degli oneri accessori')
+        ->and(fclSaldi($s))->toBe([])
+        ->and(fclProspetto($s))->toBe(['conduttori' => ['ines' => [35141, 36000, -859, 365], 'teo' => [859, 0, 859, 31]], 'senza' => [0, 0]]);
 
     // Il solo primo annullato, il solo secondo, nessuno: le cifre del primo test, e Teo rimborsa a Ugo € 30,58; cambia solo il modo del pezzo di Sara e di Pia.
     foreach ([[['c1'], ['Pia' => 6016, 'Sara' => -9074, 'Ugo' => 3058]], [['c2'], ['Ines' => -18148, 'Pia' => -3058, 'Sara' => 18148, 'Ugo' => 3058]],
@@ -2761,7 +2782,8 @@ it('Coda 379 — le guardie della storia di Ines che rientra: la 83.3 (Sara → 
         ->and(pcc360PagateDa($s, 'Teo'))->toBe(['Ugo' => 3058]);
 
     // Il rientro di Ines con un inizio (la fine di Sara «Non scriverlo» il 1/9, l'inizio di Ines il 1/9), poi la fine di Ines il 1/12: la scelta non si chiede (la parte dell'unità Ines l'ha già
-    // ceduta con il cambio del 1/7) e non c'è una coppia; i giorni dopo restano nell'accordo del 1/7: Ines 36000 per 365 giorni, Teo senza sezione (decisioni 43 e 46).
+    // ceduta con il cambio del 1/7) e non c'è una coppia. Dalla 1.12.0-beta.15 l'accordo del 1/7 finisce con la fine di Sara del 1/9 (la D-a, decisioni 144 e 153.4): dicembre è nelle rate
+    // di Ines, e Teo, dal 1/12 all'80 %, glielo rimborsa: 36000 × 31/365 = 3057,53 → 3058. Era: i giorni dopo restavano nell'accordo, Ines 36000, Teo senza sezione.
     $s = pcc358Scenario($this, [['Ines', 80]]);
     pcc366Annulla($this, $s, pcc379Passaggio($this, $s, 'Ines', 'Sara', '2026-07-01', 'scrivi'));
     pcc379Passaggio($this, $s, 'Sara', null, '2026-09-01', 'non_scrivere');
@@ -2769,7 +2791,8 @@ it('Coda 379 — le guardie della storia di Ines che rientra: la 83.3 (Sara → 
     pcc379Passaggio($this, $s, 'Ines', null, '2026-12-01');
     pcc361Inizio($this, $s, 'Teo', '2026-12-01', 80);
     expect(fclSaldi($s))->toBe([])
-        ->and(fclProspetto($s))->toBe(['conduttori' => ['ines' => [36000, 36000, 0, 365]], 'senza' => [0, 0]]);
+        ->and(fclProspetto($s)['conduttori'])->toBe(['ines' => [32942, 36000, -3058, 365], 'teo' => [3058, 0, 3058, 31]])
+        ->and(pcc360PagateDa($s, 'Teo'))->toBe(['Ines' => 3058]);
 
     // Ines sola, la fine «Scrivi» del 1/10 annullata, Teo dal 15/10, Teo → Ines il 1/11 (Ines rientra), la fine di Ines il 1/12 senza la scelta: tutto nell'accordo del 1/10, Ines 36000 per 365
     // giorni (Coda 367: chi entra dopo l'accordo non divide).

@@ -55,13 +55,14 @@ const RATE_PURE = [0, 1, 2, 3, 4].map((n) => ({ id: 100 + n, numero_rata: n, is_
 
 let pagina: VueWrapper | null = null;
 
-async function monta(altriStub: Record<string, unknown> = {}) {
+async function monta(altriStub: Record<string, unknown> = {}, altreProps: Record<string, unknown> = {}) {
     pagina = mount(PianiRateShow, {
         props: {
             condominio: { id: 7, nome: 'Condominio Demo' } as never,
             esercizio: { id: 1, nome: '2026', stato: 'aperto' } as never,
             pianoRate: { id: 5, nome: 'Preventivo 2026', stato: 'approvato', tipo: 'ordinario', numero_rate: 4, totale_capitoli: 40000, budget_movements: [], capitoli: [] },
             quotePerAnagrafica: [ROSSI], quotePerImmobile: [], ratePure: RATE_PURE, needsMigration: false, sources: [], destinations: [], copertura: null, fermo_del_piano: null,
+            ...altreProps,
         },
         global: {
             stubs: {
@@ -95,7 +96,7 @@ describe('lo scaduto della pagina del piano viene dal server', () => {
         expect(pulito(card!.text())).not.toContain('300,00');
     });
 
-    test('il tooltip della card dice quando una rata è scaduta e quali crediti toglie: quelli dentro la rata, non quelli di altre rate', async () => {
+    test('il tooltip della card dice quando una rata è scaduta e quali crediti toglie: quelli della stessa persona dentro la rata, non quelli di altre rate né di un\'altra persona', async () => {
         const conLeSueParole = { template: '<div><slot /></div>' };
         await monta({ TooltipProvider: conLeSueParole, Tooltip: conLeSueParole, TooltipTrigger: conLeSueParole, TooltipContent: { template: '<div data-tooltip><slot /></div>' } });
         const testi = pagina!.findAll('[data-tooltip]').map((t) => pulito(t.text()));
@@ -103,7 +104,8 @@ describe('lo scaduto della pagina del piano viene dal server', () => {
 
         expect(card, 'il tooltip della card').toBeTruthy();
         expect(card).toContain('Una rata è scaduta dal giorno dopo la sua scadenza.');
-        expect(card).toContain('Non sottrae i crediti di altre rate; dentro una rata, sì.');
+        expect(card).toContain('Non sottrae i crediti di altre rate; dentro una rata, il credito di una persona toglie solo dal suo debito, anche su un\'altra sua unità, mai da quello di un\'altra persona.');
+        expect(card).not.toContain('dentro una rata, sì.');
         expect(card).not.toContain('Il giorno della scadenza non conta');
     });
 
@@ -118,6 +120,25 @@ describe('lo scaduto della pagina del piano viene dal server', () => {
         expect((pagina!.vm as any).getRataStyle(ROSSI.rate[1]).label).toBe('Scaduta');
         expect((pagina!.vm as any).getRataStyle(ROSSI.rate[2]).label).toBe('In attesa');
         expect((pagina!.vm as any).getRataStyle(ROSSI.rate[4]).label).toBe('In attesa');
+    });
+});
+
+describe('la card dello scaduto è la stessa nelle due schede', () => {
+    // Bice: l'Interno C deve € 50,00 e il box D ha € 20,00 a credito nella rata 1, emessa e scaduta. Per persona il residuo è € 30,00 (netto per la
+    // persona); per unità € 50,00 e € 0,00, perché la scheda per unità non netta fra le unità di una persona. La card dice € 30,00 in tutte e due.
+    const BICE = { anagrafica: { id: 12, nome: 'Bice', indirizzo: 'Via Roma 1' }, saldo_iniziale: 0, rate: [rata(1, '2026-12-14', true, true, 3000)] };
+    const C = { immobile: { id: 21, nome: 'Interno C', interno: 'C' }, totale_debiti: 0, totale_crediti: 0, rate: [rata(1, '2026-12-14', true, true, 5000)] };
+    const D = { immobile: { id: 22, nome: 'Box D', interno: 'D' }, totale_debiti: 0, totale_crediti: 0, rate: [rata(1, '2026-12-14', true, true, -2000)] };
+
+    test('per persona e per unità la card dice € 30,00', async () => {
+        await monta({}, { quotePerAnagrafica: [BICE], quotePerImmobile: [C, D], ratePure: [{ id: 101, numero_rata: 1, is_emessa: true, is_published: true }] });
+        const cifra = () => pulito(pagina!.findAll('div').filter((d) => d.text().startsWith('Scaduto da incassare') && d.text().includes('€')).at(-1)!.text());
+
+        expect(cifra()).toContain('30,00');
+        (pagina!.vm as any).tab = 'immobile';
+        await flushPromises();
+        expect(cifra()).toContain('30,00');
+        expect(cifra()).not.toContain('50,00');
     });
 });
 

@@ -633,7 +633,7 @@ it('i rifiuti della finestra: gli interessi si propongono, non si scrivono a man
     aocAddebita($this, $s, [['chi' => 'bice', 'unita' => 'C', 'euro' => '5,00', 'natura' => 'accessorio', 'base' => 'delibera', 'conto_id' => $postali->id]])->assertStatus(422)
         ->assertJsonPath('errors.addebiti.0', 'Scegli che cos\'è la spesa: interessi di mora, spese di sollecito, spese legali o altro.');
     aocAddebita($this, $s, [['chi' => 'bice', 'unita' => 'C', 'euro' => '5,00', 'natura' => 'accessorio', 'tipo_accessorio' => 'sollecito', 'base' => 'delibera']])->assertStatus(422)
-        ->assertJsonPath('errors.addebiti.0', 'Scegli la voce che riceve il denaro quando la persona lo versa: una voce della gestione «' . $s['g']->nome . '». Se non c\'è, creala nel piano dei conti con il preventivo a zero.');
+        ->assertJsonPath('errors.addebiti.0', 'Scegli la voce che riceve il denaro quando la persona lo versa: una voce della gestione «' . $s['g']->nome . '». Se non c\'è, creala nel piano dei conti con il preventivo a zero e una tabella millesimale collegata.');
     // Ugo non ha niente su C.
     aocAddebita($this, $s, [['chi' => 'ugo', 'unita' => 'C', 'euro' => '5,00']])->assertStatus(422)->assertJsonPath('errors.addebiti.0', AddebitiIndividuali::FRASE_INQUILINO);
     aocAddebita($this, $s, [['chi' => 'bice', 'unita' => 'C', 'euro' => '0,00']])->assertStatus(422)->assertJsonPath('errors.addebiti.0', 'Scrivi l\'importo dell\'addebito, più di zero.');

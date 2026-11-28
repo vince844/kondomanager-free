@@ -274,10 +274,19 @@ final class PropostaDelPunto
         $meta = (array) ($compito->getAttribute('meta') ?? []);
         $tipo = $meta['type'] ?? null;
         if ($tipo === 'pianifica_ripianamento_deficit') {
-            $buco = $meta['importo_buco'] ?? null;
-            $frase = 'Ripianamento del deficit' . (is_numeric($buco) ? ' di ' . MoneyHelper::format((int) $buco) : '');
+            // La cifra di oggi, come la pagina del piano (`RipianamentoDelDeficit::cifraDiOggi`): un pregresso scritto dopo la cambia; senza, quella del compito.
+            $oggi = $compito instanceof \App\Models\Evento ? \App\Services\Gestionale\RipianamentoDelDeficit::cifraDiOggi($compito) : null;
+            $buco = $oggi !== null ? $oggi['parte'] : ($meta['importo_buco'] ?? null);
+            $frase = 'Ripianamento del deficit' . (is_numeric($buco) && (int) $buco > 0 ? ' di ' . MoneyHelper::format((int) $buco) : '');
             // Nel testo dello studio dice anche verso chi è il debito (B4, simulazione del 21/11); la frase per la bacheca non nomina il fornitore.
             $fornitore = self::fornitoreDelDeficit($compito, $meta);
+            // Con il debito a rate oltre lo scoperto non c'è niente da ripianare: c'è un ripianamento da correggere, e il punto lo dice.
+            if ($oggi !== null && $oggi['oltre'] > 0) {
+                $frase = 'Correzione del ripianamento del debito ereditato';
+                $cifra = ': ' . MoneyHelper::format((int) $oggi['oltre']) . ' a rate oltre lo scoperto';
+
+                return [$frase . ($fornitore !== null ? ' verso ' . $fornitore : '') . $cifra, $frase . $cifra, MateriaPunto::ALTRO->value];
+            }
 
             return [$frase . ($fornitore !== null ? ' (debito ereditato verso ' . $fornitore . ')' : ''), $frase, MateriaPunto::ALTRO->value];
         }

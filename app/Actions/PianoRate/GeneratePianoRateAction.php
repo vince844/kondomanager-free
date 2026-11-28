@@ -69,6 +69,8 @@ class GeneratePianoRateAction
      * @param bool $scriviLaRigaVuota Coda 489 (decisione 685 (3)): la generazione è il ricalcolo di un piano (`PianoRateGenerationController`): un piano
      *                                con la riga delle voci vuota si scrive le voci che il motore prende, senza importo (`scriviLaRigaVuota()`). Le altre
      *                                generazioni non la toccano.
+     * @param bool $diSoliSaldi Il ricalcolo di un piano di soli saldi (`PianoRate::eDiSoliSaldi`, letto prima che le rate si cancellino): senza righe il
+     *                          motore non gli dà voci, e la riga non si scrive.
      * @throws DestinatariCambiatiException Se la risoluzione temporale cambia dei destinatari e $accettaDestinatari è false.
      * @throws \App\Exceptions\Gestionale\RichiedeDeliberaException Straordinario senza data della delibera (decisione 12).
      *
@@ -94,10 +96,11 @@ class GeneratePianoRateAction
         bool $allaCreazione = false,
         array $appenaSincronizzate = [],
         bool $scriviLaRigaVuota = false,
+        bool $diSoliSaldi = false,
     ): array {
         return RegistroModifiche::durante(GestiDelRegistro::pianoGenerato($pianoRate), fn () => $this->genera($pianoRate, $forzaApplicazioneSaldi,
             $saldiConfig, $accettaScoperti, $notaScoperti, $accettaDestinatari, $notaDestinatari, $esercizio, $allaCreazione, $appenaSincronizzate,
-            $scriviLaRigaVuota));
+            $scriviLaRigaVuota, $diSoliSaldi));
     }
 
     private function genera(
@@ -112,6 +115,7 @@ class GeneratePianoRateAction
         bool $allaCreazione = false,
         array $appenaSincronizzate = [],
         bool $scriviLaRigaVuota = false,
+        bool $diSoliSaldi = false,
     ): array
     {
         $pianoRate->refresh();
@@ -201,14 +205,15 @@ class GeneratePianoRateAction
         // il motore sta per prendere, senza importo: con la riga scritta il motore prende le stesse voci con gli stessi importi, e da lì le impegna per gli
         // altri piani, per la creazione e per la guardia del già versato. Solo il ricalcolo (`$scriviLaRigaVuota`, dalla rotta «Ricalcola»): la creazione
         // la riga la scrive da sé. Nella transazione della generazione (`RegistroModifiche::durante`): se la generazione si ferma, la riga resta vuota.
-        if ($scriviLaRigaVuota && $pianoRate->tipo !== 'straordinario') {
+        // Il piano di soli saldi non si scrive la riga: non prende voci (`$diSoliSaldi`, il motore lo sa).
+        if ($scriviLaRigaVuota && ! $diSoliSaldi && $pianoRate->tipo !== 'straordinario') {
             $this->scriviLaRigaVuota($pianoRate, $gestione);
         }
 
         if ($pianoRate->tipo === 'straordinario') {
             $totaliPerImmobile = $this->calcolatore->calcolaDaFattureStraordinarie($pianoRate, $competenza);
         } else {
-            $totaliPerImmobile = $this->calcolatore->calcolaPerGestione($gestione, $pianoRate, false, $competenza);
+            $totaliPerImmobile = $this->calcolatore->calcolaPerGestione($gestione, $pianoRate, false, $competenza, diSoliSaldi: $diSoliSaldi);
         }
         // =========================================================================
 
@@ -452,26 +457,8 @@ class GeneratePianoRateAction
         // mascherando un errore di configurazione (millesimi mancanti, anagrafiche
         // non configurate, tabelle millesimali vuote).
         // =========================================================================
-        if (empty($totaliPerImmobile)) {
-            Log::error("GeneratePianoRate: GUARD — totaliPerImmobile vuoto per piano_rate_id={$pianoRate->id}. Generazione bloccata.", [
-                'piano_rate_id' => $pianoRate->id,
-                'tipo'          => $pianoRate->tipo,
-                'gestione_id'   => $gestione->id,
-            ]);
-
-            $dettaglio = $pianoRate->tipo === 'straordinario'
-                ? "Per i piani straordinari verificare che ogni fattura collegata abbia importo finanziato (> 0) e "
-                    . "componenti straordinari validi: righe imprevisto/ad personam per le fatture correnti, "
-                    . "oppure una copertura di tipo 'sopravvenienza' agganciata a un capitolo con tabella millesimale "
-                    . "per le fatture pregresse."
-                : "Verificare che (1) le tabelle millesimali abbiano i millesimi inseriti per ogni immobile, "
-                    . "(2) ogni immobile abbia almeno un condòmino attivo associato, "
-                    . "(3) ogni voce di spesa sia collegata a una tabella millesimale.";
-
-            throw new \RuntimeException(
-                "Impossibile generare il piano rate: nessuna quota calcolata. " . $dettaglio
-            );
-        }
+        // La guardia «nessuna quota calcolata» sta dopo i saldi: un piano di soli saldi iniziali (una gestione portata da un altro gestionale, senza
+        // voci) non ha quote dalle voci, ma ha i saldi da incassare (`guardiaNessunaQuota`).
         // =========================================================================
 
         // =========================================================================
@@ -519,8 +506,14 @@ class GeneratePianoRateAction
             Log::info("Generazione: Saldi ESCLUSI (Array vuoto)");
         }
 
+        $this->guardiaNessunaQuota($pianoRate, $gestione, $totaliPerImmobile, $saldi);
+
         // 4. Generazione Date
         $dateRate = $this->dateRateAction->execute($pianoRate, $gestione);
+        // Un piano di soli saldi con «Rata 0»: i saldi stanno tutti nella rata 0, e le rate ordinarie sarebbero a zero.
+        if ($totaliPerImmobile === [] && $pianoRate->metodo_distribuzione === 'rata_zero') {
+            $dateRate = [];
+        }
 
         // 5. Creazione Rate Fisiche
         $stats = $this->rateQuotesAction->execute(
@@ -749,6 +742,67 @@ class GeneratePianoRateAction
         ] + ($defunti === [] ? [] : [
             'defunti'              => array_map(fn (array $d) => ['anagrafica_id' => (int) $d['defunto']['id'], 'immobile_id' => (int) $d['immobile_id'], 'cifra' => (int) $d['cifra']], $defunti),
         ]);
+    }
+
+    /**
+     * Ferma la generazione che non ha prodotto niente: nessuna quota dalle voci e nessun saldo da incassare. Un piano di soli saldi (le voci non ci sono,
+     * i saldi sì) passa: la sua rata chiede i saldi. Senza voci e senza saldi il messaggio lo dice, e non parla di millesimi.
+     *
+     * @param  array  $saldi  il formato di `GenerateSaldiAction`: [anagrafica][immobile] => ['importo', …]
+     */
+    private function guardiaNessunaQuota(PianoRate $pianoRate, Gestione $gestione, array $totaliPerImmobile, array $saldi): void
+    {
+        if ($totaliPerImmobile !== [] || $this->conSaldiDaIncassare($saldi)) {
+            return;
+        }
+        Log::error("GeneratePianoRate: GUARD — totaliPerImmobile vuoto per piano_rate_id={$pianoRate->id}. Generazione bloccata.", [
+            'piano_rate_id' => $pianoRate->id,
+            'tipo'          => $pianoRate->tipo,
+            'gestione_id'   => $gestione->id,
+        ]);
+
+        if ($pianoRate->tipo !== 'straordinario' && ! $this->haVociDaRipartire($pianoRate, $gestione)) {
+            throw new \RuntimeException('Impossibile generare il piano rate: la gestione «' . $gestione->nome . '» non ha voci da ripartire né saldi da incassare. '
+                . 'Scrivi le voci nel piano dei conti della gestione, o i saldi iniziali nella pagina dei saldi.');
+        }
+
+        $dettaglio = $pianoRate->tipo === 'straordinario'
+            ? "Per i piani straordinari verificare che ogni fattura collegata abbia importo finanziato (> 0) e "
+                . "componenti straordinari validi: righe imprevisto/ad personam per le fatture correnti, "
+                . "oppure una copertura di tipo 'sopravvenienza' agganciata a un capitolo con tabella millesimale "
+                . "per le fatture pregresse."
+            : "Verificare che (1) le tabelle millesimali abbiano i millesimi inseriti per ogni immobile, "
+                . "(2) ogni immobile abbia almeno un condòmino attivo associato, "
+                . "(3) ogni voce di spesa sia collegata a una tabella millesimale.";
+
+        throw new \RuntimeException(
+            "Impossibile generare il piano rate: nessuna quota calcolata. " . $dettaglio
+        );
+    }
+
+    /** Almeno un saldo diverso da zero entra nelle quote. */
+    private function conSaldiDaIncassare(array $saldi): bool
+    {
+        foreach ($saldi as $perImmobile) {
+            foreach ((array) $perImmobile as $dati) {
+                if ((int) ($dati['importo'] ?? 0) !== 0) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /** Il piano tiene delle voci, o il piano dei conti della gestione ne ha con un importo. */
+    private function haVociDaRipartire(PianoRate $pianoRate, Gestione $gestione): bool
+    {
+        if (\Illuminate\Support\Facades\DB::table('piano_rate_capitoli')->where('piano_rate_id', $pianoRate->id)->exists()) {
+            return true;
+        }
+        $pianoConto = $gestione->pianoConto;
+
+        return $pianoConto !== null && $pianoConto->conti()->where('importo', '!=', 0)->exists();
     }
 
     /**

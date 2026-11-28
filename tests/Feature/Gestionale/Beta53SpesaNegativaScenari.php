@@ -134,16 +134,50 @@ function b53snV2($test, string $stato = 'bozza'): array
     return $s;
 }
 
-/** V3: V2 in bozza più «Integrativo 2026», una rata, con la sola voce a € 240,00 (copia +24000): la voce è addebitata due volte. */
+/**
+ * Scrive nelle righe di un piano le voci che un altro piano dello stesso esercizio chiede già per intero, e ricalcola il piano dalla sua pagina. È lo stato
+ * di due piani sulla stessa voce com'era nelle installazioni di prima: la creazione di un piano rifiuta una voce già chiesta per intero, e per costruirlo si
+ * crea il primo piano senza la voce, il secondo con la voce, e solo dopo la riga si scrive nel primo.
+ *
+ * @param array<int, ?int> $righe conto => copia in centesimi (`null`: copia nulla)
+ * @param list<int> $togli le voci che il piano non deve più avere
+ */
+function b53snScriviLeRighe($test, array $s, PianoRate $piano, array $righe, array $togli = []): void
+{
+    if ($togli !== []) {
+        DB::table('piano_rate_capitoli')->where('piano_rate_id', $piano->id)->whereIn('conto_id', $togli)->delete();
+    }
+    foreach ($righe as $contoId => $copia) {
+        DB::table('piano_rate_capitoli')->insert(['piano_rate_id' => $piano->id, 'conto_id' => $contoId, 'importo' => $copia, 'note' => null,
+            'created_at' => now(), 'updated_at' => now()]);
+    }
+    session()->forget('message');
+    $test->actingAs($test->user)->post(route('admin.gestionale.esercizi.piani-rate.regenerate', [$s['c'], $s['e'], $piano]), [
+        'accetta_scoperti' => true, 'nota_scoperti' => 'Piano di prova', 'accetta_destinatari' => true, 'nota_destinatari' => 'Piano di prova',
+    ]);
+    if ((session('message')['type'] ?? null) === 'error') {
+        throw new \RuntimeException('Il ricalcolo del piano si è rifiutato: '.(session('message')['message'] ?? ''));
+    }
+}
+
+/**
+ * V3: V2 in bozza più «Integrativo 2026», una rata, con la sola voce a € 240,00 (copia +24000): la voce è addebitata due volte. «Ordinario 2026» nasce con le due
+ * voci libere, l'«Integrativo 2026» con il «Rimborso vecchio», che ancora nessuno chiede; poi la riga del «Rimborso vecchio» si scrive anche nell'«Ordinario 2026»
+ * (copia +24000, come quando nasceva senza voci scelte), che si ricalcola dalla sua pagina (`b53snScriviLeRighe`).
+ */
 function b53snV3($test): array
 {
     $s = b53snBase($test);
     $s['rimborso'] = b52tVoce($test, $s, 'Rimborso vecchio', 'spesa', '240,00', $s['tabella']);
-    $s['piano'] = b52tPiano($test, $s, [], 'Ordinario 2026');
+    $s['piano'] = b52tPiano($test, $s, [
+        'capitoli_ids' => [$s['generali']->id, $s['antenna']->id],
+        'capitoli_config' => [['id' => $s['generali']->id, 'importo' => '1.200,00', 'note' => ''], ['id' => $s['antenna']->id, 'importo' => '240,00', 'note' => '']],
+    ], 'Ordinario 2026');
     $s['secondo'] = b52tPiano($test, $s, [
         'capitoli_ids' => [$s['rimborso']->id], 'capitoli_config' => [['id' => $s['rimborso']->id, 'importo' => '240,00', 'note' => '']],
         'numero_rate' => 1, 'data_prima_scadenza' => '2026-06-05', 'accetta_scoperti' => true, 'nota_scoperti' => 'Piano di prova',
     ], 'Integrativo 2026');
+    b53snScriviLeRighe($test, $s, $s['piano'], [(int) $s['rimborso']->id => 24000]);
     b53snRiscrivi($s['rimborso'], -24000, [$s['piano']]);
     $s['rimborso'] = $s['rimborso']->fresh();
     $s['piano'] = $s['piano']->fresh();

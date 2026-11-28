@@ -21,14 +21,27 @@ function budgetMovementService(): BudgetMovementService
 }
 
 // -----------------------------------------------------------------------
+// Helper: una tabella millesimale sulla voce. «Sposta spesa» non dà budget a una voce senza tabelle né sottoconti (nessuno la pagherebbe): le voci
+// che ricevono budget in questi scenari ne hanno una.
+// -----------------------------------------------------------------------
+function bmsConUnaTabella(Conto $conto): Conto
+{
+    $condominioId = DB::table('piani_conti')->where('id', $conto->piano_conto_id)->value('condominio_id');
+    $tabella = \App\Models\Tabella::create(['condominio_id' => $condominioId, 'nome' => 'Proprietà ' . $conto->id, 'tipo' => 'standard', 'quota' => 'millesimi', 'attiva' => true]);
+    DB::table('conto_tabella_millesimale')->insert(['conto_id' => $conto->id, 'tabella_id' => $tabella->id, 'coefficiente' => 100, 'created_at' => now(), 'updated_at' => now()]);
+
+    return $conto;
+}
+
+// -----------------------------------------------------------------------
 // Helper: crea piano, sorgente, destinazione e un utente reale nel DB
 // -----------------------------------------------------------------------
 function setupPianoEConti(): array
 {
     $user   = User::factory()->create();
     $piano  = PianoRate::factory()->create(['attivo' => true, 'stato' => 'bozza']);
-    $source = Conto::factory()->create(['importo' => 30000]);
-    $dest   = Conto::factory()->create(['importo' => 34343]);
+    $source = bmsConUnaTabella(Conto::factory()->create(['importo' => 30000]));
+    $dest   = bmsConUnaTabella(Conto::factory()->create(['importo' => 34343]));
 
     DB::table('piano_rate_capitoli')->insert([
         'piano_rate_id' => $piano->id,
@@ -205,7 +218,7 @@ it('sorgente con NULL usa il preventivo del conto come importo disponibile', fun
     $user   = User::factory()->create();
     $piano  = PianoRate::factory()->create(['attivo' => true, 'stato' => 'bozza']);
     $source = Conto::factory()->create(['importo' => 34343]);
-    $dest   = Conto::factory()->create(['importo' => 10000]);
+    $dest   = bmsConUnaTabella(Conto::factory()->create(['importo' => 10000]));
 
     DB::table('piano_rate_capitoli')->insert([
         'piano_rate_id' => $piano->id,
@@ -231,7 +244,7 @@ it('destinazione con NULL viene convertita in importo fisso corretto', function 
     $user   = User::factory()->create();
     $piano  = PianoRate::factory()->create(['attivo' => true, 'stato' => 'bozza']);
     $source = Conto::factory()->create(['importo' => 30000]);
-    $dest   = Conto::factory()->create(['importo' => 34343]);
+    $dest   = bmsConUnaTabella(Conto::factory()->create(['importo' => 34343]));
 
     DB::table('piano_rate_capitoli')->insert([
         ['piano_rate_id' => $piano->id, 'conto_id' => $source->id, 'importo' => 30000, 'note' => null, 'created_at' => now(), 'updated_at' => now()],

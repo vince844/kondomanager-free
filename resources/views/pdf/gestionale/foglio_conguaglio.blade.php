@@ -124,7 +124,9 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
             <tr><td colspan="3">Già versato dell'unità prima delle rate, tolto dalle voci: già compreso negli importi qui sopra</td><td class="n">{{ $euro(-$u['gia_versato_unita']) }}</td></tr>
         @endif
         <tr class="k"><td colspan="3">Spese dell'esercizio</td><td class="n">{{ ($g['non_divisa'] ?? false) ? 'non ancora divisa' : $euro($u['a']) }}</td></tr>
-        <tr><td class="e" colspan="3">+ Spese personali non ancora chieste @foreach($u['personali_righe'] as $p) <span class="d">(del {{ \Carbon\Carbon::parse($p['giorno'])->format('d/m/Y') }}: {{ $euroNota($p['importo']) }})</span>@endforeach</td><td class="e n">{{ $euro($u['personali']) }}</td></tr>
+        <tr><td class="e" colspan="3">+ Spese personali non ancora chieste @foreach($u['personali_righe'] as $p) <span class="d">({{ empty($p['divisa_sui_giorni']) ? 'del ' . \Carbon\Carbon::parse($p['giorno'])->format('d/m/Y')
+            : 'fattura del ' . \Carbon\Carbon::parse($p['giorno'])->format('d/m/Y') . ' senza periodo, divisa sui giorni dal ' . \Carbon\Carbon::parse($p['divisa_sui_giorni']['dal'])->format('d/m/Y')
+                . ' al ' . \Carbon\Carbon::parse($p['divisa_sui_giorni']['al'])->format('d/m/Y') }}: {{ $euroNota($p['importo']) }})</span>@endforeach</td><td class="e n">{{ $euro($u['personali']) }}</td></tr>
         <tr><td class="e" colspan="3">− Quote dei piani dell'esercizio @if((int) ($u['b']['di_cui_non_emesse'] ?? 0) !== 0) <span class="d">(di cui non ancora emesse {{ $euroNota($u['b']['di_cui_non_emesse']) }})</span>@endif</td><td class="e n">{{ $euro($u['b']['totale']) }}</td></tr>
         @if((int) ($u['b']['coppie'] ?? 0) + (int) ($u['b']['regolato'] ?? 0) !== 0)
             <tr class="di"><td class="ri" colspan="3">di cui la parte del passaggio dell'unità</td><td class="n">{{ $euro((int) $u['b']['coppie'] + (int) $u['b']['regolato']) }}</td></tr>

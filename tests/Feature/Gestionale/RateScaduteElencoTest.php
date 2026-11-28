@@ -308,7 +308,10 @@ it('le persone: chi ha appartamento e box ha una riga sola con le due unità; ch
     expect($ugo['unita'])->toEqualCanonicalizing(['Int. A', 'Int. G'])
         ->and($ugo['importo'])->toBe(8000)
         ->and($bice['importo'])->toBe(5000)
-        ->and($bice['rate'][0])->toMatchArray(['giorni_ritardo' => 15, 'pregresso' => null, 'pregresso_nella_rata' => true])
+        // Dalla 1.12.0-beta.15 la parte di prima ancora da pagare si dice a parte (`di_prima`), con l'età della sua origine nelle fasce, come il § 10; il segno
+        // «la sua età è quella della rata» resta per un credito di prima.
+        ->and($bice['rate'][0])->toMatchArray(['giorni_ritardo' => 15, 'pregresso' => null, 'pregresso_nella_rata' => false])
+        ->and($bice['rate'][0]['di_prima']['importo'] ?? null)->toBe(3000)
         ->and($bice['pregresso_nella_rata'])->toBeTrue()
         ->and($ugo['rate'][0]['pregresso_nella_rata'])->toBeFalse();
     // «Con pregresso» trova anche chi l'ha dentro la rata 1: Bice sì, Ugo no.

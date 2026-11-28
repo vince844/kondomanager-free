@@ -117,45 +117,45 @@ const guide = [
               <Input v-model="search" placeholder="Cerca una voce di spesa..." class="pl-9 h-10" />
             </div>
 
-            <div class="bg-white border rounded-2xl overflow-hidden overflow-x-auto">
+            <div class="bg-white dark:bg-slate-900 border rounded-2xl overflow-hidden overflow-x-auto dark:border-slate-800">
               <table class="w-full text-sm min-w-[640px]">
                 <thead>
-                  <tr class="text-[10px] uppercase tracking-wide text-slate-400 border-b bg-slate-50/60">
+                  <tr class="text-xs uppercase tracking-wide text-slate-400 border-b bg-slate-50/60 dark:bg-slate-800/40">
                     <th class="text-left px-6 py-3 font-bold">Voce di spesa</th>
                     <th class="text-right px-3 py-3 font-bold">Importo</th>
                     <th class="text-left px-6 py-3 font-bold w-56">Già versato</th>
                     <th class="px-6 py-3"></th>
                   </tr>
                 </thead>
-                <tbody class="divide-y divide-slate-100">
-                  <tr v-for="v in filtrate" :key="v.id" class="hover:bg-slate-50/60">
+                <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+                  <tr v-for="v in filtrate" :key="v.id" class="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
                     <td class="px-6 py-3">
-                      <div class="font-semibold text-slate-800 text-xs">{{ v.nome }}</div>
-                      <div v-if="v.gestione" class="text-[10px] text-slate-400 mt-0.5">
+                      <div class="font-semibold text-slate-800 dark:text-slate-100 text-xs">{{ v.nome }}</div>
+                      <div v-if="v.gestione" class="text-xs text-slate-400 mt-0.5">
                         {{ v.gestione }}
                       </div>
                     </td>
-                    <td class="px-3 py-3 text-right text-xs tabular-nums text-slate-600">
+                    <td class="px-3 py-3 text-right text-xs tabular-nums text-slate-600 dark:text-slate-300">
                       {{ euro(v.importo_cents) }}
                     </td>
                     <td class="px-6 py-3">
                       <div v-if="v.coperto_cents > 0">
                         <div class="flex items-center gap-2 mb-1">
                           <CheckCircle2 class="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                          <span class="text-xs font-bold text-emerald-700 tabular-nums">
+                          <span class="text-xs font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
                             {{ euro(v.coperto_cents) }}
                           </span>
-                          <span class="text-[10px] text-slate-400">
+                          <span class="text-xs text-slate-400">
                             su {{ v.unita_coperte }} {{ v.unita_coperte === 1 ? 'unità' : 'unità' }}
                           </span>
                         </div>
-                        <div v-if="v.vale_per" class="text-[10px] text-slate-500 mb-1">Vale per: {{ v.vale_per }}</div>
-                        <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div v-if="v.vale_per" class="text-xs text-slate-500 dark:text-slate-400 mb-1">Vale per: {{ v.vale_per }}</div>
+                        <div class="h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                           <div class="h-full bg-emerald-500 rounded-full transition-all"
                             :style="{ width: percentuale(v) + '%' }"></div>
                         </div>
                       </div>
-                      <div v-else class="flex items-center gap-2 text-[11px] text-slate-400">
+                      <div v-else class="flex items-center gap-2 text-xs text-slate-400">
                         <Circle class="w-3.5 h-3.5 shrink-0" />
                         Nessun versamento registrato
                       </div>
@@ -164,7 +164,7 @@ const guide = [
                       <Link
                         :href="generatePath('gestionale/:condominio/contributi/:conto', {
                           condominio: condominio.id, conto: v.id })"
-                        class="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:gap-2.5 transition-all">
+                        class="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:gap-2.5 transition-all">
                         Gestisci <ArrowRight class="w-3.5 h-3.5" />
                       </Link>
                     </td>

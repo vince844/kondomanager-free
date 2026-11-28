@@ -35,25 +35,32 @@ class CategoriaDocumentoPolicy
     /**
      * Determine whether the user can create models.
      */
-    public function create(User $user): bool
+    public function create(User $user): Response
     {
-        return false;
+        // Le categorie raccolgono i documenti dell'archivio: si creano, si rinominano e si eliminano con i permessi di quei documenti.
+        return $user->hasPermissionTo(Permission::CREATE_ARCHIVE_DOCUMENTS->value)
+            ? Response::allow()
+            : Response::deny(__('policies.create_archive_documents'));
     }
 
     /**
      * Determine whether the user can update the model.
      */
-    public function update(User $user, CategoriaDocumento $categoriaDocumento): bool
+    public function update(User $user, CategoriaDocumento $categoriaDocumento): Response
     {
-        return false;
+        return $user->hasPermissionTo(Permission::EDIT_ARCHIVE_DOCUMENTS->value)
+            ? Response::allow()
+            : Response::deny(__('policies.edit_archive_documents'));
     }
 
     /**
      * Determine whether the user can delete the model.
      */
-    public function delete(User $user, CategoriaDocumento $categoriaDocumento): bool
+    public function delete(User $user, CategoriaDocumento $categoriaDocumento): Response
     {
-        return false;
+        return $user->hasPermissionTo(Permission::DELETE_ARCHIVE_DOCUMENTS->value)
+            ? Response::allow()
+            : Response::deny(__('policies.delete_archive_documents'));
     }
 
     /**

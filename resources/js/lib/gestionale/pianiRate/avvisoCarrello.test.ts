@@ -35,6 +35,25 @@ describe('avvisoFatturaNelCarrello — la pregressa senza periodo segue la gesti
     });
 });
 
+describe('avvisoFatturaNelCarrello — la spesa vecchia senza periodo sull\'ordinaria: i giorni di quest\'anno, e come farla pagare a chi era titolare allora', () => {
+    test('la pregressa: anche la parte di una sola unità, e il periodo si scrive stornando e registrando di nuovo', () => {
+        const a = avvisoFatturaNelCarrello(PREGRESSA_SENZA, ORDINARIA);
+        expect(a?.testo).toBe('Pregressa senza periodo dichiarato: si ripartirà sui giorni di quest\'anno, non su quelli in cui il costo è maturato, anche la parte di una sola unità. '
+            + 'Per farla pagare a chi era titolare allora, scrivi il periodo sulla fattura: una pregressa si storna e si registra di nuovo con il periodo.');
+    });
+
+    test('la fattura di prima dell\'esercizio, non pregressa: la stessa regola, e il periodo si scrive sulla fattura', () => {
+        const a = avvisoFatturaNelCarrello({ ha_competenza: false, spesa_vecchia: true, selezionata: true }, ORDINARIA);
+        expect(a?.tono).toBe('avviso');
+        expect(a?.testo).toBe('Fattura di prima dell\'esercizio, senza competenza dichiarata: si ripartirà sui giorni di quest\'anno, anche la parte di una sola unità. '
+            + 'Per farla pagare a chi era titolare allora, scrivi il periodo sulla fattura.');
+    });
+
+    test('controprova: sulla straordinaria la fattura di prima dell\'esercizio non dice i giorni di quest\'anno (decide la delibera)', () => {
+        expect(avvisoFatturaNelCarrello({ ha_competenza: false, spesa_vecchia: true, selezionata: true }, DELIBERA)).toBeNull();
+    });
+});
+
 describe('avvisoFatturaNelCarrello — il resto non cambia', () => {
     test('una corrente senza competenza, scelta, con «Urgenza»: il riparto si fermerà', () => {
         expect(avvisoFatturaNelCarrello({ ha_competenza: false, selezionata: true }, URGENZA)?.testo)

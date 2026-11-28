@@ -120,7 +120,8 @@ function b60eSaldo(array $s, string $anno, string $chi, string $unita, int $cent
 /** Le props della pagina del piano, dalla rotta, dentro l'esercizio dato. */
 function b60ePagina($test, array $s, PianoRate $piano, string $anno): array
 {
-    return $test->actingAs($test->user)->get(route('admin.gestionale.esercizi.piani-rate.show', [$s['c'], $s['es'][$anno], $piano]))->assertOk()->viewData('page')['props'];
+    // Aperto dall'esercizio di un altro anno, il piano porta alla pagina del suo esercizio: si segue il rimando.
+    return $test->actingAs($test->user)->followingRedirects()->get(route('admin.gestionale.esercizi.piani-rate.show', [$s['c'], $s['es'][$anno], $piano]))->assertOk()->viewData('page')['props'];
 }
 
 /** Il saldo iniziale che la pagina mostra: per Ugo (scheda per persona) e per l'unità A (scheda per unità, debiti). */
@@ -198,7 +199,7 @@ it('Coda 75 — la pagina del piano del 2027 sulla stessa gestione mostra il sal
 it('Coda 75 — il saldo della pagina non dipende dall\'esercizio dell\'indirizzo: il piano del 2026 aperto dal 2027 mostra ancora il 2026', function (array $ordine) {
     [$s, $p26] = b60eDuePianiConSaldi($this, $ordine);
 
-    // La rotta accetta il piano sotto ogni esercizio della sua gestione (`Esercizio::pianiRate`, per il pivot): il saldo resta quello del piano.
+    // La rotta con un altro esercizio porta alla pagina dell'esercizio del piano: il saldo resta quello del piano.
     expect(b60eSaldiMostrati(b60ePagina($this, $s, $p26, '2027'), $s))->toBe(['ugo' => 30000, 'A_debiti' => 30000]);
 })->with(B60E_ORDINI);
 
@@ -481,16 +482,23 @@ it('Coda 75, decisione 166 — il messaggio del già versato parla di un già ve
         ->and($messaggio)->not->toContain('già-versato');
 })->with(B60E_ORDINI);
 
+/** Il piano del 2027 con le «Pulizie» per metà (€ 100,00 su € 200,00): l'integrativo di `b60eSenzaVoci2027` chiede l'altra metà, il residuo. */
+function b60ePianoConLeMetaDellePulizie($test, array $s, string $anno): PianoRate
+{
+    return b60ePiano($test, $s, $anno, ['capitoli_config' => [['id' => $s['spesa']->id, 'importo' => '1.200,00'], ['id' => $s['pulizie']->id, 'importo' => '100,00']]]);
+}
+
 /**
  * Un integrativo del 2027 con la riga delle voci vuota, quando le voci sono tutte nel piano del 2027. Fino alla 1.12.0-beta.13 nasceva così dalla
- * pagina, creato senza generarlo; dalla Coda 489 quella creazione si rifiuta, e il piano di prima si fa con una voce scelta, poi la riga svuotata.
+ * pagina, creato senza generarlo; dalla Coda 489 quella creazione si rifiuta, e il piano di prima si fa con una voce scelta, poi la riga svuotata. La voce
+ * scelta chiede il residuo (€ 100,00 delle «Pulizie»): una voce già chiesta per intero non si chiede di nuovo da un altro piano.
  */
 function b60eSenzaVoci2027($test, array $s): PianoRate
 {
     $test->actingAs($test->user)->from('/crea')->post(route('admin.gestionale.esercizi.piani-rate.store', [$s['c'], $s['es']['2027']]), [
         'tipo' => 'ordinario', 'gestione_id' => $s['g']->id, 'nome' => 'Integrativo 2027', 'metodo_distribuzione' => 'tutte_rate', 'numero_rate' => 12,
         'giorno_scadenza' => 5, 'data_prima_scadenza' => '2027-01-05', 'genera_subito' => 0,
-        'capitoli_config' => [['id' => $s['pulizie']->id, 'importo' => '200,00']],
+        'capitoli_config' => [['id' => $s['pulizie']->id, 'importo' => '100,00']],
     ])->assertSessionHasNoErrors();
     $p27 = PianoRate::where('condominio_id', $s['c']->id)->where('nome', 'Integrativo 2027')->firstOrFail();
     DB::table('piano_rate_capitoli')->where('piano_rate_id', $p27->id)->delete();
@@ -500,7 +508,7 @@ function b60eSenzaVoci2027($test, array $s): PianoRate
 
 it('controprova — la stampa del riparto di un piano del 2027 senza voci è un\'anteprima, e non si ferma', function (array $ordine) {
     $s = b60eScenario($this, $ordine);
-    b60ePiano($this, $s, '2027');
+    b60ePianoConLeMetaDellePulizie($this, $s, '2027');
     $p27 = b60eSenzaVoci2027($this, $s);
 
     $this->actingAs($this->user)->get(route('admin.gestionale.esercizi.piani-rate.print-riparto-tabelle', [$s['c'], $s['es']['2027'], $p27]))->assertOk();
@@ -508,7 +516,7 @@ it('controprova — la stampa del riparto di un piano del 2027 senza voci è un\
 
 it('controprova — una voce nuova, non in altri piani, accanto alle voci del piano del 2027: il ricalcolo dell\'integrativo senza voci fa ciò che faceva prima', function (array $ordine) {
     $s = b60eScenario($this, $ordine);
-    b60ePiano($this, $s, '2027');
+    b60ePianoConLeMetaDellePulizie($this, $s, '2027');
     $p27 = b60eSenzaVoci2027($this, $s);
     be52Voce($this, $s, $s['pc'], 'Varie', 'spesa', '0,00');
 

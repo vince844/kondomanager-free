@@ -152,7 +152,10 @@ const submit = () => {
     onError: (errors) => {
       console.error('Errore nella creazione della voce di spesa:', errors)
       isCapitolo.value = false
-      isSottoConto.value = false
+      // Il rifiuto del tipo sotto il capitolo (`CreateContoRequest`): il capitolo scelto resta, si cambia il tipo o il capitolo e si salva di nuovo.
+      if (!errors.tipo) {
+        isSottoConto.value = false
+      }
     }
   })
 }
@@ -198,6 +201,7 @@ const submit = () => {
                 <Label for="entrata">Entrata</Label>
               </div>
             </div>
+            <InputError :message="form.errors.tipo" />
 
             <div class="flex flex-col gap-3 border-y border-gray-100 py-3">
                <div class="flex items-center justify-between">

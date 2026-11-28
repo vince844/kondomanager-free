@@ -7,7 +7,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 
 import StoriaDellaScheda from '@/components/registroModifiche/StoriaDellaScheda.vue';
 import { Head, useForm, Link } from '@inertiajs/vue3';
-import { watch, onMounted, computed, ref } from 'vue';
+import { watch, onMounted, computed } from 'vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -19,6 +19,8 @@ import UtentiLayout from '@/layouts/utenti/Layout.vue';
 import { Separator } from '@/components/ui/separator';
 import { Item, ItemActions, ItemContent, ItemDescription, ItemTitle } from '@/components/ui/item';
 import { trans } from 'laravel-vue-i18n';
+import { usePermission } from '@/composables/permissions';
+import { Permission as PermissionEnum } from '@/enums/Permission';
 import type { Anagrafica } from '@/types/anagrafiche';
 import type { Permission } from '@/types/permissions';
 import type { Role } from '@/types/roles';
@@ -66,79 +68,61 @@ const inheritedPermissions = computed(() => {
   return Array.isArray(perms) ? perms : [];
 });
 
-const originalRolePermissionIds = computed(() => {
-  return props.user?.roles?.[0]?.permissions?.map(p => p.id) || [];
-});
+/** I permessi che chi apre la scheda può concedere e togliere: il server manda solo quelli. */
+const idGestibili = computed(() => new Set(props.permissions.map(p => p.id)));
 
-const additionalPermissions = computed(() => {
-  return props.user?.permissions?.filter(permission =>
-    !originalRolePermissionIds.value.includes(permission.id)
-  ) || [];
-});
+/** I permessi aggiuntivi dell'utente, come sono nel database (anche quelli che il ruolo dà già). */
+const permessiDiretti = computed(() => props.user?.permissions ?? []);
+
+/**
+ * I permessi aggiuntivi che chi apre la scheda non ha: il server li conserva al salvataggio, quindi la pagina li mostra in sola
+ * lettura, fuori dalla tendina e senza revoca, invece di lasciarli togliere senza effetto.
+ */
+const permessiSoloInLettura = computed(() => permessiDiretti.value.filter(p => !idGestibili.value.has(p.id)));
+
+const inheritedIds = computed(() => new Set(inheritedPermissions.value.map(p => p.id)));
+
+/** Un permesso aggiuntivo che il ruolo scelto dà già: resta aggiuntivo (si rimanda com'è), e la pagina lo segna. */
+const datoAncheDalRuolo = (id: number) => inheritedIds.value.has(id);
+
+/** L'elenco «Permessi aggiuntivi» sotto il modulo: tutti i permessi diretti, quelli che chi apre gestisce con la revoca. */
+const additionalPermissions = computed(() => permessiDiretti.value);
+
+const { hasRole } = usePermission();
+
+/**
+ * «Accesso pannello amministratore» come permesso aggiuntivo lo concede solo l'amministratore: la tendina non lo propone agli
+ * altri, e il server lo rifiuta comunque (`ValidaConcessioneRuoli::regolaPermessiConcedibili`). Chi lo ha già lo conserva.
+ */
+const concedibile = (permission: Permission) =>
+  permission.name !== PermissionEnum.ACCESS_ADMIN_PANEL || hasRole(['amministratore']);
 
 const selectablePermissions = computed(() => {
-  const inheritedIds = inheritedPermissions.value.map(p => p.id);
   const selectedIds = form.permissions.map(p => p.id);
   return props.permissions.filter(
     permission =>
-      !inheritedIds.includes(permission.id) &&
-      !selectedIds.includes(permission.id)
+      !inheritedIds.value.has(permission.id) &&
+      !selectedIds.includes(permission.id) &&
+      concedibile(permission)
   );
 });
 
-// Nuovo: traccia i permessi che erano aggiuntivi ma sono diventati ereditati
-const previouslyAdditional = ref<Set<number>>(new Set());
+/** Il nome del ruolo com'è scritto, con l'iniziale maiuscola solo a video. */
+const nomeDelRuolo = (ruolo: Role | null | undefined) => {
+  const nome = ruolo?.name ?? '';
+  return nome.charAt(0).toUpperCase() + nome.slice(1);
+};
+
+const permessiGestibiliDellUtente = () => permessiDiretti.value.filter(p => idGestibili.value.has(p.id));
 
 onMounted(() => {
-  form.permissions = [...additionalPermissions.value];
-
-  // Opzionale: inizializza al caricamento se alcuni permessi diretti sono già nel ruolo corrente
-  // (utile dopo refresh o se l'utente aveva già permessi "duplicati")
-  const currentRole = selectedRole.value;
-  if (currentRole) {
-    const rolePermIds = currentRole.permissions.map(p => p.id);
-    const directPermIds = props.user?.permissions?.map(p => p.id) || [];
-    directPermIds.forEach(id => {
-      if (rolePermIds.includes(id)) {
-        previouslyAdditional.value.add(id);
-      }
-    });
-  }
+  form.permissions = permessiGestibiliDellUtente();
 });
 
 watch(
   () => props.user,
   () => {
-    const rolePermIds = props.user?.roles?.[0]?.permissions?.map(p => p.id) || [];
-    form.permissions = props.user?.permissions?.filter(p =>
-      !rolePermIds.includes(p.id)
-    ) || [];
-  }
-);
-
-watch(
-  () => form.roles,
-  (newRoleId, oldRoleId) => {
-    const newRole = props.roles.find(r => r.id === newRoleId);
-
-    if (newRole && newRole.permissions) {
-      const newRolePermissionIds = newRole.permissions.map(p => p.id);
-
-      // Identifica i permessi che stanno per essere rimossi perché ora ereditati
-      const removed = form.permissions.filter(perm =>
-        newRolePermissionIds.includes(perm.id)
-      );
-
-      // Aggiungili al set dei "precedentemente aggiuntivi"
-      removed.forEach(perm => {
-        previouslyAdditional.value.add(perm.id);
-      });
-
-      // Rimuovi effettivamente i permessi aggiuntivi duplicati
-      form.permissions = form.permissions.filter(
-        perm => !newRolePermissionIds.includes(perm.id)
-      );
-    }
+    form.permissions = permessiGestibiliDellUtente();
   }
 );
 
@@ -200,6 +184,7 @@ const submit = () => {
             <v-select
               :options="roles"
               label="name"
+              :get-option-label="nomeDelRuolo"
               :disabled="fuoriPortata"
               v-model="form.roles"
               :reduce="(option: Role) => option.id"
@@ -245,6 +230,10 @@ const submit = () => {
                 <span class="text-sm text-gray-500">{{ description }}</span>
               </div>
             </template>
+            <template #selected-option="{ id, name }">
+              <span>{{ name }}</span>
+              <span v-if="datoAncheDalRuolo(id)" class="ml-1 text-xs text-muted-foreground">({{ trans('users.badge.anche_dal_ruolo') }})</span>
+            </template>
           </v-select>
           <!-- Un rifiuto del server sui permessi aggiuntivi si vede sotto la loro tendina, come per gli altri campi. -->
           <InputError class="mt-2" :message="form.errors.permissions" />
@@ -256,7 +245,7 @@ const submit = () => {
         <div class="pt-5">
           <Button :disabled="form.processing">
             <LoaderCircle v-if="form.processing" class="h-4 w-4 animate-spin" />
-            {{trans('users.actions.edit_user')}}
+            {{ trans('users.actions.save_user') }}
           </Button>
         </div>
       </form>
@@ -285,10 +274,19 @@ const submit = () => {
             <ItemContent>
               <div class="flex items-center gap-2">
                 <ItemTitle>{{ permission.name }}</ItemTitle>
+                <span
+                  v-if="datoAncheDalRuolo(permission.id)"
+                  class="inline-flex items-center rounded-md bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground"
+                >
+                  {{ trans('users.badge.anche_dal_ruolo') }}
+                </span>
               </div>
               <ItemDescription>{{ permission.description }}</ItemDescription>
+              <ItemDescription v-if="permessiSoloInLettura.includes(permission)" data-test="solo-in-lettura">
+                {{ trans('users.label.solo_chi_ha_il_permesso') }}
+              </ItemDescription>
             </ItemContent>
-            <ItemActions v-if="!fuoriPortata">
+            <ItemActions v-if="!fuoriPortata && !permessiSoloInLettura.includes(permission)">
               <Link
                 :href="route('users.permissions.destroy', [user.id, permission.id])"
                 method="delete"
@@ -312,7 +310,7 @@ const submit = () => {
             <p class="text-sm text-muted-foreground">
               {{ trans('users.header.permissions_description_line_1') }}
               <span v-if="selectedRole" class="font-semibold">
-                {{ selectedRole.name }}
+                {{ nomeDelRuolo(selectedRole) }}
               </span>
               {{ trans('users.header.permissions_description_line_2') }}
             </p>
@@ -332,10 +330,10 @@ const submit = () => {
                 <div class="flex items-center gap-2">
                   <ItemTitle>{{ permission.name }}</ItemTitle>
                   <span
-                    v-if="previouslyAdditional.has(permission.id)"
+                    v-if="form.permissions.some(p => p.id === permission.id)"
                     class="inline-flex items-center rounded-md bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
                   >
-                    {{ trans('users.badge.previously_direct') }}
+                    {{ trans('users.badge.anche_aggiuntivo') }}
                   </span>
                 </div>
               </div>

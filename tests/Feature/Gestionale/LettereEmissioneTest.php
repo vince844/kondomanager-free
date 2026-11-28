@@ -40,6 +40,10 @@ beforeEach(function () {
     $ruolo->givePermissionTo($permesso);
     $this->user = User::factory()->create(['email' => 'studio@prova.it']);
     $this->user->assignRole($ruolo);
+    // Caricare un file nel gestionale chiede anche «Crea documenti archivio», che l'amministratore di serie ha.
+    foreach (['Crea documenti archivio'] as $nomeDelPermesso) {
+        $ruolo->givePermissionTo(\Spatie\Permission\Models\Permission::firstOrCreate(['name' => $nomeDelPermesso, 'guard_name' => 'web']));
+    }
 });
 
 it('l\'anteprima: chi riceve che cosa, il canale proposto per persona dalla sua ultima lettera, il credito accanto, il tipo mai ricordato', function () {

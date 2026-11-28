@@ -355,6 +355,15 @@ return [
             'line_1'    => "Il :data alle :ora sono stati generati nuovi codici di recupero per l'autenticazione a due fattori del tuo account su :appName: quelli di prima non valgono più.",
             'consiglio' => "Se la modifica non l'hai fatta tu, cambia subito la password e avvisa l'amministratore.",
         ],
+        'accesso_da_dispositivo_nuovo' => [
+            'subject'   => "Nuovo accesso al tuo account",
+            'line_1'    => "Il :data alle :ora qualcuno è entrato nel tuo account su :appName da un dispositivo che non conoscevamo: :dispositivo.",
+            'consiglio' => "Se l'accesso l'hai fatto tu, non devi fare niente. Altrimenti cambia subito la password e avvisa l'amministratore.",
+            'cookie'    => "Se usi la navigazione privata, o se il browser cancella i cookie, questo avviso arriva a ogni accesso.",
+        ],
+        'indirizzo' => "L'indirizzo di rete era :indirizzo.",
+        'dispositivo' => ":browser su :sistema",
+        'dispositivo_sconosciuto' => "un browser che non riconosciamo",
     ],
 
     // Assegnazione segnalazioni (decisione 294)

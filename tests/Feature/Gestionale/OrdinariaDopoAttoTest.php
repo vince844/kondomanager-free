@@ -185,6 +185,21 @@ it('31.6 — con la spunta tolta la voce resta com\'era, e il registro non la no
         ->and($subentro->registro['voci_spostate'])->toBe([]);
 });
 
+it('31.6 — la voce tenuta sul «Proprietario» si scrive nel registro, e la pagina del piano dice che è la scelta del passaggio, non di spostarla', function () {
+    // Il piano si genera dopo il passaggio: Ugo proprietario fino al 30/04, poi usufruttuario; Elsa nuda proprietaria dal 01/05, e la voce tenuta va a lei.
+    $s = ruScenario('prima_rata', 0, genera: false);
+    $s['piano']->update(['stato' => 'bozza']);
+    $subentro = ruRegistra($this, $s, ruRiserva($s, extra: ['voci_da_tenere' => [odaAssociazione($s)]]));
+    expect($subentro->registro['voci_tenute'] ?? null)->toBe([odaAssociazione($s)]);
+    app(\App\Actions\PianoRate\GeneratePianoRateAction::class)->execute($s['piano']->fresh(), forzaApplicazioneSaldi: true, accettaDestinatari: true, notaDestinatari: 'Prova', esercizio: $s['e']);
+
+    $righe = $this->actingAs($this->user)->get(route('admin.gestionale.esercizi.piani-rate.show', [$s['c'], $s['e'], $s['piano']]))
+        ->assertOk()->viewData('page')['props']['usufrutti_con_l_ordinaria_al_nudo'];
+    // Prima la riga diceva «mettila su «Usufruttuario» nella tabella della voce e ricalcola», contro la scelta appena fatta.
+    expect($righe)->toBe([['immobile_id' => $s['unita']->id, 'frase' => 'Int. 1 è in usufrutto: la voce «Spese generali» resta sul «Proprietario» e va ad Acquirente Elsa, '
+        .'nudo proprietario: è la scelta del passaggio del 01/05/2026, che l\'ha tenuta lì.']]);
+});
+
 it('31.6 — una voce senza coefficienti (il motore la legge «Proprietario 100 %») passa anche lei, e il registro dice com\'era', function () {
     $s = ruScenario('prima_rata', 0);
     ruPianoInBozza($s);
@@ -1144,24 +1159,48 @@ it('rilievo S2 — annullare dall\'indirizzo di un altro condominio: 404, il pas
         ->and(odaCoefficienti($a))->toBe(['proprietario' => 100.0]);
 });
 
-// --- Coda 216, sentinella: l'addebito diretto non ha una voce da spostare ----------------------------------------------
+// --- Coda 216: l'addebito diretto di un'unità in usufrutto, con la legge ----------------------------------------------
 
-it('Coda 216 (sentinella) — l\'addebito diretto di una gestione ordinaria, con la legge: il conguaglio lo lascia all\'usufruttuario, un piano ricalcolato lo dà al nudo proprietario', function () {
-    // Trovata nella Fase 2 della beta.41. La spesa addebitata direttamente all'unità non ha una voce, quindi la scelta
-    // «all'usufruttuario» non la sposta: il motore la dà al primo titolare di diritto reale (`titolariDiDirittoReale()`),
-    // cioè al nudo proprietario dal giorno dell'atto. Lo stesso euro va a due persone, come nella Coda 171 prima della
-    // .41. Quando la Coda 216 sarà decisa, questo test cambia.
+/** Le righe dell'addebito diretto del piano: [persona, importo, ruolo], nell'ordine dei tratti. */
+function odaAddebito(array $s): array
+{
+    return DB::table('righe_riparto')->where('piano_rate_id', $s['piano']->id)->where('tipo', 'ad_personam')
+        ->orderBy('titolarita_dal')->get(['anagrafica_id', 'importo', 'ruolo_risolto'])
+        ->map(fn ($r) => [(int) $r->anagrafica_id, (int) $r->importo, $r->ruolo_risolto])->all();
+}
+
+it('Coda 216 — l\'addebito diretto di una gestione ordinaria, con la legge: il piano ricalcolato lo dà all\'usufruttuario dal giorno dell\'atto, come il conguaglio', function () {
+    // La spesa addebitata direttamente all'unità non ha una voce da spostare: con la scelta «all'usufruttuario» il motore la dà, dal giorno
+    // dell'atto, all'usufruttuario come le voci spostate, e il conguaglio (che la lascia a lui) e il piano dicono la stessa cosa.
     $s = odaPianoDaFatture();
     ruRegistra($this, $s, ruRiserva($s));
     expect(odaDebitoDi($s, $s['a']))->toBe(0);
 
     ruRicalcola($s);
-    $addebito = DB::table('righe_riparto')->where('piano_rate_id', $s['piano']->id)->where('tipo', 'ad_personam')
-        ->orderBy('titolarita_dal')->get(['anagrafica_id', 'importo', 'ruolo_risolto'])
-        ->map(fn ($r) => [(int) $r->anagrafica_id, (int) $r->importo, $r->ruolo_risolto])->all();
 
-    // € 365,00 sul 2026: 120 giorni a Ugo fino al 30/04, € 120,00; 245 a Elsa da nuda proprietaria, € 245,00.
-    expect($addebito)->toBe([[$s['v']->id, 12000, 'proprietario'], [$s['a']->id, 24500, 'nuda_proprietario']]);
+    // € 365,00 sul 2026: 120 giorni a Ugo proprietario fino al 30/04, € 120,00; 245 a Ugo usufruttuario dal 01/05, € 245,00. Elsa, nuda proprietaria,
+    // € 0,00. Prima: € 245,00 a Elsa.
+    expect(odaAddebito($s))->toBe([[$s['v']->id, 12000, 'proprietario'], [$s['v']->id, 24500, 'usufruttuario']]);
+});
+
+it('Coda 216 — con «come dice ogni voce» l\'addebito diretto resta al nudo proprietario dal giorno dell\'atto, come prima', function () {
+    $s = odaPianoDaFatture();
+    ruRegistra($this, $s, ruRiserva($s, extra: ['ordinaria_dopo_atto' => Subentro::ORDINARIA_COME_LA_VOCE]));
+
+    ruRicalcola($s);
+
+    expect(odaAddebito($s))->toBe([[$s['v']->id, 12000, 'proprietario'], [$s['a']->id, 24500, 'nuda_proprietario']]);
+});
+
+it('Coda 216 — su una gestione straordinaria l\'addebito diretto resta al nudo proprietario anche con la legge', function () {
+    // La stessa unità e la stessa spesa, con la gestione che diventa straordinaria prima del ricalcolo: fa fede la natura della gestione.
+    $s = odaPianoDaFatture();
+    ruRegistra($this, $s, ruRiserva($s));
+    $s['g']->update(['tipo' => 'straordinaria']);
+
+    ruRicalcola($s);
+
+    expect(odaAddebito($s))->toBe([[$s['v']->id, 12000, 'proprietario'], [$s['a']->id, 24500, 'nuda_proprietario']]);
 });
 
 // --- Decisione 33 (1.11.0-beta.42, D-U1): un usufrutto della gestione nato con la scelta opposta ------------------------

@@ -44,10 +44,12 @@ class EventoService
             ]
         );
 
-        // Create new standalone event with updated data
-        $newEventData = $this->prepareEventData($validated, [
+        // La ripetizione staccata nasce dalla serie: autore e approvazione sono i suoi, e la visibilità pure, salvo quella che il modulo ha potuto
+        // mandare (con «Pubblica scadenze in agenda»).
+        $newEventData = $this->prepareEventData($validated + ['visibility' => $originalEvent->visibility], [
             'recurrence_id' => null, // Ensure it's a single event
-            'created_by'    => $validated['created_by'] // Include created_by
+            'created_by'    => $originalEvent->created_by,
+            'is_approved'   => (bool) $originalEvent->is_approved,
         ]);
 
         $newEvent = Evento::create($newEventData);
@@ -156,7 +158,7 @@ class EventoService
     {
         $baseData = Arr::only($validated, [
             'title', 'description', 'start_time', 'end_time', 
-            'note', 'category_id', 'visibility', 'created_by'
+            'note', 'category_id', 'visibility'
         ]);
 
         return array_merge($baseData, $additionalData);

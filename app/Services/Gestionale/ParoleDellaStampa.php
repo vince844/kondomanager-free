@@ -31,8 +31,8 @@ final class ParoleDellaStampa
         RiepilogoPerCompetenza::FRASE_DELIBERATO_DIVISO => '* Divisa fra le voci con gli importi di oggi: il piano delle rate ha fissato il capitolo, o nessuna voce, e non quanto '
             .'chiedeva ogni voce.',
         ControlliDelConguaglio::NOTA_NON_LETTO => ControlliDelConguaglio::NOTA_NON_LETTO_STAMPA,
-        ControlliDelConguaglio::RIMEDIO_PASSAGGIO => 'Con il passaggio registrato, chi entra conta dal giorno in cui entra.',
-        ControlliDelConguaglio::RIMEDIO_PASSAGGIO_ANCHE => 'Con il passaggio registrato, chi entra conta dal giorno in cui entra.',
+        ControlliDelConguaglio::RIMEDIO_PASSAGGIO => 'I giorni in mezzo non hanno un titolare: se chi è entrato lo è dalla vendita, la sua data di inizio va corretta.',
+        ControlliDelConguaglio::RIMEDIO_PASSAGGIO_ANCHE => 'Dove un titolare è entrato senza un passaggio, i giorni prima non hanno un titolare: se è entrato dalla vendita, la sua data di inizio va corretta.',
         ControlliDelConguaglio::RIMEDIO_PERSONALI => 'Una spesa per una sola unità non è né fra quelle da chiedere né in un piano: l\'amministratore la cerca fra le fatture '
             .'dell\'unità e i piani che le chiedono.',
         SaldiDelleBanche::RIMEDIO_SCRIVI => 'Il saldo che dice la banca si scrive nella nota sintetica: senza, il confronto non si fa.',

@@ -167,7 +167,7 @@ class CondominioService
         $dataFine = null,
     ): Gestione {
         // Controlliamo che non esista già per evitare duplicati
-        $gestione = $condominio->gestioni()->where('tipo', $tipo)->first();
+        $gestione = $this->gestioneDaAgganciare($condominio, $tipo);
 
         if (! $gestione) {
             $gestione = $condominio->gestioni()->create([
@@ -188,6 +188,15 @@ class CondominioService
         }
 
         return $gestione;
+    }
+
+    /**
+     * La gestione del tipo che un esercizio nuovo riceve: con più gestioni dello stesso tipo, la prima attiva (la più vecchia); se nessuna è
+     * attiva, la prima. Null se il condominio non ne ha: `createDefaultGestione` la crea.
+     */
+    public function gestioneDaAgganciare(Condominio $condominio, string $tipo = 'ordinaria'): ?Gestione
+    {
+        return $condominio->gestioni()->where('tipo', $tipo)->orderByDesc('attiva')->orderBy('id')->first();
     }
 
     /**

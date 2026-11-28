@@ -111,6 +111,20 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
     </tr>
 </table>
 @endif
+{{-- Il credito e il debito per gestione, quando sono su gestioni diverse: il credito di una gestione copre da sé solo le rate della sua. --}}
+@if(count($stats['credito_per_gestione'] ?? []) > 1)
+<table style="width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 9pt;">
+    <tr>
+        <td style="padding: 6px 8px; border: 1px solid #e2e8f0; background: #f8fafc; color: #2d3748;">
+            <b>Per gestione</b>
+            @foreach($stats['credito_per_gestione'] as $g)
+                <br>{{ $g['gestione_nome'] }}: {{ $g['frase'] }}
+            @endforeach
+            <br><span style="color: #4a5568;">Il credito di una gestione copre le rate della stessa gestione.</span>
+        </td>
+    </tr>
+</table>
+@endif
 
 {{-- CHI RISPONDE IN SOLIDO (B2, S7): la nota dell'art. 63 co. 4, calcolata dai passaggi registrati — non una quota --}}
 @foreach(($solidarieta ?? []) as $nota)

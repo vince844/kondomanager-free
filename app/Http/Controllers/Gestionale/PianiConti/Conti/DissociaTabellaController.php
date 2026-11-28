@@ -15,6 +15,7 @@ use App\Models\Tabella;
 use App\Services\Gestionale\BloccoDellaVoce;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
+use App\Support\Errori\MessaggioPerLaPagina;
 use Illuminate\Support\Facades\Log;
 
 class DissociaTabellaController extends Controller
@@ -74,7 +75,8 @@ class DissociaTabellaController extends Controller
             ]);
 
             return redirect()->back()->with('message', [
-                'message' => 'Errore durante la rimozione della tabella: ' . $e->getMessage(),
+                // La frase di una regola resta com'è; un guasto diventa la frase con il riferimento, e il dettaglio va nel registro.
+                'message' => MessaggioPerLaPagina::di($e, 'Rimozione della tabella dalla voce', ['conto_id' => $conto->id]),
                 'type' => 'error'
             ]);
         }

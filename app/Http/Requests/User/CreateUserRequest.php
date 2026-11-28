@@ -8,6 +8,8 @@ namespace App\Http\Requests\User;
 use App\Models\Anagrafica;
 use App\Models\User;
 use App\Traits\ValidaConcessioneRuoli;
+use Illuminate\Auth\Access\Response;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
@@ -17,11 +19,12 @@ class CreateUserRequest extends FormRequest
     use ValidaConcessioneRuoli;
 
     /**
-     * Determine if the user is authorized to make this request.
+     * Il permesso prima dei campi: chi non può creare utenti riceve il rifiuto, non l'errore «email già in uso» che direbbe
+     * se un indirizzo c'è già. La stessa abilità che il controller ripete (`UserPolicy::create`).
      */
-    public function authorize(): bool
+    public function authorize(): Response
     {
-        return true;
+        return Gate::forUser($this->user())->inspect('create', User::class);
     }
 
     /**

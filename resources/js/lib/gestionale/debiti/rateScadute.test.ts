@@ -113,3 +113,11 @@ describe('il ritardo e la data della persona', () => {
         expect(giorno('2027-06-30')).toBe('30/06/2027');
     });
 });
+
+describe('la parte di prima di una rata mista', () => {
+    test('dice la cifra, l\'origine, che si paga per prima e con quale età conta', async () => {
+        const { testoDiPrima } = await import('./rateScadute');
+        expect(testoDiPrima({ importo: 30000, etichetta: 'pregresso dell\'esercizio 2025' }))
+            .toBe('Di questa rata € 300,00 sono pregresso dell\'esercizio 2025: si pagano per primi, e contano con l\'età della loro origine.');
+    });
+});

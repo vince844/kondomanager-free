@@ -123,7 +123,8 @@ final class PerimetroFattura
 
     /**
      * Le righe con un capitolo e un importo non possono stare su una voce di entrata: sull'entrata la fattura crea uno sforo e il piano che lo
-     * recupera accredita ai condòmini invece di chiedere. Restano fuori le righe con l'unità (il capitolo si scarta), quelle a € 0,00 (testo del
+     * recupera accredita ai condòmini invece di chiedere. Restano fuori le righe con l'unità (il capitolo non va sulla voce comune: il servizio lo tiene
+     * come voce dell'addebito solo se è una voce di spesa della gestione, `FatturaPassivaService::voceDellAddebito`), quelle a € 0,00 (testo del
      * documento) e quelle di sopravvenienza (il capitolo lo scarta il servizio). Una riga negativa conta come una positiva.
      *
      * Il tipo si legge solo per gli id interi (anche scritti «+5», come li accetta la regola), non già in errore e dentro il condominio: una voce di un
@@ -173,7 +174,8 @@ final class PerimetroFattura
     /**
      * Coda 687 (decisione 507): le voci delle righe sono della gestione scelta. La scrittura della fattura va sulla gestione del modulo e la riga sulla voce:
      * con una voce di un'altra gestione la spesa stava a giornale su una gestione e a preventivo su un'altra (la prova B4: la modifica la portava
-     * sull'ordinaria e la voce restava della straordinaria). Restano fuori le righe di un'unità (il capitolo si scarta), quelle a € 0,00, quelle già in errore
+     * sull'ordinaria e la voce restava della straordinaria). Restano fuori le righe di un'unità (il capitolo non va sulla voce comune, e come voce dell'addebito
+     * il servizio tiene solo una voce della gestione), quelle a € 0,00, quelle già in errore
      * e le voci di un altro condominio, che prendono il rifiuto del perimetro.
      *
      * @param  mixed  $righe  le righe della richiesta
@@ -232,6 +234,12 @@ final class PerimetroFattura
         foreach ($coperture as $i => $copertura) {
             $campo = "coperture.{$i}.fonte_id";
             $fonte = is_array($copertura) ? self::comeUnId($copertura['fonte_id'] ?? null) : null;
+            // La copertura «sopravvenienza» la chiede il piano straordinario sulle tabelle della sua voce: senza voce non sa a chi chiederla.
+            if ($fonte === null && is_array($copertura) && ($copertura['tipo_copertura'] ?? null) === 'sopravvenienza' && ! $validator->errors()->has($campo)) {
+                $validator->errors()->add($campo, 'Scegli la voce di spesa di questa copertura: il piano rate la chiede ai condòmini sulle tabelle della voce, e senza '
+                    . 'voce non saprebbe a chi chiederla.');
+                continue;
+            }
             if ($fonte === null || $validator->errors()->has($campo)) {
                 continue;
             }

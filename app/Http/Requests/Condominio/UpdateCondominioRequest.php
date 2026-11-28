@@ -5,17 +5,20 @@
 
 namespace App\Http\Requests\Condominio;
 
+use Illuminate\Auth\Access\Response;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class UpdateCondominioRequest extends FormRequest
 {
     /**
-     * Determine if the user is authorized to make this request.
+     * Il permesso prima dei campi: chi non può modificare condomini riceve il rifiuto, non l'errore sul nome o sul codice
+     * fiscale di un altro condominio. La stessa abilità che il controller ripete (`CondominioPolicy::update`).
      */
-    public function authorize(): bool
+    public function authorize(): Response
     {
-        return true;
+        return Gate::forUser($this->user())->inspect('update', $this->route('condominio'));
     }
 
     /**

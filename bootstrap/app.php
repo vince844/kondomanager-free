@@ -11,6 +11,7 @@ use App\Http\Middleware\CheckRestoreMode;
 use App\Http\Middleware\CheckSuspendedUser;
 use App\Http\Middleware\ConfermaPasswordRecente;
 use App\Http\Middleware\CheckUserRegistration;
+use App\Http\Middleware\DueFattoriPerIlPannello;
 use App\Http\Middleware\EnsureAutoUpdateEnabled;
 use App\Http\Middleware\EnsureCondominioHasEsercizio;
 use App\Http\Middleware\EnsureTwoFactorChallengeSession;
@@ -91,6 +92,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             CheckSuspendedUser::class,
             CheckForPendingUpdates::class,
+            // La verifica in due passaggi obbligatoria per chi entra nel pannello, quando l'impostazione
+            // generale è accesa: nel gruppo, come la sospensione, perché nessun gruppo di rotte resti fuori.
+            DueFattoriPerIlPannello::class,
             SetLocaleMiddleware::class,
             SetAppNameMiddleware::class,
             HandleInertiaRequests::class,

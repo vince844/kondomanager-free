@@ -92,7 +92,9 @@ final class DettaglioRiparto
             $motore->calcolaDaFattureStraordinarie($pianoRate, $competenza, soloLettura: true, conNoteCollegate: ! $haQuote);
         } elseif ($gestione) {
             // Coda 483: l'anteprima delle stampe dice ciò che la generazione farà, anche quando la guardia del già versato la fermerebbe.
-            $motore->calcolaPerGestione($gestione, $pianoRate, soloLettura: true, periodo: $competenza, guardiaSenzaFermarsi: $perLaStampa && ! $haQuote);
+            // Il piano di soli saldi si rilegge di soli saldi, come al suo ricalcolo (`PianoRate::eDiSoliSaldi`): le voci libere non entrano nella stampa.
+            $motore->calcolaPerGestione($gestione, $pianoRate, soloLettura: true, periodo: $competenza, guardiaSenzaFermarsi: $perLaStampa && ! $haQuote,
+                diSoliSaldi: $pianoRate->tipo !== 'straordinario' && $pianoRate->eDiSoliSaldi());
         }
         $nonSiGenera = $perLaStampa && ! $haQuote && $pianoRate->tipo !== 'straordinario' ? $motore->getNonSiGenera() : null;
         $risoluzione = $motore->getRisoluzioneTemporale();

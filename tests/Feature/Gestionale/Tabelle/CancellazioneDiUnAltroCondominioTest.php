@@ -30,8 +30,10 @@ uses(RefreshDatabase::class);
 function utenteCheCancella(): \App\Models\User
 {
     Permission::firstOrCreate(['name' => 'Accesso pannello amministratore', 'guard_name' => 'web']);
+    // Dalla Coda 714 le tabelle e i millesimi si cambiano con «Modifica condomini».
+    Permission::firstOrCreate(['name' => 'Modifica condomini', 'guard_name' => 'web']);
     $utente = \App\Models\User::factory()->create();
-    $utente->givePermissionTo('Accesso pannello amministratore');
+    $utente->givePermissionTo('Accesso pannello amministratore', 'Modifica condomini');
 
     return $utente;
 }

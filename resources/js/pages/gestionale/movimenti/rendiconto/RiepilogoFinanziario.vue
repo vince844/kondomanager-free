@@ -100,7 +100,7 @@ interface Riepilogo {
     }>;
     fuori_capitoli: { contestate: Fuori; commissioni_senza_voce: Fuori; non_classificati: Fuori };
     quote: { totale: RigaQuote & { netto: number; versamenti_registro: number } };
-    risultato: { quote_emesse: number; costi: number; risultato: number };
+    risultato: { quote_emesse: number; rettifica_esercizi_precedenti?: number; costi: number; risultato: number };
     raccordo_quote: { quote_piani: number; contributi_addebitati?: number; quote_giornale: number; piani_emesse_altrove: number; altri_emesse_qui: number; altre_differenze: number };
     riconciliazione: { costi: number; capitoli_netti: number; commissioni_senza_voce: number; contestate: number; non_classificati: number; differenza: number };
     totali: { da_pagare: number; pagato_in_piu: number };
@@ -447,7 +447,7 @@ const pageGuides = [
 
                         <section class="rounded-lg border border-slate-200 dark:border-slate-800 p-4 text-sm space-y-1" data-test="risultato">
                             <div class="font-semibold text-slate-800 dark:text-slate-200">
-                                Risultato: quote registrate in questo esercizio {{ euro(r.risultato.quote_emesse) }} − costi {{ euro(r.risultato.costi) }} =
+                                Risultato: quote registrate in questo esercizio {{ euro(r.risultato.quote_emesse) }}<template v-if="r.risultato.rettifica_esercizi_precedenti">{{ ` ${r.risultato.rettifica_esercizi_precedenti < 0 ? '−' : '+'} rettifica di esercizi precedenti ${euro(Math.abs(r.risultato.rettifica_esercizi_precedenti))}` }}</template> − costi {{ euro(r.risultato.costi) }} =
                                 <span :class="r.risultato.risultato < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'">{{ euro(r.risultato.risultato) }}</span>
                                 ({{ comeRisultato(r.risultato.risultato) }})
                             </div>

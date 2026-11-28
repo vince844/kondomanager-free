@@ -23,7 +23,7 @@ async function scegliNelMenu(testid: string, valore: string) {
 
 vi.mock('axios', () => ({ default: { post: vi.fn(async () => ({ data: {} })) } }));
 vi.mock('@inertiajs/vue3', () => ({ router: { reload: vi.fn(), post: vi.fn(), delete: vi.fn() }, usePage: () => ({ props: { errors: {} } }) }));
-vi.mock('@/composables/permissions', () => ({ usePermission: () => ({ generateRoute: (nome: string) => nome }) }));
+vi.mock('@/composables/permissions', () => ({ usePermission: () => ({ generateRoute: (nome: string) => nome, hasPermission: () => true }) }));
 (globalThis as unknown as { route: unknown }).route = (nome: string, p: Record<string, unknown> = {}) => `/${nome}/${p.condominio ?? ''}${p.scrittura ? `/${p.scrittura}` : ''}`;
 const { router } = await import('@inertiajs/vue3');
 

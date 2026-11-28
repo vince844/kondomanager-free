@@ -153,12 +153,28 @@ describe('Coda 313 — la card elenca la spesa ad personam addebitata due volte,
         expect(w.find('[data-testid="riallineamento-ad-personam"]').exists()).toBe(true);
         expect(t).toContain('Le rate dei condòmini sono giuste: nessuno deve pagare di più.');
         expect(t).toContain('la fattura l\'ha già scritta su «Crediti verso condomini» con l\'unità');
-        expect(t).toContain('Il riallineamento non la corregge: qui è solo elencata.');
+        expect(t).toContain('Il riallineamento la corregge con una scrittura in aggiunta');
         expect(t).toContain('Rata 1 (Balcone interno 1), Int. 1, emessa il 01/04/2026: € 610,00 di spesa ad personam addebitati due volte.');
         expect(t).toContain('Rata 2 (Balcone interno 1), Int. 1, emessa il 01/05/2026: € 610,00 di spesa ad personam addebitati due volte.');
         // Il pulsante si conta sulle scritture da fare: qui nessuna. E il paragrafo delle voci che restano non c'è, perché non ce ne sono.
         expect(t).not.toContain('Scrivi le correzioni');
         expect(t).not.toContain('Niente da scrivere: il riallineamento lascia queste voci come sono.');
+    });
+
+    test('Coda 313 — una voce da scrivere: la cifra, l\'unità e dove si scrive prima della conferma, e il pulsante', () => {
+        const w = montaCon({ ad_personam: [voce({ azione: 'scrivi', esercizio_aperto: false, nell_esercizio: 'Esercizio 2027', data_rettifica: '15/02/2027' })] });
+        const t = testo(w);
+
+        expect(t).toContain('€ 610,00 di spesa ad personam addebitati due volte (esercizio «Esercizio 2026», chiuso).');
+        expect(t).toContain('Si chiude nell\'esercizio «Esercizio 2027» il 15/02/2027: DARE «Gestione rate», AVERE «Crediti verso condomini» di Int. 1.');
+        expect(t).toContain('Scrivi le correzioni');
+    });
+
+    test('Coda 313 — una voce che resta dice il perché', () => {
+        const t = testo(montaCon({ ad_personam: [voce({ azione: 'resta', esercizio_aperto: false, motivo: 'nessun esercizio aperto contiene la data di oggi' })] }));
+
+        expect(t).toContain('Resta com\'è: nessun esercizio aperto contiene la data di oggi.');
+        expect(t).not.toContain('Scrivi le correzioni');
     });
 
     test('un\'emissione in un esercizio chiuso lo dice nella voce', () => {

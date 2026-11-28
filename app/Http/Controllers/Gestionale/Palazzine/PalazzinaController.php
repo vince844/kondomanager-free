@@ -17,6 +17,7 @@ use App\Traits\OrdinaElenco;
 use App\Traits\PaginaElenco;
 use App\Traits\HasCondomini;
 use App\Traits\HasEsercizio;
+use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Http\RedirectResponse;
@@ -88,6 +89,9 @@ class PalazzinaController extends Controller
      */
     public function create(Condominio $condominio): Response
     {
+        // Creare, modificare ed eliminare la palazzina chiede «Modifica condomini», come l'unità e le impostazioni del condominio.
+        Gate::authorize('update', $condominio);
+
         $condomini = $this->getCondomini();
 
         // Get the current active and open esercizio this is important to navigate gestioni menu
@@ -109,6 +113,9 @@ class PalazzinaController extends Controller
      */
     public function store(CreatePalazzinaRequest $request, Condominio $condominio): RedirectResponse
     {
+        // Creare, modificare ed eliminare la palazzina chiede «Modifica condomini», come l'unità e le impostazioni del condominio.
+        Gate::authorize('update', $condominio);
+
         try {
             $data = $request->validated();
 
@@ -141,6 +148,9 @@ class PalazzinaController extends Controller
      */
     public function edit(Condominio $condominio, Palazzina $palazzina): Response
     {
+        // Creare, modificare ed eliminare la palazzina chiede «Modifica condomini», come l'unità e le impostazioni del condominio.
+        Gate::authorize('update', $condominio);
+
          // Get the current active and open esercizio this is important to navigate gestioni menu
         $esercizio = $this->getEsercizioCorrente($condominio);
 
@@ -161,6 +171,9 @@ class PalazzinaController extends Controller
      */
     public function update(UpdatePalazzinaRequest $request, Condominio $condominio, Palazzina $palazzina): RedirectResponse
     {
+        // Creare, modificare ed eliminare la palazzina chiede «Modifica condomini», come l'unità e le impostazioni del condominio.
+        Gate::authorize('update', $condominio);
+
         try {
             $data = $request->validated();
 
@@ -193,6 +206,9 @@ class PalazzinaController extends Controller
      */
     public function destroy(Condominio $condominio, Palazzina $palazzina): RedirectResponse
     {
+        // Creare, modificare ed eliminare la palazzina chiede «Modifica condomini», come l'unità e le impostazioni del condominio.
+        Gate::authorize('update', $condominio);
+
         // R15 del progetto della tappa 2: usata da un'assemblea o da un punto dell'ordine del giorno, non si elimina (la chiave non cancella in cascata).
         $usata = \App\Services\Assemblee\GuardieDiCancellazione::perLaPalazzina($palazzina);
         if ($usata !== null) {

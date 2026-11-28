@@ -133,7 +133,7 @@ class SystemUpgradeController extends Controller
                 'version' => $release['version'] ?? 'unknown',
             ]);
 
-            return back()->withErrors(['msg' => $e->getMessage()]);
+            return back()->withErrors(['msg' => \App\Support\Errori\MessaggioPerLaPagina::di($e, 'SystemUpgradeController@launch')]);
         }
     }
 
@@ -318,7 +318,7 @@ class SystemUpgradeController extends Controller
             ]);
 
             return Redirect::back()
-                ->withErrors(['msg' => 'Errore durante la finalizzazione: '.$e->getMessage()]);
+                ->withErrors(['msg' => 'Errore durante la finalizzazione: '.\App\Support\Errori\MessaggioPerLaPagina::di($e, 'SystemUpgradeController@run')]);
         }
     }
 

@@ -90,7 +90,7 @@ it('guardia — in app/ nessuna scrittura scrive data_registrazione con now() o 
     expect($trovati)->toBe([]);
 });
 
-it('lo storno di un giroconto alle 00:30 di Roma del 16/03/2026 ha registrazione e competenza dello stesso giorno di Roma', function () {
+it('lo storno di un giroconto alle 00:30 di Roma del 16/03/2026 ha la registrazione del giorno di Roma e la competenza del giroconto', function () {
     $this->travelTo(Carbon::parse('2026-03-15 10:00', 'Europe/Rome')->utc());
     [$condominio, $esercizio, $gestione] = setupContabile();
     $this->actingAs($this->user);
@@ -112,8 +112,9 @@ it('lo storno di un giroconto alle 00:30 di Roma del 16/03/2026 ha registrazione
     $storno = app(\App\Actions\Gestionale\Movimenti\StornaGirocontoAction::class)->execute($giroconto, $condominio, 'Errore di importo, va rifatto');
     $storno->refresh();
 
+    // La competenza dello storno nello stesso esercizio è la data del giroconto che annulla (la regola dello storno di un incasso).
     expect($storno->data_registrazione->toDateString())->toBe('2026-03-16')
-        ->and($storno->data_competenza->toDateString())->toBe('2026-03-16');
+        ->and($storno->data_competenza->toDateString())->toBe('2026-03-15');
 });
 
 it('Coda 494, il resto: gli interessi di Ettore passati agli eredi con la successione registrata alle 00:30 di Roma del 01/01/2027 portano il 01/01/2027', function () {

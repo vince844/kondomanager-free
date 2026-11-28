@@ -19,6 +19,8 @@ use Illuminate\Validation\Validator;
  */
 class UpdateSaldoRequest extends FormRequest
 {
+    public const FRASE_GESTIONE_DELLA_RIGA = 'Un saldo resta sulla gestione su cui è stato registrato: per spostarlo, eliminalo e registralo di nuovo.';
+
     public function authorize(): bool
     {
         return true;
@@ -102,6 +104,12 @@ class UpdateSaldoRequest extends FormRequest
                 // l'importo e il legame resta (le regole non hanno `passaggio_id`).
                 if ($saldo->passaggio_id !== null && (int) $this->input('gestione_id') !== (int) $saldo->gestione_id) {
                     $validator->errors()->add('gestione_id', 'Un saldo legato a un passaggio resta sulla sua gestione: per spostarlo, eliminalo e registralo di nuovo.');
+                    return;
+                }
+                // Anche la riga scritta a mano resta sulla sua gestione: la pagina rimanda sempre quella, e su un'altra gestione il posto
+                // (persona, unità, gestione, esercizio) non sarebbe stato controllato come alla registrazione.
+                if ((int) $this->input('gestione_id') !== (int) $saldo->gestione_id) {
+                    $validator->errors()->add('gestione_id', self::FRASE_GESTIONE_DELLA_RIGA);
                     return;
                 }
 

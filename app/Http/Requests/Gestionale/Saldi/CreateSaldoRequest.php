@@ -96,6 +96,14 @@ class CreateSaldoRequest extends FormRequest
                 }
 
                 // Il posto (un saldo per persona, gestione, unità ed esercizio): la stessa funzione che la scrittura ripete dentro la transazione.
+                // La persona del saldo è del condominio, o ha (o ha avuto, anche chiusa) una riga su questa unità: il venditore uscito. La riga
+                // legata a un passaggio ha il suo controllo, sopra (la persona con una riga sull'unità).
+                if ($anagraficaId !== null && ! self::personaDelCondominioODellUnita((int) $anagraficaId, (int) $condominio->id, (int) $immobileId)) {
+                    $validator->errors()->add('anagrafica_id', self::FRASE_PERSONA_ALTRUI);
+
+                    return;
+                }
+
                 $frase = self::fraseDelPostoOccupato((int) $esercizio->id, (int) $gestioneId, (int) $immobileId, $anagraficaId === null ? null : (int) $anagraficaId);
                 if ($frase !== null) {
                     $validator->errors()->add('anagrafica_id', $frase);
@@ -166,6 +174,15 @@ class CreateSaldoRequest extends FormRequest
     }
 
     /** Il passaggio scelto non c'è fra quelli a cui legare: di un altro condominio, annullato, o il passaggio di una pertinenza. */
+    public const FRASE_PERSONA_ALTRUI = 'La persona scelta non è di questo condominio e non ha mai avuto una riga su questa unità: scegli una persona del condominio.';
+
+    /** La persona è fra quelle del condominio, o ha una riga (anche chiusa) sull'unità. */
+    public static function personaDelCondominioODellUnita(int $anagraficaId, int $condominioId, int $immobileId): bool
+    {
+        return DB::table('anagrafica_condominio')->where('anagrafica_id', $anagraficaId)->where('condominio_id', $condominioId)->exists()
+            || DB::table('anagrafica_immobile')->where('anagrafica_id', $anagraficaId)->where('immobile_id', $immobileId)->exists();
+    }
+
     public const FRASE_PASSAGGIO_ALTRUI = 'Il passaggio scelto non è di questo condominio, o è stato annullato.';
 
     public function messages(): array

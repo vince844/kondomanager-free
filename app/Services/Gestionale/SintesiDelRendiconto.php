@@ -149,6 +149,8 @@ final class SintesiDelRendiconto
                 'quote_scadute_non_pagate' => (int) ($q['scadute'] ?? 0),
                 'costi' => $costi,
                 'quote_giornale' => $r['risultato']['quote_emesse'],
+                // La riga «Rettifica di esercizi precedenti» del prospetto, fuori dalle quote registrate e dentro il risultato.
+                'rettifica_esercizi_precedenti' => (int) ($r['risultato']['rettifica_esercizi_precedenti'] ?? 0),
                 'risultato' => $r['risultato']['risultato'],
                 'raccordo_quote' => $r['raccordo_quote'],
                 'in_fondi' => $p['sintesi']['in_fondi'],

@@ -31,12 +31,14 @@ use Illuminate\Support\Facades\DB;
  *
  * IL § 9. Una riga per persona e unità con una posizione diversa da zero: il residuo delle rate emesse per l'esercizio della rata (quello del suo piano,
  * {@see CompetenzaDelPiano::esercizioDelPiano()}, con il dedotto) e per la natura della gestione (`gestioni.tipo`): le quote dell'esercizio, ordinarie e
- * straordinarie; quelle degli esercizi precedenti, con il pregresso; quelle di un esercizio dopo; le righe su rate non ancora emesse; i crediti sulle
+ * straordinarie; quelle degli esercizi precedenti, con il pregresso, anche la parte di un debito di prima dentro una rata dell'esercizio (il pregresso nella
+ * prima rata o in tutte: un versamento parziale paga prima il debito più vecchio dentro la rata a cui è imputato, `pregresso_residuo` della lettura); quelle di un esercizio dopo; le righe su rate non ancora emesse; i crediti sulle
  * rate, con il segno meno. Il totale **non ha gli anticipi** («Anticipi ricevuti dai condòmini», un passivo): stanno in una colonna loro, e una riga li
  * lega al conto. Un'altra riga lega le posizioni ai crediti verso i condòmini della situazione patrimoniale: crediti = posizioni + spese anticipate per
  * singole unità (le righe del conto senza una persona).
  *
- * IL § 10. Una riga per rata emessa e non pagata alla data: l'importo, la scadenza, i giorni di ritardo e la fascia ({@see Scadenza}); le due annate
+ * IL § 10. Una riga per rata emessa e non pagata alla data, e due per una rata con ancora da pagare una parte di un debito di prima (la parte di prima, con
+ * la sua origine, e il resto della rata): l'importo, la scadenza, i giorni di ritardo e la fascia ({@see Scadenza}); le due annate
  * della rata, l'esercizio della scadenza e quello di competenza del piano, con le date dei sei mesi ({@see SeiMesi::perRiga()}): la legge non sceglie e
  * il programma nemmeno; il pregresso con le sue parole ({@see OriginePregresso}) dove non ha un numero di giorni. Per un esercizio finito, quanto è
  * stato versato dopo la data, fino a oggi: una somma nel database sulle sole rate dell'elenco, non una seconda lettura. L'ultima lettera partita o
@@ -64,6 +66,9 @@ final class PosizioniDeiCondomini
 
     /** Una rata con una parte di pregresso spalmato: le stesse parole di «Rate scadute» (`NOTA_PREGRESSO_NELLA_RATA` in `rateScadute.ts`). */
     public const NOTA_PREGRESSO_NELLA_RATA = 'Questa rata contiene anche una parte di pregresso: la sua età è quella della rata.';
+
+    /** La riga della parte di prima di una rata mista, nel § 10: le stesse parole di «Rate scadute» (`NOTA_DI_PRIMA_NELLA_RATA` in `rateScadute.ts`). */
+    public const NOTA_DI_PRIMA_NELLA_RATA = 'la parte di debito di prima dentro la rata: si paga per prima, e la sua età è quella della sua origine';
 
     /** Le stampe e le pagine con i dati di tutti i condòmini lo dicono: le posizioni, i crediti per anzianità, il registro di contabilità, il fascicolo. */
     public const RISERVATO = 'Contiene i dati personali dei condòmini: è per i condòmini e per l\'assemblea. Non va esposto in bacheca né girato ad altri, nemmeno in una chat.';
@@ -102,7 +107,15 @@ final class PosizioniDeiCondomini
                     if ($r['residuo'] === 0) {
                         continue;
                     }
-                    $rateNonPagate++;
+                    // La parte di un debito di prima ancora da pagare dentro la rata sta negli esercizi precedenti; il resto segue la rata.
+                    $diPrima = (int) ($r['pregresso_residuo'] ?? 0);
+                    $righe[$k]['precedenti'] += $diPrima;
+                    $r['residuo'] -= $diPrima;
+                    // Le righe dei crediti per anzianità alla stessa data: una per la parte di prima, una per il resto della rata.
+                    $rateNonPagate += ($diPrima > 0 ? 1 : 0) + ($r['residuo'] !== 0 ? 1 : 0);
+                    if ($r['residuo'] === 0) {
+                        continue;
+                    }
                     $piano = (int) $r['piano_rate_id'];
                     $esercizioDelPiano[$piano] ??= $this->esercizioDelPiano($piano);
                     $e = $esercizioDelPiano[$piano];
@@ -114,8 +127,8 @@ final class PosizioniDeiCondomini
                         default => 'ordinarie',
                     };
                     $righe[$k][$colonna] += $r['residuo'];
-                    // Il pregresso spalmato nelle rate (nella prima o in tutte) sta dentro una quota dell'esercizio: la riga lo segna, l'importo non si divide.
-                    $righe[$k]['pregresso_nella_rata'] = $righe[$k]['pregresso_nella_rata'] || $r['pregresso_nella_rata'];
+                    // Un credito di prima spalmato nelle rate ha ridotto una quota dell'esercizio: la riga lo segna, l'importo non si divide.
+                    $righe[$k]['pregresso_nella_rata'] = $righe[$k]['pregresso_nella_rata'] || self::conCreditoDiPrima($r);
                 }
                 foreach ($l['non_emesse'] as $r) {
                     $righe[$riga($r['immobile_id'])]['non_emesse'] += $r['saldo'];
@@ -162,7 +175,7 @@ final class PosizioniDeiCondomini
                 'data' => self::fraseData($alla, $finito),
                 'segno' => 'Gli importi dei condòmini: positivo vuol dire che devono, negativo che hanno un credito.',
                 'ordine' => 'In ordine di persona; per ogni persona le sue unità. Sono elencate le righe con almeno un importo diverso da zero.',
-                'esercizio_della_rata' => 'L\'esercizio di una rata è quello del suo piano: le quote dell\'esercizio sono le rate dei piani di questo esercizio; il pregresso in una rata sua e le rate dei piani di un esercizio prima stanno negli esercizi precedenti. Con il pregresso spalmato nelle rate (nella prima o in tutte), il debito o il credito di prima sta nelle quote dell\'esercizio (le aumenta o le riduce), e la riga dice che contiene anche una parte di pregresso.',
+                'esercizio_della_rata' => 'L\'esercizio di una rata è quello del suo piano: le quote dell\'esercizio sono le rate dei piani di questo esercizio; il pregresso in una rata sua e le rate dei piani di un esercizio prima stanno negli esercizi precedenti. Con il pregresso spalmato nelle rate (nella prima o in tutte), un debito di prima non ancora pagato sta negli esercizi precedenti: un versamento parziale paga prima il debito più vecchio dentro la rata a cui è imputato, e non le altre rate. Un credito di prima ha ridotto le quote dell\'esercizio, e la riga dice che contiene anche una parte di pregresso.',
                 'anticipi' => 'Il totale è senza gli anticipi, che sono un debito del condominio verso la persona.',
                 'riservato' => self::RISERVATO,
             ],
@@ -193,6 +206,15 @@ final class PosizioniDeiCondomini
                     if ($r['residuo'] === 0) {
                         continue;
                     }
+                    // La parte di un debito di prima ancora da pagare dentro la rata: una riga sua, con l'origine e l'età del pregresso; il resto è la rata.
+                    $diPrima = (int) ($r['pregresso_residuo'] ?? 0);
+                    $parti = $diPrima > 0 ? [array_merge($r, ['residuo' => $diPrima, 'pregresso' => $r['pregresso_della_rata'], 'pregresso_nella_rata' => false,
+                        'giorni_ritardo' => OriginePregresso::haGiorni((string) $r['pregresso_della_rata']['origine']) || ! $r['scaduta'] ? $r['giorni_ritardo'] : null,
+                        'di_prima_nella_rata' => true])] : [];
+                    if ($r['residuo'] - $diPrima > 0) {
+                        $parti[] = array_merge($r, ['residuo' => $r['residuo'] - $diPrima, 'pregresso_nella_rata' => self::conCreditoDiPrima($r), 'di_prima_nella_rata' => false]);
+                    }
+                    foreach ($parti as $r) {
                     $sei = $calcolo->perRiga($r, (int) $persona);
                     $piani[(int) $r['piano_rate_id']] ??= (string) DB::table('piani_rate')->where('id', $r['piano_rate_id'])->value('nome');
                     $delGruppo[] = [
@@ -203,16 +225,27 @@ final class PosizioniDeiCondomini
                         'fascia' => ! $r['scaduta'] ? null : ($r['giorni_ritardo'] === null ? 'oltre_90' : Scadenza::fascia($r['giorni_ritardo'])),
                         'origine' => $r['pregresso'] === null ? null : OriginePregresso::etichetta($r['pregresso']),
                         'pregresso_nella_rata' => $r['pregresso_nella_rata'],
+                        'di_prima_nella_rata' => (bool) ($r['di_prima_nella_rata'] ?? false),
                         'annata_scadenza' => self::annata($sei['dalla_scadenza']),
                         'annata_competenza' => self::annata($sei['dalla_competenza']),
                         'versato_dopo' => null, 'resta_oggi' => null, 'lettera' => null,
                     ];
+                    }
                 }
             }
             if ($finito && $delGruppo !== []) {
                 $dopo = $this->versatoDopo((int) $condominio->id, $alla, $oggi, $delGruppo);
                 foreach ($delGruppo as $i => $r) {
-                    $v = $dopo[$r['anagrafica_id'].'|'.($r['immobile_id'] ?? '').'|'.$r['rata_id']] ?? 0;
+                    $chiave = $r['anagrafica_id'].'|'.($r['immobile_id'] ?? '').'|'.$r['rata_id'];
+                    $v = $dopo[$chiave] ?? 0;
+                    // Una rata in due righe (la parte di prima, poi il resto): il versato dopo paga prima la parte di prima, e il resto passa alla riga dopo.
+                    $gemella = ($delGruppo[$i + 1]['rata_id'] ?? null) === $r['rata_id'] && ($delGruppo[$i + 1]['immobile_id'] ?? null) === $r['immobile_id']
+                        && ($delGruppo[$i + 1]['anagrafica_id'] ?? null) === $r['anagrafica_id'];
+                    if ($gemella) {
+                        $prima = $v > 0 ? min($v, $r['importo']) : 0;
+                        $dopo[$chiave] = $v - $prima;
+                        $v = $prima;
+                    }
                     $delGruppo[$i]['versato_dopo'] = $v;
                     $delGruppo[$i]['resta_oggi'] = max(0, $r['importo'] - $v);
                 }
@@ -305,6 +338,12 @@ final class PosizioniDeiCondomini
         }
 
         return $esito;
+    }
+
+    /** La rata porta dentro un credito di prima (il pregresso spalmato a credito): l'importo non si divide, la riga lo segna. */
+    private static function conCreditoDiPrima(array $r): bool
+    {
+        return $r['pregresso_nella_rata'] && (int) ($r['pregresso_in_rata'] ?? 0) < 0;
     }
 
     /** L'esercizio del piano (il salvato o il dedotto), con la data d'inizio; null se non c'è. */

@@ -308,9 +308,9 @@ it('§ 10 in ordine di scaduto o di persona: chi deve di più prima, o in ordine
         ->and($perPersona)->toBe(['Bice 10', 'Bice 11', 'Bice 12', 'Ugo 9', 'Ugo 10', 'Ugo 11', 'Ugo 12']);
 });
 
-it('§ 9 e § 10 con il pregresso spalmato nella prima rata (il metodo di serie): le cifre restano nelle quote dell\'esercizio, e la riga e la frase lo dicono', function () {
-    // Rate da € 120,00 × 2, il debito del 2025 di € 300,00 dentro la prima rata (€ 420,00): l'importo non si divide fra le colonne (quale parte paga per
-    // prima un versamento è una regola che il programma non ha), e la riga porta il segno.
+it('§ 9 e § 10 con il pregresso spalmato nella prima rata (il metodo di serie): il debito di prima sta negli esercizi precedenti, il resto nelle quote dell\'esercizio', function () {
+    // Rate da € 120,00 × 2, il debito del 2025 di € 300,00 dentro la prima rata (€ 420,00): il § 9 dice € 240,00 di quote dell'esercizio e € 300,00 degli
+    // esercizi precedenti; il § 10 divide la prima rata in due righe, la parte di prima con la sua origine e il resto della rata.
     $this->travelTo('2026-01-02 10:00:00');
     $s = lcdScenario(['A' => ['ugo', 1000]], 2, 'prima_rata', [['ugo', 'A', 30000]], 24000);
     $e2025 = Esercizio::factory()->create(['condominio_id' => $s['c']->id, 'nome' => 'Esercizio 2025', 'data_inizio' => '2025-01-01', 'data_fine' => '2025-12-31', 'stato' => 'chiuso']);
@@ -321,17 +321,17 @@ it('§ 9 e § 10 con il pregresso spalmato nella prima rata (il metodo di serie)
     $c = rcdCrediti($s);
     $r = $p['righe'][0];
 
-    expect([$r['ordinarie'], $r['precedenti'], $r['totale'], $r['pregresso_nella_rata']])->toBe([54000, 0, 54000, true])
-        // Il pregresso spalmato può essere un debito o un credito di prima: la frase dice tutti e due.
-        ->and($p['avvertenze']['esercizio_della_rata'])->toContain('Con il pregresso spalmato nelle rate')
-        ->toContain('il debito o il credito di prima sta nelle quote dell\'esercizio (le aumenta o le riduce)')
-        ->and(collect($c['righe'])->map(fn ($x) => [$x['numero_rata'], $x['importo'], $x['pregresso_nella_rata']])->all())->toBe([[1, 42000, true], [2, 12000, false]]);
+    expect([$r['ordinarie'], $r['precedenti'], $r['totale'], $r['pregresso_nella_rata']])->toBe([24000, 30000, 54000, false])
+        ->and($p['rate_non_pagate'])->toBe(3)
+        ->and($p['avvertenze']['esercizio_della_rata'])->toContain('un debito di prima non ancora pagato sta negli esercizi precedenti: un versamento parziale paga prima il debito più vecchio dentro la rata a cui è imputato, e non le altre rate.')
+        ->and(collect($c['righe'])->map(fn ($x) => [$x['numero_rata'], $x['importo'], $x['origine'], $x['giorni'], $x['fascia'], $x['annata_competenza'], $x['pregresso_nella_rata']])->all())
+        ->toBe([[1, 30000, 'pregresso dell\'esercizio 2025', null, 'oltre_90', '2025', false], [1, 12000, null, 360, 'oltre_90', '2026', false], [2, 12000, null, 329, 'oltre_90', '2026', false]])
+        ->and($c['totali']['importo'])->toBe(54000);
     $htmlNove = view('pdf.gestionale.rendiconto_posizioni', ['condominio' => $s['c'], 'esercizio' => $s['e'], 'posizioni' => $p])->render();
     $htmlDieci = view('pdf.gestionale.rendiconto_crediti', ['condominio' => $s['c'], 'esercizio' => $s['e'], 'crediti' => $c])->render();
-    // Le stesse parole di «Rate scadute»: la riga del § 10 è una rata; quella del § 9 raccoglie le rate della persona e dell'unità.
-    expect($htmlNove)->toContain('contiene anche una parte di pregresso')->toContain('Con il pregresso spalmato nelle rate')->not->toContain('comprende pregresso')
-        ->and(substr_count($htmlDieci, e(\App\Services\Gestionale\PosizioniDeiCondomini::NOTA_PREGRESSO_NELLA_RATA)))->toBe(1)
-        ->and($htmlDieci)->not->toContain('comprende pregresso');
+    expect($htmlNove)->not->toContain('· contiene anche una parte di pregresso')->toContain('un versamento parziale paga prima il debito più vecchio dentro la rata a cui è imputato, e non le altre rate.')
+        ->and($htmlDieci)->toContain('pregresso dell&#039;esercizio 2025')
+        ->and(substr_count($htmlDieci, e(\App\Services\Gestionale\PosizioniDeiCondomini::NOTA_PREGRESSO_NELLA_RATA)))->toBe(0);
 
     // Senza il pregresso nella rata (la rata 0) la riga non ha il segno.
     $this->travelTo('2026-01-02 10:00:00');
@@ -339,6 +339,64 @@ it('§ 9 e § 10 con il pregresso spalmato nella prima rata (il metodo di serie)
     lcdEmetti($this, $zero, [0, 1, 2], '2026-01-02');
     $this->travelTo('2027-03-01 10:00:00');
     expect(rcdPosizioni($zero)['righe'][0]['pregresso_nella_rata'])->toBeFalse();
+});
+
+it('§ 9, § 10 e le quote del riepilogo: Ugo deve € 300,00 del 2025 e € 120,00 del 2026 nella stessa rata e versa € 200,00: restano € 100,00 del 2025 e € 120,00 del 2026', function () {
+    // La regola del forum: un versamento parziale paga prima il debito più vecchio.
+    $this->travelTo('2026-01-02 10:00:00');
+    $s = lcdScenario(['A' => ['ugo', 1000]], 1, 'prima_rata', [['ugo', 'A', 30000]], 12000);
+    $e2025 = Esercizio::factory()->create(['condominio_id' => $s['c']->id, 'nome' => 'Esercizio 2025', 'data_inizio' => '2025-01-01', 'data_fine' => '2025-12-31', 'stato' => 'chiuso']);
+    DB::table('saldi')->where('condominio_id', $s['c']->id)->update(['origine_dichiarata' => 'esercizio', 'esercizio_origine_id' => $e2025->id]);
+    lcdEmetti($this, $s, [1], '2026-01-02');
+    $this->travelTo('2026-02-10 10:00:00');
+    lcdIncassa($this, $s, 'ugo', [lcdQuota($s, 'ugo', 1) => 20000], '2026-02-10');
+    $this->travelTo('2027-03-01 10:00:00');
+
+    $r = rcdPosizioni($s)['righe'][0];
+    expect([$r['ordinarie'], $r['precedenti'], $r['totale']])->toBe([12000, 10000, 22000])
+        ->and(collect(rcdCrediti($s)['righe'])->map(fn ($x) => [$x['importo'], $x['annata_competenza']])->all())->toBe([[10000, '2025'], [12000, '2026']]);
+
+    // Le quote del riepilogo (le quote dei piani dell'esercizio): la parte di prima sta nel pregresso, pagata per prima.
+    $q = app(\App\Services\Gestionale\Debiti\LetturaDebiti::class)->quoteDeiPiani((int) $s['c']->id, [(int) $s['piano']->id], '2026-12-31', (int) $s['e']->id)[(int) $s['g']->id];
+    expect(array_intersect_key($q['quote'], array_flip(['emesse', 'pagate', 'non_pagate', 'crediti'])))->toBe(['emesse' => 12000, 'pagate' => 0, 'non_pagate' => 12000, 'crediti' => 0])
+        ->and(array_intersect_key($q['pregresso'], array_flip(['emesse', 'pagate', 'non_pagate', 'crediti'])))->toBe(['emesse' => 30000, 'pagate' => 20000, 'non_pagate' => 10000, 'crediti' => 0]);
+
+    // Versati altri € 150,00: il 2025 è chiuso, del 2026 restano € 70,00.
+    $this->travelTo('2026-03-01 10:00:00');
+    lcdIncassa($this, $s, 'ugo', [lcdQuota($s, 'ugo', 1) => 15000], '2026-03-01');
+    $this->travelTo('2027-03-01 10:00:00');
+    $r = rcdPosizioni($s)['righe'][0];
+    expect([$r['ordinarie'], $r['precedenti'], $r['totale']])->toBe([7000, 0, 7000])
+        ->and(collect(rcdCrediti($s)['righe'])->map(fn ($x) => [$x['importo'], $x['annata_competenza']])->all())->toBe([[7000, '2026']]);
+});
+
+it('§ 9 con il pregresso in tutte le rate: il versamento paga prima il debito più vecchio dentro la rata a cui è imputato, non nelle altre rate', function () {
+    // € 300,00 del 2025 in due rate (€ 150,00 + € 150,00) e € 120,00 a rata del 2026: rata 1 e rata 2 da € 270,00. Ugo versa € 200,00 sulla rata 1.
+    // A mano, rata per rata: nella rata 1 i € 150,00 del 2025 sono pagati e del 2026 restano € 70,00; la rata 2 resta intera, € 150,00 del 2025 e € 120,00 del 2026.
+    $this->travelTo('2026-01-02 10:00:00');
+    $s = lcdScenario(['A' => ['ugo', 1000]], 2, 'tutte_rate', [['ugo', 'A', 30000]], 24000);
+    $e2025 = Esercizio::factory()->create(['condominio_id' => $s['c']->id, 'nome' => 'Esercizio 2025', 'data_inizio' => '2025-01-01', 'data_fine' => '2025-12-31', 'stato' => 'chiuso']);
+    DB::table('saldi')->where('condominio_id', $s['c']->id)->update(['origine_dichiarata' => 'esercizio', 'esercizio_origine_id' => $e2025->id]);
+    lcdEmetti($this, $s, [1, 2], '2026-01-02');
+    $this->travelTo('2026-02-10 10:00:00');
+    lcdIncassa($this, $s, 'ugo', [lcdQuota($s, 'ugo', 1) => 20000], '2026-02-10');
+    $this->travelTo('2027-03-01 10:00:00');
+
+    $r = rcdPosizioni($s)['righe'][0];
+    expect([$r['ordinarie'], $r['precedenti'], $r['totale']])->toBe([19000, 15000, 34000])
+        ->and(collect(rcdCrediti($s)['righe'])->map(fn ($x) => [$x['numero_rata'], $x['importo'], $x['annata_competenza']])->all())
+        ->toBe([[1, 7000, '2026'], [2, 15000, '2025'], [2, 12000, '2026']]);
+});
+
+it('§ 9 con un credito di prima spalmato nella prima rata: riduce le quote dell\'esercizio, la riga lo dice, e l\'importo non si divide', function () {
+    $this->travelTo('2026-01-02 10:00:00');
+    $s = lcdScenario(['A' => ['ugo', 1000]], 2, 'prima_rata', [['ugo', 'A', -5000]], 24000);
+    lcdEmetti($this, $s, [1, 2], '2026-01-02');
+    $this->travelTo('2027-03-01 10:00:00');
+    $r = rcdPosizioni($s)['righe'][0];
+
+    expect([$r['ordinarie'], $r['precedenti'], $r['totale'], $r['pregresso_nella_rata']])->toBe([19000, 0, 19000, true])
+        ->and(collect(rcdCrediti($s)['righe'])->map(fn ($x) => [$x['numero_rata'], $x['importo'], $x['pregresso_nella_rata']])->all())->toBe([[1, 7000, true], [2, 12000, false]]);
 });
 
 it('§ 10: un versamento dopo la data oltre il residuo lascia «resta oggi» a zero; uno con la data dopo oggi non è ancora «versato dopo»; la frase dice il numero negativo', function () {

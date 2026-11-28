@@ -192,6 +192,8 @@ describe('la proposta degli interessi', () => {
             await flushPromises();
             const avviso = corpo().querySelector('[data-testid="manca-la-voce"]')!;
             expect(pulito(avviso.textContent)).toContain('Per «Ordinaria 2026 (Esercizio 2026)» non c\'è una voce di entrata che riceva gli interessi');
+            // La voce deve avere una tabella millesimale, o la proposta la scarta (PropostaInteressi): la frase lo dice.
+            expect(pulito(avviso.textContent)).toContain('Creala nel piano dei conti, come voce di entrata con il preventivo a zero e una tabella millesimale collegata, e poi rifai la proposta.');
             expect(avviso.querySelector('a')?.getAttribute('href')).toBe('/gestionale.esercizi.piani-conti.index?condominio=3&esercizio=1');
             expect(registra().disabled).toBe(true);
             expect(pulito(corpo().querySelector('[data-testid="perche-spento"]')?.textContent)).toBe('Il pulsante è spento: manca una voce di entrata per «Ordinaria 2026 (Esercizio 2026)». Creala nel piano dei conti.');

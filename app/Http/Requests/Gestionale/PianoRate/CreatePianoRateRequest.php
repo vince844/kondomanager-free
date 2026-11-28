@@ -23,6 +23,14 @@ class CreatePianoRateRequest extends FormRequest
     /** La delibera scelta con «Scegli la delibera», risolta nel condominio dell'indirizzo (R18 del progetto delle assemblee); `null` senza. */
     private ?\App\Models\Assemblee\Delibera $delibera = null;
 
+    /**
+     * Coda 743: il ripianamento del debito ereditato chiesto con il piano (il compito «Deficit da recuperare»), già controllato: la proposta, la cifra in
+     * centesimi e la tabella. `null` senza.
+     *
+     * @var ?array{proposta: array<string, mixed>, importo: int, tabella_id: int}
+     */
+    private ?array $ripianamento = null;
+
     public function authorize(): bool
     {
         return true;
@@ -54,6 +62,12 @@ class CreatePianoRateRequest extends FormRequest
         return $this->delibera;
     }
 
+    /** Coda 743: il ripianamento del debito ereditato, controllato; `null` senza. @return ?array{proposta: array<string, mixed>, importo: int, tabella_id: int} */
+    public function ripianamento(): ?array
+    {
+        return $this->ripianamento;
+    }
+
     /** La natura della gestione scelta: `gestioni.tipo`, non `piani_rate.tipo` (decisione 11). */
     public function gestioneStraordinaria(): bool
     {
@@ -78,6 +92,11 @@ class CreatePianoRateRequest extends FormRequest
             'motivazione_autorizzazione.required' => ParoleDelPiano::messaggi()['motivazione_autorizzazione.required_if'],
             'competenze_capitoli.*.tratti.*.dal.required' => 'Ogni tratto di competenza vuole la data di inizio.',
             'competenze_capitoli.*.tratti.*.al.required' => 'Ogni tratto di competenza vuole la data di fine.',
+            // Coda 743: senza il ripianamento del debito ereditato lo straordinario vuole almeno una fattura, come prima.
+            'fatture_config.required' => ParoleDelPiano::messaggi()['fatture_config.required_if'],
+            'ripianamento.tabella_id.required_with' => 'Scegli la tabella con cui dividere il debito ereditato.',
+            'ripianamento.tabella_id.exists' => 'Scegli una tabella attiva di questo condominio.',
+            'ripianamento.importo.required_with' => 'Scrivi quanto del debito ereditato mettere a rate.',
         ]);
     }
 
@@ -102,6 +121,18 @@ class CreatePianoRateRequest extends FormRequest
         $voce = $righe->whereNotNull('voce')->first()?->voce;
         if ($voce === null || $righe->contains(fn ($r) => (bool) $r->is_sopravvenienza || $r->immobile_id !== null)) {
             return null;
+        }
+        // Coda 742: una riga su una voce che nel preventivo vale € 0 si mette a rate qui, come una riga «Fuori preventivo»; non se la copre il fondo di riserva.
+        if (\App\Services\Gestionale\VoceFuoriDalPreventivo::idDaOffrire((int) $f->id) !== []) {
+            return null;
+        }
+        $dalFondo = collect(\App\Services\Gestionale\VoceFuoriDalPreventivo::fuoriDalCarrello((int) $f->id))->firstWhere('perche', 'fondo');
+        if ($dalFondo !== null) {
+            return $dalFondo['sparito']
+                ? "La fattura n. {$f->numero_documento} è sulla voce «{$dalFondo['voce']}», che non è nel preventivo, con la copertura di un fondo che non c'è più: "
+                    . 'toglila dal carrello, storna la fattura e registrala di nuovo.'
+                : "La fattura n. {$f->numero_documento} è sulla voce «{$dalFondo['voce']}», che non è nel preventivo, e la spesa la copre "
+                    . ($dalFondo['fondo'] !== null ? "il fondo «{$dalFondo['fondo']}»" : 'il fondo di riserva') . ': non si mette a rate. Toglila dal carrello.';
         }
 
         return "La fattura n. {$f->numero_documento} è sulla voce «{$voce}», senza righe «Fuori preventivo»: si mette a rate con «Dalle voci del preventivo», "
@@ -175,7 +206,41 @@ class CreatePianoRateRequest extends FormRequest
             $this->guardiaSpeseNegative($validator);
             $this->guardiaFattureRettificate($validator);
             $this->guardiaImportoDelleFatture($validator);
+            $this->guardiaDelRipianamento($validator);
+            $this->guardiaVociAZeroNeiPianiDelleFatture($validator);
         });
+    }
+
+    /**
+     * Coda 742, l'altro verso: una voce che nel preventivo vale € 0 e che un piano delle fatture mette già a rate (la fattura nel carrello di «Spese fuori
+     * preventivo») non si chiede anche «Dalle voci» con una cifra, né il capitolo che la contiene: la stessa spesa due volte. La pagina la spegne (la
+     * copertura della voce conta il piano delle fatture); una richiesta fatta a mano, o una scheda aperta prima, passava. Una riga con l'importo vuoto chiede
+     * l'importo della voce, cioè zero.
+     */
+    private function guardiaVociAZeroNeiPianiDelleFatture($validator): void
+    {
+        $configurazione = $this->input('capitoli_config');
+        if ($this->input('tipo') === 'straordinario' || ! is_array($configurazione)) {
+            return;
+        }
+        foreach ($configurazione as $i => $conf) {
+            if (! is_array($conf) || empty($conf['id']) || ! is_numeric($conf['id']) || $validator->errors()->has("capitoli_config.{$i}.id")
+                || $validator->errors()->has("capitoli_config.{$i}.importo")) {
+                continue;
+            }
+            $importo = $conf['importo'] ?? null;
+            if (! is_string($importo) || trim($importo) === '' || \App\Helpers\MoneyHelper::toCents($importo) <= 0) {
+                continue;
+            }
+            // La voce stessa, o un capitolo con una voce a € 0 sotto di lui: il motore dà la cifra del capitolo anche a lei.
+            $piani = \App\Services\Gestionale\VoceFuoriDalPreventivo::pianiDelleFattureSulConto((int) $conf['id']);
+            if ($piani === []) {
+                continue;
+            }
+            $conto = (string) \App\Models\Gestionale\Conto::whereKey((int) $conf['id'])->value('nome');
+            $primo = $piani[0];
+            $validator->errors()->add("capitoli_config.{$i}.importo", \App\Services\Gestionale\VoceFuoriDalPreventivo::fraseDalleVoci($conto, $primo));
+        }
     }
 
     /**
@@ -219,6 +284,64 @@ class CreatePianoRateRequest extends FormRequest
                 $validator->errors()->add("fatture_config.{$i}.importo", ParoleDelPiano::importoFatturaOltre((string) $f->numero_documento, $riga['netto'], $riga['gia'], $riga['residuo']));
             }
         }
+    }
+
+    /**
+     * Coda 743 (decisione 655): il ripianamento del debito ereditato con il piano. Il compito è un deficit aperto del condominio, con una pregressa ancora a
+     * carico delle passate gestioni; il piano è uno straordinario nell'esercizio della pregressa (altrove il programma si ferma e dice dove,
+     * `RipianamentoDelDeficit::altrove`) e sulla sua gestione (la spesa e le rate nello stesso conguaglio); la cifra è fra zero e il massimo, il minore fra lo
+     * scoperto di oggi e quella parte (`RipianamentoDelDeficit::fraseDelMassimo`); la pregressa non sta anche nel carrello. Controllato, il ripianamento resta
+     * qui per il salvataggio ({@see ripianamento()}).
+     */
+    private function guardiaDelRipianamento($validator): void
+    {
+        $dati = $this->input('ripianamento');
+        if (! is_array($dati) || $dati === [] || $validator->errors()->hasAny(['ripianamento', 'ripianamento.compito_id', 'ripianamento.importo', 'ripianamento.tabella_id'])) {
+            return;
+        }
+        if ($this->input('tipo') !== 'straordinario') {
+            $validator->errors()->add('ripianamento', 'Il debito ereditato si mette a rate con «Spese fuori preventivo».');
+
+            return;
+        }
+        $esercizioId = (int) ($this->route('esercizio')?->id ?? $this->route('esercizio'));
+        $proposta = \App\Services\Gestionale\RipianamentoDelDeficit::proposta($this->idDelCondominio(), (int) $dati['compito_id'], $esercizioId);
+        if ($proposta === null) {
+            // Con più debiti ereditati la parte di questo debito può averla presa il compito di un altro: la frase dice quale.
+            $validator->errors()->add('ripianamento.compito_id', \App\Services\Gestionale\RipianamentoDelDeficit::fraseSenzaProposta($this->idDelCondominio(), (int) $dati['compito_id']));
+
+            return;
+        }
+        if ($proposta['altrove'] !== null) {
+            $validator->errors()->add('ripianamento', $proposta['altrove']);
+
+            return;
+        }
+        if ((int) $this->input('gestione_id') !== $proposta['gestione_id']) {
+            $validator->errors()->add('gestione_id', 'Il debito verso ' . $proposta['fornitore'] . ' è sulla gestione «' . $proposta['gestione'] . '»: il piano del ripianamento si fa su quella gestione.');
+
+            return;
+        }
+        $importo = \App\Helpers\MoneyHelper::toCents((string) $dati['importo']);
+        if ($importo <= 0) {
+            $validator->errors()->add('ripianamento.importo', 'Scrivi quanto del debito ereditato mettere a rate.');
+
+            return;
+        }
+        if ($importo > $proposta['massimo']) {
+            $validator->errors()->add('ripianamento.importo', \App\Services\Gestionale\RipianamentoDelDeficit::fraseDelMassimo($proposta));
+
+            return;
+        }
+        $nelCarrello = array_map(fn ($c) => is_array($c) ? (int) ($c['id'] ?? 0) : 0, (array) $this->input('fatture_config', []));
+        foreach ($proposta['fatture'] as $f) {
+            if (in_array($f['id'], $nelCarrello, true)) {
+                $validator->errors()->add('ripianamento', "La fattura n. {$f['numero']} è già nel ripianamento del debito ereditato: toglila dal carrello.");
+
+                return;
+            }
+        }
+        $this->ripianamento = ['proposta' => $proposta, 'importo' => $importo, 'tabella_id' => (int) $dati['tabella_id']];
     }
 
     /**
@@ -325,11 +448,12 @@ class CreatePianoRateRequest extends FormRequest
             
             // Regole specifiche per il Carrello Fatture (Straordinario)
             'fatture_config' => [
-                'required_if:tipo,straordinario', 
+                // Coda 743: con il ripianamento del debito ereditato la fattura pregressa entra con il piano, e il carrello può restare vuoto.
+                Rule::requiredIf(fn () => $this->input('tipo') === 'straordinario' && ! $this->filled('ripianamento')),
                 'array',
                 function ($attribute, $value, $fail) {
-                    // A lista vuota questa regola non gira (non è implicita): il messaggio di quel caso è quello di `required_if` (Coda 686 (b)).
-                    if ($this->tipo === 'straordinario' && (empty($value) || ! is_array($value) || count($value) === 0)) {
+                    // A lista vuota questa regola non gira (non è implicita): il messaggio di quel caso è quello di `required` (Coda 686 (b)).
+                    if ($this->tipo === 'straordinario' && ! $this->filled('ripianamento') && (empty($value) || ! is_array($value) || count($value) === 0)) {
                         $fail('Scegli almeno una fattura da mettere a rate.');
                     }
                 },
@@ -402,6 +526,17 @@ class CreatePianoRateRequest extends FormRequest
                 || ($this->input('tipo_autorizzazione') === 'urgenza' && $this->gestioneStraordinaria())), 'string', 'min:5'],
             // La delibera scelta con «Scegli la delibera»: un id del condominio (la risolve `prepareForValidation`, R18).
             'delibera_id' => ['nullable', 'integer'],
+            // Coda 743: il ripianamento del debito ereditato dal compito «Deficit da recuperare» (la cifra e la tabella; il resto lo controlla `withValidator`).
+            'ripianamento' => ['nullable', 'array'],
+            'ripianamento.compito_id' => ['required_with:ripianamento', 'integer'],
+            // Una cifra, non un elenco: un elenco mandato a mano si rifiuta con la frase (prima: un errore del programma).
+            'ripianamento.importo' => ['required_with:ripianamento', function (string $campo, mixed $valore, \Closure $fail): void {
+                if ($valore !== null && ! is_string($valore) && ! is_int($valore) && ! is_float($valore)) {
+                    $fail('Scrivi quanto del debito ereditato mettere a rate, con una cifra sola.');
+                }
+            }],
+            // Una tabella attiva: una tabella spenta non divide più niente (la proposta offre le sole attive).
+            'ripianamento.tabella_id' => ['required_with:ripianamento', 'integer', Rule::exists('tabelle', 'id')->where('condominio_id', $condominioId)->where('attiva', true)],
             // Coda 688: «Lavori ordinati il …», obbligatorio con «Urgenza» su una gestione straordinaria, sulle due schede: sulle fatture la fattura senza
             // periodo prende questo giorno, quella con il suo periodo tiene il suo. Un giorno solo, non un periodo: chi era titolare quel giorno paga tutto.
             // Non deve stare dentro l'esercizio: i lavori del 28/12 si mettono a rate l'anno dopo. Sulla gestione ordinaria non si chiede e non si scrive.

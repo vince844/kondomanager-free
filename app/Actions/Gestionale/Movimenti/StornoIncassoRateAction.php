@@ -357,7 +357,9 @@ class StornoIncassoRateAction
         }
 
         $calcolo = RataQuote::scritturaDiEmissione([$quota], $passate)[(int) $quota->id];
-        if ($calcolo['righe'] === []) {
+        // La stessa regola dell'emissione (`ScritturaDiEmissione::scrivi`): una quota senza righe a nome della persona va a giornale lo
+        // stesso se ha una parte ad personam da chiudere (Coda 426).
+        if ($calcolo['righe'] === [] && $calcolo['anticipazione'] <= 0) {
             return;
         }
 

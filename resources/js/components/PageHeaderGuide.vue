@@ -4,7 +4,7 @@ Copyright (C) Vincenzo Vecchio — KondoManager, https://github.com/vince844/kon
 Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file.
 -->
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { Building2, PlayCircle, Calendar, ChevronRight, ChevronDown, CornerLeftUp, ArrowLeft, BookOpen, Menu } from 'lucide-vue-next';
 import { Link, router, usePage } from '@inertiajs/vue3';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuPortal } from '@/components/ui/dropdown-menu';
@@ -65,6 +65,14 @@ const props = defineProps<{
   esercizioBreve?: boolean;
 
   /**
+   * Con `unaFila`, la fila comprende anche il percorso, per la pagina del piano rate: da `xl` non va a capo, nel percorso un nome lungo (oltre 20 caratteri)
+   * si accorcia, ma non sotto 9rem, con il nome intero nel `title`, e «indietro» ha il testo solo se la fila ci sta per intero (si misura: il contenitore
+   * delle pagine è largo al massimo 80rem, quindi la larghezza dello schermo non basta a saperlo); altrimenti è la sola freccia, con il testo nel `title`.
+   * Sotto `xl` i pulsanti vanno a capo. Le altre pagine, la dashboard del condominio compresa, non la chiedono e restano come sono.
+   */
+  unaFilaColPercorso?: boolean;
+
+  /**
    * La «Storia» della scheda (1.12.0-beta.13, §8 del progetto della tappa 1): con il tipo e l'id, accanto a «Guida» compare «Storia», alto come «Guida»,
    * che apre il cassetto con le modifiche della scheda. La pagina non deve fare altro. Il tipo è uno dell'elenco chiuso del server
    * (`SchedeDellaStoria::tipi()`); senza id per le «Storie» dello studio («impostazioni_stampe», «documenti»).
@@ -89,7 +97,90 @@ const colorStyles = {
 
 const showCondominioDropdown = computed(() => !props.condominioFisso && (props.condomini?.length ?? 0) > 1);
 /** Il nome del condominio: con `unaFila` si tronca con i puntini (il nome intero nel `title`); con `unaFilaSempre` più corto sotto `xl`. */
-const classiDelNome = computed(() => !props.unaFila ? '' : props.unaFilaSempre ? 'max-w-[11rem] xl:max-w-[16rem] truncate' : 'max-w-[16rem] truncate');
+const classiDelNome = computed(() => {
+  if (!props.unaFila) return '';
+  // Con il percorso nella stessa fila, 11rem a ogni larghezza: sopra 1280 px la riga non si allarga.
+  if (props.unaFilaColPercorso) return 'max-w-[11rem] truncate';
+
+  return props.unaFilaSempre ? 'max-w-[11rem] xl:max-w-[16rem] truncate' : 'max-w-[16rem] truncate';
+});
+/** Con `unaFilaColPercorso`, le classi di una voce del percorso: un nome lungo si accorcia ma non sotto 9rem, le altre non si stringono. */
+const classiNelPercorso = (voce: Breadcrumb, conLink: boolean): string => {
+  if (!props.unaFilaColPercorso) return '';
+
+  // Oltre 20 caratteri il nome è più largo di 9rem: il minimo non lo allarga mai.
+  return conLink && voce.title.length > 20 ? 'min-w-[9rem] truncate' : 'shrink-0';
+};
+
+// --- «Indietro» col testo solo se la fila ci sta per intero (con `unaFilaColPercorso`) ---
+const rigaDellIntestazione = ref<HTMLElement | null>(null);
+const navDelPercorso = ref<HTMLElement | null>(null);
+const contenitoreDeiPulsanti = ref<HTMLElement | null>(null);
+const testoIndietro = ref<HTMLElement | null>(null);
+const indietroColTesto = ref(false);
+
+const px = (valore: string) => parseFloat(valore) || 0;
+/** La larghezza che serve a un elemento per leggersi intero: se è accorciato, quella del suo testo. */
+const intera = (e: Element) => Math.max(e.getBoundingClientRect().width, e.scrollWidth);
+/** La larghezza di una fila di elementi su una riga sola, con gli spazi fra loro, il margine interno e il bordo. */
+const larghezzaDellaFila = (contenitore: HTMLElement, larghezzaDi: (e: Element) => number = intera): number => {
+  const figli = [...contenitore.children].filter((f) => f.getBoundingClientRect().width > 0);
+  const stile = getComputedStyle(contenitore);
+
+  return figli.reduce((somma, f) => somma + larghezzaDi(f), 0) + px(stile.columnGap) * Math.max(0, figli.length - 1)
+    + px(stile.paddingLeft) + px(stile.paddingRight) + px(stile.borderLeftWidth) + px(stile.borderRightWidth);
+};
+
+function misuraIlPosto() {
+  const riga = rigaDellIntestazione.value;
+  const nav = navDelPercorso.value;
+  const pulsanti = contenitoreDeiPulsanti.value;
+  const testo = testoIndietro.value;
+  if (!riga || !nav || !pulsanti || !testo) return;
+  // Il pulsante «indietro» con il testo: la freccia, lo spazio, il testo per intero, il margine interno e il bordo.
+  const link = testo.parentElement!;
+  const stile = getComputedStyle(link);
+  const soloFreccia = px(stile.paddingLeft) + px(stile.paddingRight) + px(stile.borderLeftWidth) + px(stile.borderRightWidth)
+    + (link.firstElementChild?.getBoundingClientRect().width ?? 0);
+  const conTesto = soloFreccia + px(stile.columnGap) + testo.scrollWidth;
+  const pulsantiCon = (indietro: number) => larghezzaDellaFila(pulsanti, (f) => f === link ? indietro : intera(f));
+  const primaDeiPulsanti = larghezzaDellaFila(nav) + px(getComputedStyle(riga).columnGap);
+
+  if (primaDeiPulsanti + pulsantiCon(conTesto) <= riga.clientWidth) {
+    indietroColTesto.value = true;
+    return;
+  }
+  // Sotto `xl` la fila va a capo: se va a capo comunque, il testo ci può stare se i pulsanti ci stanno sulla loro riga.
+  indietroColTesto.value = getComputedStyle(riga).flexWrap === 'wrap' && primaDeiPulsanti + pulsantiCon(soloFreccia) > riga.clientWidth
+    && pulsantiCon(conTesto) <= riga.clientWidth;
+}
+
+let osservatore: ResizeObserver | null = null;
+let attesa = 0;
+const rimisura = () => {
+  cancelAnimationFrame(attesa);
+  attesa = requestAnimationFrame(misuraIlPosto);
+};
+
+onMounted(() => {
+  if (!props.unaFilaColPercorso) return;
+  misuraIlPosto();
+  if (typeof ResizeObserver !== 'undefined') {
+    osservatore = new ResizeObserver(rimisura);
+    for (const elemento of [rigaDellIntestazione.value, navDelPercorso.value, contenitoreDeiPulsanti.value]) {
+      if (elemento) osservatore.observe(elemento);
+    }
+  }
+  // Con il carattere del programma arrivato dopo, le parole cambiano larghezza.
+  document.fonts?.ready.then(rimisura);
+});
+onBeforeUnmount(() => {
+  osservatore?.disconnect();
+  cancelAnimationFrame(attesa);
+});
+watch(() => [props.condominio?.nome, props.esercizio?.nome, props.backText, props.breadcrumbs?.map((b) => b.title).join('/')], () => {
+  if (props.unaFilaColPercorso) nextTick(rimisura);
+});
 /** Il nome dell'esercizio come si legge nell'intestazione: con `esercizioBreve` senza «anno». */
 const nomeDellEsercizio = (nome: string | null | undefined, comeOggi: string): string => {
   if (!props.esercizioBreve || !nome) return comeOggi;
@@ -141,19 +232,21 @@ function selectEsercizio(esercizioId: number | string) {
 
     <!-- La riga del percorso e dei pulsanti va a capo quando non ci sta (un tablet con «Indietro», il condominio, «Guida» e la dashboard):
          prima i pulsanti uscivano dallo schermo e la pagina scorreva di lato. Quando ci sta, resta com'era. -->
-    <div class="flex flex-col md:flex-row md:flex-wrap md:items-center justify-between gap-4">
+    <div ref="rigaDellIntestazione" class="flex flex-col md:flex-row md:flex-wrap md:items-center justify-between gap-4" :class="unaFilaColPercorso ? 'xl:flex-nowrap' : ''">
 
       <div class="min-w-0 max-w-full">
         <slot name="breadcrumb">
           <nav
             v-if="hasBreadcrumbs"
-            class="flex flex-nowrap items-center gap-2 px-4 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm max-w-full overflow-x-auto"
+            ref="navDelPercorso"
+            class="flex flex-nowrap items-center py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm max-w-full overflow-x-auto"
+            :class="unaFilaColPercorso ? 'px-3 gap-1.5' : 'px-4 gap-2'"
           >
             <template v-for="(item, index) in breadcrumbs" :key="index">
-              <Link v-if="item.href && index < breadcrumbs!.length - 1" :href="item.href" class="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500 hover:text-primary transition-colors whitespace-nowrap">
+              <Link v-if="item.href && index < breadcrumbs!.length - 1" :href="item.href" :title="unaFilaColPercorso ? item.title : undefined" :class="classiNelPercorso(item, true)" class="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-500 hover:text-primary transition-colors whitespace-nowrap">
                 {{ item.title }}
               </Link>
-              <span v-else class="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400 dark:text-slate-500 whitespace-nowrap">
+              <span v-else :class="classiNelPercorso(item, false)" class="text-[10px] font-bold uppercase tracking-[0.1em] text-slate-400 dark:text-slate-500 whitespace-nowrap">
                 {{ item.title }}
               </span>
               <ChevronRight v-if="index < breadcrumbs!.length - 1" class="w-3 h-3 shrink-0 text-slate-300 dark:text-slate-700" />
@@ -178,7 +271,7 @@ function selectEsercizio(esercizioId: number | string) {
         </div>
       </div>
 
-      <div class="flex flex-col md:items-end gap-2 shrink-0 w-full md:w-auto mt-2 md:mt-0">
+      <div class="flex flex-col md:items-end gap-2 shrink-0 w-full md:w-auto mt-2 md:mt-0" :class="unaFilaColPercorso ? 'md:max-w-full' : ''">
         <!-- Pulsante Menu Mobile -->
         <button
           @click="isMobileMenuOpen = !isMobileMenuOpen"
@@ -189,19 +282,20 @@ function selectEsercizio(esercizioId: number | string) {
         </button>
 
         <!-- Contenitore Pulsanti -->
-        <div data-testid="pulsanti-intestazione" :class="[
+        <div ref="contenitoreDeiPulsanti" data-testid="pulsanti-intestazione" :class="[
           'w-full md:w-auto flex-col md:flex-row flex-wrap items-stretch md:items-center gap-2',
-          unaFila ? (unaFilaSempre ? 'md:flex-nowrap' : 'xl:flex-nowrap') : '',
+          unaFila ? (unaFilaSempre && !unaFilaColPercorso ? 'md:flex-nowrap' : 'xl:flex-nowrap') : '',
           isMobileMenuOpen ? 'flex' : 'hidden md:flex'
         ]">
 
         <Link
             v-if="backUrl"
             :href="backUrl"
+            :title="unaFilaColPercorso ? (backText || 'Indietro') : undefined"
             class="inline-flex h-8 items-center justify-center gap-2 px-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
         >
             <ArrowLeft class="w-3.5 h-3.5 text-slate-500" />
-            <span>{{ backText || 'Indietro' }}</span>
+            <span ref="testoIndietro" :class="unaFilaColPercorso && !indietroColTesto ? 'md:sr-only' : ''">{{ backText || 'Indietro' }}</span>
         </Link>
 
         <template v-if="condominio">

@@ -29,6 +29,10 @@ beforeEach(function () {
 
     $this->user = User::factory()->create();
     $this->user->assignRole($ruoloAdmin);
+    // Caricare un file nel gestionale chiede anche «Crea documenti archivio», che l'amministratore di serie ha.
+    foreach (['Crea documenti archivio'] as $nomeDelPermesso) {
+        $ruoloAdmin->givePermissionTo(\Spatie\Permission\Models\Permission::firstOrCreate(['name' => $nomeDelPermesso, 'guard_name' => 'web']));
+    }
 });
 
 function fileFixtura(string $nome, string $nomeCaricato): UploadedFile

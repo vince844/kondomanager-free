@@ -642,12 +642,13 @@ function g112CreaSenzaGenerareProva($test, array $s, ?array $capitoli)
 
 it('controprova — AD3: un integrativo nato senza voci, e poi una voce nuova a € 0,00 non in altri piani dello stesso esercizio: il ricalcolo rifiuta come sempre', function () {
     $s = g112Scenario($this, 'importati', ['2026', '2027']);
-    expect(g112Errore(g112Crea($this, $s, '2026', 'Preventivo 2026')))->toBeNull();
+    // Il piano del 2026 chiede le «Pulizie» per metà (€ 100,00 su € 200,00): l'integrativo chiede l'altra metà, il residuo, e non la voce intera.
+    expect(g112Errore(g112Crea($this, $s, '2026', 'Preventivo 2026', ['spesa' => '1.200,00', 'pulizie' => '100,00'])))->toBeNull();
     // Creato senza generarlo quando tutte le voci sono nel piano del 2026: fino alla 1.12.0-beta.13 nasceva senza voci; dalla Coda 489 la creazione si
     // rifiuta, e il piano di prima si fa con una voce scelta, poi la riga svuotata.
     expect(g112Errore(g112CreaSenzaGenerareProva($this, $s, null)))->toStartWith('Impossibile creare il piano rate: tutte le voci di questa gestione sono già nel piano «Preventivo 2026»')
         ->and(g112Piano($s, 'Integrativo 2026'))->toBeNull();
-    g112CreaSenzaGenerareProva($this, $s, ['pulizie' => '200,00'])->assertSessionHasNoErrors();
+    g112CreaSenzaGenerareProva($this, $s, ['pulizie' => '100,00'])->assertSessionHasNoErrors();
     $integrativo = g112Piano($s, 'Integrativo 2026');
     DB::table('piano_rate_capitoli')->where('piano_rate_id', $integrativo->id)->delete();
     be52Voce($this, $s, $s['pc'], 'Varie', 'spesa', '0,00');

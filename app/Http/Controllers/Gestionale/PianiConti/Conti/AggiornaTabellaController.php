@@ -16,6 +16,7 @@ use App\Services\Gestionale\BloccoDellaVoce;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
+use App\Support\Errori\MessaggioPerLaPagina;
 use Illuminate\Support\Facades\Log;
 
 class AggiornaTabellaController extends Controller
@@ -34,13 +35,20 @@ class AggiornaTabellaController extends Controller
             return redirect()->back()->with('message', ['message' => $rifiuto, 'type' => 'error']);
         }
 
+        // Un coefficiente zero non ripartisce niente: il motore salta la tabella in silenzio e la voce va sulle altre. Il dialogo lo
+        // impedisce già; qui si rifiuta sulla sua casella, fuori dal `try`, perché l'errore arrivi al campo e non come messaggio generico.
+        $request->validate(
+            ['coefficiente' => 'required|numeric|gt:0|max:100'],
+            ['coefficiente.gt' => 'Il coefficiente deve essere più di 0 e al massimo 100.', 'coefficiente.max' => 'Il coefficiente deve essere più di 0 e al massimo 100.'],
+        );
+
         try {
             DB::beginTransaction();
             // Gesto 7 del registro delle modifiche, voci e tabelle: le tabelle della voce prima, per il campo «Tabelle millesimali».
             $tabelleDellaVocePrima = GestiDelRegistro::tabelleDellaVoce((int) $conto->id);
 
             $data = $request->validate([
-                'coefficiente'              => 'required|numeric|min:0|max:100',
+                'coefficiente'              => 'required|numeric|gt:0|max:100',
                 'percentuale_proprietario'  => 'required|integer|min:0|max:100',
                 'percentuale_inquilino'     => 'required|integer|min:0|max:100',
                 'percentuale_usufruttuario' => 'required|integer|min:0|max:100',
@@ -138,7 +146,8 @@ class AggiornaTabellaController extends Controller
             ]);
 
             return redirect()->back()->with('message', [
-                'message' => 'Errore: ' . $e->getMessage(),
+                // La frase di una regola resta com'è; un guasto diventa la frase con il riferimento, e il dettaglio va nel registro.
+                'message' => MessaggioPerLaPagina::di($e, 'Aggiornamento della tabella della voce', ['conto_id' => $conto->id]),
                 'type'    => 'error',
             ]);
         }

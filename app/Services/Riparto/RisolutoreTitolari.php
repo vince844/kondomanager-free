@@ -37,6 +37,8 @@ use Illuminate\Support\Facades\DB;
  *   chiuso prima del primo giorno non c'è — e `data_inizio` filtra **solo con un predecessore chiuso**
  *   sulla stessa coppia (immobile, tipologia): senza predecessore la riga è «aperta da sempre», perché
  *   sui dati reali quella data è il giorno del censimento, non della decorrenza (§6.1 del progetto).
+ *   Conta come predecessore anche una riga chiusa prima che nessun'altra continua, se questa è la prima
+ *   dopo di lei: il buco fra due titolari ({@see haPredecessoreChiuso()}).
  *
  * Chi passa il filtro **partecipa**; quanto pesa lo dice {@see giorniDiTitolarita()} (D8, il pro rata),
  * che il motore usa solo se {@see cambiaTitolaritaNelPeriodo()} è vero. In B1 il periodo era accettato
@@ -127,6 +129,27 @@ class RisolutoreTitolari
                         ->where('predecessore.attivo', true)
                         ->whereNotNull('predecessore.data_fine')
                         ->whereRaw("{$this->dataSql('predecessore.data_fine')} = {$this->giornoPrimaSql($this->dataSql("{$esterna}.data_inizio"))}"))
+                    // (c) la prima riga dopo una riga chiusa che nessun'altra continua, come `primaDopoUnaRigaOrfana()`.
+                    ->whereNotExists(fn ($sub) => $sub->from('anagrafica_immobile as orfana')
+                        ->whereColumn('orfana.immobile_id', "{$esterna}.immobile_id")
+                        ->whereColumn('orfana.tipologia', "{$esterna}.tipologia")
+                        ->whereColumn('orfana.id', '!=', "{$esterna}.id")
+                        ->where('orfana.attivo', true)
+                        ->whereNotNull('orfana.data_fine')
+                        ->whereRaw("{$this->dataSql('orfana.data_fine')} < {$this->giornoPrimaSql($this->dataSql("{$esterna}.data_inizio"))}")
+                        ->whereNotExists(fn ($dopo) => $dopo->from('anagrafica_immobile as continua')
+                            ->whereColumn('continua.immobile_id', "{$esterna}.immobile_id")
+                            ->whereColumn('continua.tipologia', "{$esterna}.tipologia")
+                            ->whereColumn('continua.id', '!=', 'orfana.id')
+                            ->where('continua.attivo', true)
+                            ->where(fn ($w) => $w->where(fn ($fra) => $fra->whereNotNull('continua.data_inizio')
+                                ->whereRaw("{$this->dataSql('continua.data_inizio')} > {$this->dataSql('orfana.data_fine')}")
+                                ->whereRaw("{$this->dataSql('continua.data_inizio')} < {$this->dataSql("{$esterna}.data_inizio")}"))
+                                ->orWhere(fn ($copre) => $copre
+                                    ->where(fn ($d) => $d->whereNull('continua.data_inizio')
+                                        ->orWhereRaw("{$this->giornoPrimaSql($this->dataSql('continua.data_inizio'))} <= {$this->dataSql('orfana.data_fine')}"))
+                                    ->where(fn ($a) => $a->whereNull('continua.data_fine')
+                                        ->orWhereRaw("{$this->dataSql('continua.data_fine')} > {$this->dataSql('orfana.data_fine')}"))))))
                     ->whereNotExists(fn ($sub) => $sub->from('subentri')
                         // Un passaggio annullato (beta.37) non conta: lo scope del modello qui non arriva.
                         ->whereNull('subentri.annullato_il')
@@ -346,7 +369,7 @@ class RisolutoreTitolari
     /**
      * La riga ha un **predecessore** — e quindi la sua `data_inizio` è una decorrenza, non un censimento?
      *
-     * D7 stretto (decisione 23, Fase 1-bis S8-9). Due forme, in OR:
+     * D7 stretto (decisione 23, Fase 1-bis S8-9). Tre forme, in OR:
      *
      * - (a) sulla stessa coppia (immobile, tipologia) esiste una riga diversa chiusa **il giorno prima** della
      *   sua `data_inizio` — è ciò che «Registra passaggio» scrive (uscente a decorrenza − 1) e ciò che
@@ -356,7 +379,9 @@ class RisolutoreTitolari
      *   **usufrutto**, stessa unità, stessa tipologia e `data_inizio` = `decorrenza` del record (i più nudi che
      *   tornano pieni insieme con un record solo), e per la vendita con riserva d'usufrutto la riga «usufruttuario»
      *   di chi vende (rilievo B4 della beta.38): copre il nuovo inquilino dopo un vuoto di mesi, che per (a) non
-     *   avrebbe un predecessore contiguo.
+     *   avrebbe un predecessore contiguo;
+     * - (c) la riga è la prima dopo una riga della coppia chiusa prima e che nessun'altra continua: il buco fra due titolari scritti a mano conta
+     *   come se il passaggio fosse registrato ({@see primaDopoUnaRigaOrfana()}).
      *
      * Prima bastava una riga chiusa **prima o il giorno stesso** — qualunque, anche di una persona estranea al
      * passaggio: un comproprietario censito a giugno accanto a una vendita di febbraio fra altri due perdeva 151
@@ -383,6 +408,43 @@ class RisolutoreTitolari
             }
             $fine = $this->giorno($r->data_fine ?? null);
             if ($fine !== null && $fine->equalTo($giornoPrima)) {
+                return true;
+            }
+        }
+
+        return $this->primaDopoUnaRigaOrfana($riga, $inizio, $righeStessaCoppia);
+    }
+
+    /**
+     * (c) Il buco fra due titolari scritti a mano: sulla stessa coppia c'è una riga chiusa **prima** del giorno prima che nessun'altra continua (il
+     * giorno dopo la sua fine non c'è nessun altro della coppia, e nessuna riga comincia fra quella fine e questa), e
+     * questa è la prima della coppia a cominciare dopo quella fine (a pari data, tutte quelle che cominciano quel giorno). Allora la sua `data_inizio`
+     * è una decorrenza, come con il passaggio registrato: chi entra non paga i giorni di chi c'era prima, e i giorni in mezzo restano scoperti
+     * (`giorniScoperti`). Il comproprietario censito accanto a una vendita non è toccato: la riga chiusa ha già chi la continua, la riga di chi compra.
+     * La forma SQL è in {@see vincolaQuery()}; le righe spente non contano, come là.
+     */
+    private function primaDopoUnaRigaOrfana(object $riga, CarbonImmutable $inizio, Collection $righeStessaCoppia): bool
+    {
+        $stessa = $righeStessaCoppia->filter(fn ($r) => $r !== $riga && ! (isset($r->id, $riga->id) && (int) $r->id === (int) $riga->id)
+            && ($r->tipologia ?? null) === ($riga->tipologia ?? null) && (bool) ($r->attivo ?? true));
+        foreach ($stessa as $orfana) {
+            $fine = $this->giorno($orfana->data_fine ?? null);
+            if ($fine === null || ! $fine->lt($inizio->subDay())) {
+                continue;
+            }
+            // Continuata: un'altra riga comincia fra la sua fine e questa, oppure il giorno dopo la sua fine qualcun altro della coppia c'era già
+            // (un comproprietario o un coinquilino: allora non c'è un buco).
+            $continuata = $stessa->contains(function ($r) use ($orfana, $fine, $inizio) {
+                if ($r === $orfana) {
+                    return false;
+                }
+                $suoInizio = $this->giorno($r->data_inizio ?? null);
+                $suaFine = $this->giorno($r->data_fine ?? null);
+
+                return ($suoInizio !== null && $suoInizio->gt($fine) && $suoInizio->lt($inizio))
+                    || (($suoInizio === null || $suoInizio->subDay()->lte($fine)) && ($suaFine === null || $suaFine->gt($fine)));
+            });
+            if (! $continuata) {
                 return true;
             }
         }

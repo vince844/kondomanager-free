@@ -21,6 +21,7 @@ import { router, usePage } from '@inertiajs/vue3';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import { usePermission } from '@/composables/permissions';
+import { Permission } from '@/enums/Permission';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import CampoFile from '@/components/CampoFile.vue';
@@ -66,7 +67,9 @@ const props = defineProps<{
     confronto?: Confronto | null;
 }>();
 
-const { generateRoute } = usePermission();
+const { generateRoute, hasPermission } = usePermission();
+// Il PDF mandato e il verbale sono file nel gestionale: chiedono «Crea documenti archivio», come «Allega» della fattura. L'approvazione si registra lo stesso.
+const puoCaricare = hasPermission([Permission.CREATE_ARCHIVE_DOCUMENTS]);
 const base = computed(() => ({ condominio: props.condominioId, esercizio: props.esercizioId }));
 const formatData = (iso: string | null) => { if (!iso) return '—'; const [a, m, g] = iso.slice(0, 10).split('-'); return `${g}/${m}/${a}`; };
 const formatOra = (s: string) => `${formatData(s)} alle ${s.slice(11, 16)}`;
@@ -262,7 +265,7 @@ const statoDi = (v: Versione) => ({
                 <p v-if="v.cifre_non_tornano" class="rounded border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-900/20 p-2 text-rose-900 dark:text-rose-200" data-test="cifre-non-tornano">{{ v.cifre_non_tornano }}</p>
                 <div v-if="v.pdf_frase" class="rounded border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-900/20 p-2 space-y-1.5 text-amber-900 dark:text-amber-200" data-test="pdf-frase">
                     <p>{{ v.pdf_frase }}</p>
-                    <label class="inline-flex items-center gap-1 text-[12px] underline cursor-pointer">Carica il PDF che hai mandato<input type="file" accept="application/pdf,.pdf" class="sr-only" data-test="carica-pdf-file" @change="caricaPdf(v, $event)" /></label>
+                    <label v-if="puoCaricare" class="inline-flex items-center gap-1 text-[12px] underline cursor-pointer">Carica il PDF che hai mandato<input type="file" accept="application/pdf,.pdf" class="sr-only" data-test="carica-pdf-file" @change="caricaPdf(v, $event)" /></label>
                 </div>
                 <p v-if="v.stato !== 'presentata'" class="text-slate-600 dark:text-slate-300" data-test="riparto">
                     Anche lo stato di riparto: {{ v.riparto_approvato === null ? 'non detto' : (v.riparto_approvato ? 'sì, approvato' : 'no, non approvato') }}.<span v-if="v.nota_approvazione"> {{ v.nota_approvazione }}</span>
@@ -277,7 +280,7 @@ const statoDi = (v: Versione) => ({
                     <p>{{ v.troppo }}</p>
                     <div class="flex flex-wrap gap-2">
                         <Button v-for="p in daConservare(v)" :key="p" size="sm" variant="outline" class="h-7" :disabled="inCorso" :data-conserva="p" @click="conserva(v, p)">Conserva «{{ nomeParte(p) }}»</Button>
-                        <label class="inline-flex items-center gap-1 text-[12px] underline cursor-pointer">Carica il PDF che hai mandato<input type="file" accept="application/pdf,.pdf" class="sr-only" data-test="carica-pdf" @change="caricaPdf(v, $event)" /></label>
+                        <label v-if="puoCaricare" class="inline-flex items-center gap-1 text-[12px] underline cursor-pointer">Carica il PDF che hai mandato<input type="file" accept="application/pdf,.pdf" class="sr-only" data-test="carica-pdf" @change="caricaPdf(v, $event)" /></label>
                     </div>
                 </div>
 
@@ -299,7 +302,7 @@ const statoDi = (v: Versione) => ({
                     <div class="flex flex-wrap gap-3">
                         <label class="text-xs flex flex-col gap-1"><span>Data della delibera</span><Input v-model="approvazione.data_delibera" type="date" :max="props.oggi" class="h-8 w-[150px] text-xs" /></label>
                         <label class="text-xs flex flex-col gap-1"><span>Numero del verbale</span><Input v-model="approvazione.numero_verbale" placeholder="per esempio 2/2027" class="h-8 w-[160px] text-xs" /></label>
-                        <div class="text-xs flex flex-col gap-1"><span>Il verbale (facoltativo)</span><CampoFile v-model="verbale" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" testid="file-verbale-approvazione" class="max-w-[320px]" /></div>
+                        <div v-if="puoCaricare" class="text-xs flex flex-col gap-1"><span>Il verbale (facoltativo)</span><CampoFile v-model="verbale" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" testid="file-verbale-approvazione" class="max-w-[320px]" /></div>
                     </div>
                     <fieldset class="text-xs space-y-1" data-test="riparto-scelta">
                         <legend class="mb-1">L'assemblea ha approvato anche lo stato di riparto (il conguaglio per persona)?</legend>

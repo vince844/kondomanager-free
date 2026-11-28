@@ -51,6 +51,9 @@ function setupPianoConMovimento(): array
         'updated_at'         => now(),
     ]);
     $dest = Conto::find($destId);
+    // «Sposta spesa» non dà budget a una voce senza tabelle né sottoconti (nessuno la pagherebbe): la destinazione ha la sua tabella.
+    $tabella = \App\Models\Tabella::create(['condominio_id' => $condominio->id, 'nome' => 'Proprietà', 'tipo' => 'standard', 'quota' => 'millesimi', 'attiva' => true]);
+    DB::table('conto_tabella_millesimale')->insert(['conto_id' => $destId, 'tabella_id' => $tabella->id, 'coefficiente' => 100, 'created_at' => now(), 'updated_at' => now()]);
 
     $piano = PianoRate::create([
         'gestione_id'   => $gestione->id,

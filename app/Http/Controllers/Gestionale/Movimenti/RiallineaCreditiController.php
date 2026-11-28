@@ -34,7 +34,7 @@ class RiallineaCreditiController extends Controller
 
         $adPersonam = self::fraseAdPersonam($fatto);
 
-        if ($fatto['rettifiche'] === [] && $fatto['emissioni'] === []) {
+        if ($fatto['rettifiche'] === [] && $fatto['emissioni'] === [] && $fatto['chiusure'] === []) {
             if ($fatto['restano'] !== [] || $adPersonam !== '') {
                 return back()->with($this->flashWarning('Niente scritto.'
                     . ($fatto['restano'] !== [] ? ' Restano come sono: ' . implode('; ', array_column($fatto['restano'], 'motivo')) . '.' : '')
@@ -45,7 +45,7 @@ class RiallineaCreditiController extends Controller
         }
 
         Log::info("Riallineamento crediti condominio #{$condominio->id} da utente #" . Auth::id() . ': rettifiche ' . implode(', ', $fatto['rettifiche'])
-            . '; emissioni ' . implode(', ', $fatto['emissioni']));
+            . '; emissioni ' . implode(', ', $fatto['emissioni']) . '; chiusure ad personam ' . implode(', ', $fatto['chiusure']));
 
         $parti = [];
         if ($fatto['rettifiche'] !== []) {
@@ -54,6 +54,10 @@ class RiallineaCreditiController extends Controller
         if ($fatto['emissioni'] !== []) {
             $parti[] = (count($fatto['emissioni']) === 1 ? '1 emissione' : count($fatto['emissioni']) . ' emissioni') . ' di quote a credito (prot. ' . implode(', ', $fatto['emissioni']) . ')';
         }
+        if ($fatto['chiusure'] !== []) {
+            $parti[] = (count($fatto['chiusure']) === 1 ? '1 chiusura' : count($fatto['chiusure']) . ' chiusure') . ' dell\'anticipazione ad personam (prot. '
+                . implode(', ', $fatto['chiusure']) . '; il debito dei condòmini non cambia)';
+        }
 
         return back()->with($this->flashSuccess('Riallineamento fatto: ' . implode(' e ', $parti) . ' nel libro giornale.'
             . ($fatto['restano'] !== [] ? ' Restano come sono: ' . implode('; ', array_column($fatto['restano'], 'motivo')) . '.' : '')
@@ -61,18 +65,19 @@ class RiallineaCreditiController extends Controller
     }
 
     /**
-     * Coda 313 (decisione 153.1): la spesa ad personam addebitata due volte che la card elenca resta com'è, e i piani da controllare a
-     * mano; la conferma non la scrive, e lo dice. Vuota se non c'è niente da dire.
+     * Coda 313: la spesa ad personam addebitata due volte che resta com'è (un'emissione in un esercizio chiuso senza un esercizio aperto
+     * alla data di oggi), e i piani da controllare a mano; la conferma non le scrive, e lo dice. Vuota se non c'è niente da dire.
      *
-     * @param array{ad_personam?: list<array{importo: int}>, ad_personam_non_calcolabili?: list<array{piano: string}>} $fatto
+     * @param array{ad_personam?: list<array{importo: int, motivo?: ?string}>, ad_personam_non_calcolabili?: list<array{piano: string}>} $fatto
      */
     private static function fraseAdPersonam(array $fatto): string
     {
         $frase = '';
         $voci = $fatto['ad_personam'] ?? [];
         if ($voci !== []) {
+            $motivi = array_values(array_unique(array_filter(array_column($voci, 'motivo'))));
             $frase .= ' La spesa ad personam addebitata due volte (' . \App\Helpers\MoneyHelper::format(array_sum(array_column($voci, 'importo')))
-                . ' in tutto) resta com\'è: il riallineamento non la scrive.';
+                . ' in tutto) resta com\'è' . ($motivi !== [] ? ': ' . implode('; ', $motivi) : '') . '.';
         }
         $piani = array_values(array_unique(array_column($fatto['ad_personam_non_calcolabili'] ?? [], 'piano')));
         if ($piani !== []) {

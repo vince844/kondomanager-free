@@ -15,8 +15,17 @@ use Illuminate\Foundation\Http\FormRequest;
  */
 class RimborsaCreditoRequest extends FormRequest
 {
+    /**
+     * La persona di un altro condominio risponde 404 prima che il modulo si legga: la rotta non lega la persona al condominio (chi è stato tolto dopo una
+     * vendita ha ancora il suo credito), e la regola è quella del pagante (`Anagrafica::delCondominio`). Il controller la ripete.
+     */
     public function authorize(): bool
     {
+        $condominio = $this->route('condominio');
+        $anagrafica = $this->route('anagrafica');
+        abort_unless($condominio !== null && $anagrafica !== null && \App\Models\Anagrafica::delCondominio((int) (is_object($condominio) ? $condominio->id : $condominio))
+            ->whereKey(is_object($anagrafica) ? $anagrafica->id : $anagrafica)->exists(), 404);
+
         return true;
     }
 

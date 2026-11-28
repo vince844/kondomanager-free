@@ -116,7 +116,7 @@ const handleConfirm = () => {
                         <!-- ⚠️ Il pulsante «Guida» della pagina sta dietro questo overlay e non si può
                              premere: la decisione si prende qui, e qui l'aiuto deve essere raggiungibile. -->
                         <button type="button" @click="emit('open-guida')"
-                            class="mt-2 inline-flex items-center gap-1.5 text-[11px] font-bold text-indigo-700 hover:text-indigo-900 dark:text-indigo-300 dark:hover:text-indigo-100 underline underline-offset-2">
+                            class="mt-2 inline-flex items-center gap-1.5 text-xs font-bold text-indigo-700 hover:text-indigo-900 dark:text-indigo-300 dark:hover:text-indigo-100 underline underline-offset-2">
                             <BookOpen class="w-3.5 h-3.5" />
                             Non sei sicuro? Apri la guida
                         </button>
@@ -144,7 +144,7 @@ const handleConfirm = () => {
                                 <input type="radio" v-model="scenario" value="registrata_in_cassa"
                                     class="w-4 h-4 mt-0.5 text-emerald-600 border-slate-300 focus:ring-emerald-600 shrink-0" />
                             </div>
-                            <p class="text-[11px] leading-relaxed flex-1"
+                            <p class="text-xs leading-relaxed flex-1"
                                 :class="scenario === 'registrata_in_cassa' ? 'text-emerald-700/80 dark:text-emerald-400/80' : 'text-slate-500'">
                                 I soldi sono ancora su un conto o un fondo del condominio. Manca solo un passaggio:
                                 registrarli come liquidità reale, esattamente come un saldo di apertura. Scegli sotto
@@ -169,7 +169,7 @@ const handleConfirm = () => {
                                 <input type="radio" v-model="scenario" value="gia_in_apertura"
                                     class="w-4 h-4 mt-0.5 text-sky-600 border-slate-300 focus:ring-sky-600 shrink-0" />
                             </div>
-                            <p class="text-[11px] leading-relaxed flex-1"
+                            <p class="text-xs leading-relaxed flex-1"
                                 :class="scenario === 'gia_in_apertura' ? 'text-sky-700/80 dark:text-sky-400/80' : 'text-slate-500'">
                                 I soldi sono in banca, ma il saldo di apertura che hai inserito nella cassa li
                                 <strong>comprende già</strong> — è il caso di chi parte dall'estratto conto.
@@ -194,7 +194,7 @@ const handleConfirm = () => {
                                 <input type="radio" v-model="scenario" value="gia_speso_acconto"
                                     class="w-4 h-4 mt-0.5 text-amber-600 border-slate-300 focus:ring-amber-600 shrink-0" />
                             </div>
-                            <p class="text-[11px] leading-relaxed flex-1"
+                            <p class="text-xs leading-relaxed flex-1"
                                 :class="scenario === 'gia_speso_acconto' ? 'text-amber-700/80 dark:text-amber-400/80' : 'text-slate-500'">
                                 Sono già stati versati al fornitore come acconto, prima di Kondomanager. Non c'è
                                 liquidità da registrare: il "già versato" resta corretto per il riparto, ma il debito
@@ -209,10 +209,10 @@ const handleConfirm = () => {
                         enter-from-class="opacity-0 -translate-y-4"
                         enter-to-class="opacity-100 translate-y-0">
                         <div v-if="scenario === 'registrata_in_cassa'">
-                            <Label class="text-[10px] font-black uppercase tracking-widest mb-2 block">
+                            <Label class="text-xs font-black uppercase tracking-widest mb-2 block">
                                 Su quale cassa o fondo si trovano? *
                             </Label>
-                            <p v-if="natura === 'fondo_vincolato'" class="text-[11px] text-slate-500 mb-2 leading-relaxed">
+                            <p v-if="natura === 'fondo_vincolato'" class="text-xs text-slate-500 mb-2 leading-relaxed">
                                 Fondo deliberato con vincolo di destinazione: non compaiono le casse liberamente
                                 utilizzabili per altri imprevisti — scegli un fondo dedicato a quest'opera, o la banca.
                             </p>
@@ -229,7 +229,7 @@ const handleConfirm = () => {
                                     <div class="flex items-center justify-between gap-3 py-0.5">
                                         <div class="flex items-center gap-2 overflow-hidden">
                                             <span class="truncate text-sm font-semibold">{{ nome }}</span>
-                                            <span class="shrink-0 rounded border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                                            <span class="shrink-0 rounded-md border border-slate-200 bg-slate-100 px-1.5 py-0.5 text-xs font-bold uppercase tracking-wider text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
                                                 {{ etichettaTipo[tipo] ?? tipo }}
                                             </span>
                                         </div>
@@ -239,11 +239,11 @@ const handleConfirm = () => {
                                 <template #selected-option="{ nome, saldo_cents }">
                                     <div class="flex items-center gap-2">
                                         <span class="text-sm font-semibold">{{ nome }}</span>
-                                        <span class="text-[10px] text-slate-400">{{ euro(saldo_cents) }}</span>
+                                        <span class="text-xs text-slate-400">{{ euro(saldo_cents) }}</span>
                                     </div>
                                 </template>
                             </vSelect>
-                            <p class="mt-2 flex items-start gap-1.5 text-[11px] text-slate-500 leading-relaxed">
+                            <p class="mt-2 flex items-start gap-1.5 text-xs text-slate-500 leading-relaxed">
                                 <CheckCircle2 class="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
                                 Registriamo subito {{ euro(totaleGiaVersato) }} come accantonamento su questa cassa:
                                 lo ritroverai nel saldo e nello stato patrimoniale.
@@ -257,7 +257,7 @@ const handleConfirm = () => {
                         enter-from-class="opacity-0 -translate-y-4"
                         enter-to-class="opacity-100 translate-y-0">
                         <div v-if="scenario === 'gia_speso_acconto'">
-                            <Label class="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2 block">
+                            <Label class="text-xs font-black uppercase tracking-widest text-slate-500 mb-2 block">
                                 Quando e a chi è stato versato questo acconto? *
                             </Label>
                             <textarea
@@ -265,13 +265,13 @@ const handleConfirm = () => {
                                 rows="3"
                                 class="w-full border border-slate-200 dark:border-slate-700 rounded-xl p-4 text-sm bg-slate-50 dark:bg-slate-800 outline-none resize-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400 transition-all"
                                 placeholder="Es: Acconto di 1.000€ versato al fornitore Rossi Srl a giugno 2025, a saldo del primo stato avanzamento lavori..." />
-                            <div class="flex justify-between mt-1 text-[10px]">
+                            <div class="flex justify-between mt-1 text-xs">
                                 <span class="text-slate-400">Minimo 10 caratteri</span>
                                 <span :class="notaAcconto.trim().length >= 10 ? 'text-emerald-500' : 'text-rose-500'">
                                     {{ notaAcconto.trim().length }}
                                 </span>
                             </div>
-                            <p class="mt-2 flex items-start gap-1.5 text-[11px] text-amber-700 dark:text-amber-400 leading-relaxed">
+                            <p class="mt-2 flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
                                 <HelpCircle class="w-3.5 h-3.5 shrink-0 mt-0.5" />
                                 Apriamo un promemoria in Inbox con questa nota: quando registrerai la fattura reale del
                                 fornitore, verifica a mano che il debito residuo tenga conto di questo acconto.

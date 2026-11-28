@@ -29,7 +29,6 @@ const ANCORA_CON_SELECT = [
     'components/gestionale/pianiDeiConti/conti/ModalModificaConto.vue',
     'components/gestionale/rendiconto/InvioDeiFogli.vue',
     'components/gestionale/saldi/SaldiDetailPanel.vue',
-    'pages/gestionale/contributi/ContributiEdit.vue',
     'pages/gestionale/movimenti/rendiconto/Controlli.vue',
     'pages/impostazioni/ModelliLettere.vue',
 ];

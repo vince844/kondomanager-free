@@ -42,6 +42,14 @@ enum TipoAllocazioneFattura: string
      */
     case COMPENSAZIONE = 'compensazione';
 
+    /**
+     * Coda 743: una scrittura che rettifica la competenza della fattura dopo la registrazione (il ripianamento del debito ereditato sposta una parte della
+     * pregressa dal Fondo Passate Gestioni alle Sopravvenienze passive, e il suo storno la rimette). Lega la scrittura alla fattura per la competenza e il
+     * fornitore; come la competenza, NON chiude il debito e non entra nello stato del pagamento. Il rendiconto la legge come una parte del costo della
+     * fattura, con il suo pagato (`PagatoAllaData`): «da pagare» finché il fornitore non è pagato.
+     */
+    case RETTIFICA     = 'rettifica';
+
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
     public function label(): string
@@ -50,6 +58,7 @@ enum TipoAllocazioneFattura: string
             self::COMPETENZA    => 'Competenza (registrazione)',
             self::PAGAMENTO     => 'Pagamento',
             self::COMPENSAZIONE => 'Compensazione',
+            self::RETTIFICA     => 'Rettifica della competenza',
         };
     }
 

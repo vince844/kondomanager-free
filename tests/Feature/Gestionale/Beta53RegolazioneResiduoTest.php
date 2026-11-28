@@ -59,7 +59,7 @@ it('controprova — il menu del capitolo della regolazione non porta un residuo,
     $voce = collect($capitoli)->firstWhere('id', $capitolo->id);
 
     expect($voce)->not->toBeNull()
-        ->and(collect($capitoli)->map(fn ($c) => array_keys($c))->unique(fn ($k) => implode(',', $k))->values()->all())->toBe([['id', 'nome', 'parent_nome', 'label']])
+        ->and(collect($capitoli)->map(fn ($c) => array_keys($c))->unique(fn ($k) => implode(',', $k))->values()->all())->toBe([['id', 'nome', 'parent_nome', 'gestione_id', 'label']])
         ->and(b53rgLetture($this, $condominio, $esercizio, $capitolo)['residuo_budget'])->toBe(500000);
 });
 

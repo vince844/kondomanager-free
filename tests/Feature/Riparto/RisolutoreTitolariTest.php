@@ -408,10 +408,11 @@ it('decisione 23 (S8-9) — la riga entrata con un passaggio registrato (subentr
     $esercizio = new \App\Support\PeriodoCompetenza('2026-01-01', '2026-12-31');
     $gennaioMaggio = new \App\Support\PeriodoCompetenza('2026-01-01', '2026-05-31');
 
-    // Senza passaggio registrato e senza contiguità: la data_inizio di B è un censimento → 365.
+    // Senza passaggio registrato e senza contiguità: dopo la riga «chiuso_passato» (inquilino fino al 30/4, che continua A) nessuno c'è e B è la prima
+    // a cominciare, quindi la sua data_inizio è già una decorrenza (il buco fra due titolari, `BucoFraDueTitolariTest`) → 214. Prima era un censimento → 365.
     $r = app(RisolutoreTitolari::class);
     $righe = $immobile->anagrafiche()->get()->map->pivot;
-    expect($r->giorniDiTitolarita($righe->firstWhere('anagrafica_id', $inquilinoB->id), $esercizio, $righe))->toBe(365);
+    expect($r->giorniDiTitolarita($righe->firstWhere('anagrafica_id', $inquilinoB->id), $esercizio, $righe))->toBe(214);
 
     // Con «Inizio locazione» registrato: B è `riga_entrante_id` → la sua data_inizio conta → 214.
     DB::table('subentri')->insert(['condominio_id' => $immobile->condominio_id, 'immobile_id' => $immobile->id, 'anagrafica_uscente_id' => null, 'anagrafica_entrante_id' => $inquilinoB->id, 'riga_uscente_id' => null, 'riga_entrante_id' => $rigaB, 'tipologia' => 'inquilino', 'tipo_passaggio' => 'inizio_locazione', 'decorrenza' => '2026-06-01', 'created_at' => now(), 'updated_at' => now()]);
@@ -421,12 +422,14 @@ it('decisione 23 (S8-9) — la riga entrata con un passaggio registrato (subentr
         ->and($r->vincolaQuery(DB::table('anagrafica_immobile')->where('immobile_id', $immobile->id), $gennaioMaggio)->pluck('anagrafica_id')->map(fn ($id) => (int) $id)->all())->not->toContain($inquilinoB->id);
 });
 
-it('strada (b), B1-2 — la tripla (unità, tipologia, decorrenza) vale solo per l\'usufrutto: il coinquilino censito a mano lo stesso giorno dell\'«Inizio locazione» di un altro (dopo un vuoto) non è «entrato con quel passaggio» e tiene i suoi 365 giorni; la forma SQL concorda', function () {
+it('strada (b), B1-2 — la tripla (unità, tipologia, decorrenza) vale solo per l\'usufrutto: il coinquilino censito a mano lo stesso giorno dell\'«Inizio locazione» di un altro (dopo l\'uscita di un terzo) non è «entrato con quel passaggio» e tiene i suoi 365 giorni; la forma SQL concorda', function () {
     ['immobile' => $immobile] = unitaConQuattroTitolari();
     $mk = fn (string $nome) => Anagrafica::forceCreate(['nome' => $nome, 'email' => strtolower($nome).'-'.$immobile->id.'@test.it', 'indirizzo' => 'Via Verdi 3', 'codice_fiscale' => strtoupper(substr($nome, 0, 5)).str_pad((string) $immobile->id, 11, '0', STR_PAD_LEFT)]);
-    [$i1, $i2, $i3] = [$mk('Primo'), $mk('Secondo'), $mk('Censito')];
-    // I1 chiude il 28/2; dopo tre mesi di vuoto I2 entra il 1/6 con «Inizio locazione» registrato (riga_entrante_id esatto).
+    [$i1, $i2, $i3, $z] = [$mk('Primo'), $mk('Secondo'), $mk('Censito'), $mk('Zeta')];
+    // I1 chiude il 28/2; I2 entra il 1/6 con «Inizio locazione» registrato (riga_entrante_id esatto). Z, coinquilino dal 1/3, continua la riga di I1:
+    // senza di lui I3 sarebbe il primo dopo una riga chiusa che nessuno continua, e la sua data conterebbe comunque (`BucoFraDueTitolariTest`).
     DB::table('anagrafica_immobile')->insert(['anagrafica_id' => $i1->id, 'immobile_id' => $immobile->id, 'tipologia' => 'inquilino', 'quota' => 100.0, 'attivo' => true, 'data_inizio' => '2020-01-01', 'data_fine' => '2026-02-28']);
+    DB::table('anagrafica_immobile')->insert(['anagrafica_id' => $z->id, 'immobile_id' => $immobile->id, 'tipologia' => 'inquilino', 'quota' => 50.0, 'attivo' => true, 'data_inizio' => '2026-03-01']);
     $rigaI2 = DB::table('anagrafica_immobile')->insertGetId(['anagrafica_id' => $i2->id, 'immobile_id' => $immobile->id, 'tipologia' => 'inquilino', 'quota' => 50.0, 'attivo' => true, 'data_inizio' => '2026-06-01']);
     // I3 è censito a mano il 1/6, stessa data e stessa tipologia, senza essere parte di quel passaggio (nessuna contiguità con I1).
     DB::table('anagrafica_immobile')->insert(['anagrafica_id' => $i3->id, 'immobile_id' => $immobile->id, 'tipologia' => 'inquilino', 'quota' => 50.0, 'attivo' => true, 'data_inizio' => '2026-06-01']);

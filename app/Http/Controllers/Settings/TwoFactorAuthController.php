@@ -10,6 +10,7 @@ use App\Actions\TwoFactorAuth\GenerateNewRecoveryCodes;
 use App\Actions\TwoFactorAuth\GenerateQrCodeAndSecretKey;
 use App\Actions\TwoFactorAuth\VerifyTwoFactorCode;
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\DueFattoriPerIlPannello;
 use App\Services\Notifiche\AvvisiDiSicurezza;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -35,9 +36,13 @@ class TwoFactorAuthController extends Controller
             app(DisableTwoFactorAuthentication::class)($user);
         }
 
+        // Con la verifica obbligatoria per il pannello la pagina lo dice, e non offre di toglierla.
+        $bloccata = DueFattoriPerIlPannello::disattivazioneBloccata($user);
+
         return Inertia::render('settings/TwoFactor', [
             'confirmed' => $confirmed,
             'recoveryCodes' => !is_null($user->two_factor_secret) ? json_decode(decrypt($user->two_factor_recovery_codes)) : [],
+            'obbligatoria' => $bloccata,
         ]);
     }
 
@@ -146,6 +151,14 @@ class TwoFactorAuthController extends Controller
     public function disable(Request $request)
     {
         $eraAttiva = ! is_null($request->user()->two_factor_confirmed_at);
+
+        // Chi entra nel pannello non si toglie una verifica che lo studio rende obbligatoria. Una
+        // configurazione mai confermata invece si annulla: non toglie niente.
+        if ($eraAttiva && DueFattoriPerIlPannello::disattivazioneBloccata($request->user())) {
+            return response()->json([
+                'message' => __('settings.two_factor.disattivazione_bloccata'),
+            ], 403);
+        }
 
         $disableTwoFactorAuthentication = app(DisableTwoFactorAuthentication::class);
         $disableTwoFactorAuthentication($request->user());

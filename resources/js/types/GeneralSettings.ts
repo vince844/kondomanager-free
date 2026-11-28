@@ -29,5 +29,6 @@ export interface GeneralSettings extends PageProps {
   ruolo_registrazione_modificabile: boolean
   comunicazioni_registra_aperture?: boolean
   errori_avviso_dalla_pagina?: boolean
+  due_fattori_obbligatoria_pannello?: boolean
   aperture_registrate?: number
 }

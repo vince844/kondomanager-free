@@ -171,3 +171,38 @@ it('S8-bis L2-5 — una coppia scritta a mano con chiusura e apertura lo STESSO 
         ->doesntExpectOutputToContain('Chiusura e apertura lo stesso giorno')
         ->assertSuccessful();
 });
+
+it('Coda 540 — una riga di proprietà chiusa a quota 0 e seguita da un altro proprietario è segnalata, con i giorni in cui nessuno paga (la lista della pagina delle unità)', function () {
+    $c = Condominio::factory()->create(['nome' => 'Quota zero']);
+    unitaConTitolari($c, '5', [
+        ['nome' => 'Carmen', 'quota' => 0, 'data_inizio' => '2026-01-01', 'data_fine' => '2026-06-30'],
+        ['nome' => 'Luigi', 'quota' => 100, 'data_inizio' => '2026-07-01'],
+    ]);
+
+    $this->artisan('kondomanager:verifica-titolarita', ['--condominio' => $c->id])
+        ->expectsOutputToContain('Righe di proprietà chiuse a quota 0 seguite da un altro proprietario (1)')
+        ->expectsOutputToContain('Correggi la riga dallo storico dell\'unità')
+        ->assertSuccessful();
+});
+
+it('Coda 246 — una pertinenza con due righe in corso della stessa persona e dello stesso ruolo, una a quota 0, è segnalata; con una riga sola no', function () {
+    $c = Condominio::factory()->create(['nome' => 'Box doppio']);
+    $casa = unitaConTitolari($c, '1', [['nome' => 'Ugo', 'quota' => 100]]);
+    $box = Immobile::create(['condominio_id' => $c->id, 'tipo' => 'box', 'interno' => 'B1', 'nome' => 'Box 12', 'codice_immobile' => 'VT-B1', 'descrizione' => 'Test',
+        'pertinenza_di_immobile_id' => $casa->id]);
+    $ugo = Anagrafica::where('nome', 'Ugo')->sole();
+    foreach ([100, 0] as $quota) {
+        DB::table('anagrafica_immobile')->insert(['anagrafica_id' => $ugo->id, 'immobile_id' => $box->id, 'tipologia' => 'proprietario', 'quota' => $quota, 'attivo' => true,
+            'data_inizio' => now()->subYear(), 'data_fine' => null]);
+    }
+
+    $this->artisan('kondomanager:verifica-titolarita', ['--condominio' => $c->id])
+        ->expectsOutputToContain('Pertinenze con due righe in corso della stessa persona e dello stesso ruolo, una a quota 0 (1)')
+        ->expectsOutputToContain('Box 12')
+        ->assertSuccessful();
+
+    DB::table('anagrafica_immobile')->where('immobile_id', $box->id)->where('quota', 0)->delete();
+    $this->artisan('kondomanager:verifica-titolarita', ['--condominio' => $c->id])
+        ->doesntExpectOutputToContain('Pertinenze con due righe')
+        ->assertSuccessful();
+});

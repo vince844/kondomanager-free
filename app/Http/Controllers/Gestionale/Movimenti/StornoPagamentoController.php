@@ -60,7 +60,8 @@ class StornoPagamentoController extends Controller
         try {
             $service->stornaPagamento($pagamento, $validated['motivo']);
 
-            Log::info("Storno pagamento #{$pagamento->id} eseguito da utente #" . Auth::id() . " — motivo: {$validated['motivo']}");
+            // Nel registro la lunghezza del motivo, non il testo: lo scrive l'amministratore e può portare nomi e fatti delle persone.
+            Log::info("Storno pagamento #{$pagamento->id} eseguito da utente #" . Auth::id() . ' — motivo di ' . mb_strlen($validated['motivo']) . ' caratteri');
 
             $fatto = "Storno eseguito con successo. Le fatture collegate sono state riaperte e il saldo del conto è stato ripristinato.";
 
@@ -100,7 +101,7 @@ class StornoPagamentoController extends Controller
             ]);
 
             return back()->with(
-                $this->flashError('Errore di sistema durante lo storno: ' . $e->getMessage())
+                $this->flashError('Errore di sistema durante lo storno: ' . \App\Support\Errori\MessaggioPerLaPagina::di($e, 'StornoPagamentoController@__invoke'))
             );
         }
     }

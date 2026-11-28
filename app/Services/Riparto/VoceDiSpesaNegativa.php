@@ -145,6 +145,24 @@ final class VoceDiSpesaNegativa
     }
 
     /**
+     * Il rifiuto di «Sposta spesa» da o verso una voce di entrata scritta con il meno, o la riga del piano che la ripartisce: il piano la accredita per il
+     * valore assoluto, e lo spostamento la avvicinerebbe a zero (il totale cambia del doppio). La strada è correggere l'importo dell'entrata.
+     *
+     * @param  string  $entrata  il nome dell'entrata scritta con il meno: è `$nome` se la voce è lei
+     * @param  int  $importo  la sua cifra (negativa), in centesimi
+     */
+    public static function spostamentoSuUnEntrataNegativa(string $nome, string $entrata, int $importo, bool $comeDestinazione): string
+    {
+        $cifra = SpeseNegativeNelPiano::cifra($importo);
+        $testa = $nome === $entrata
+            ? "La voce di entrata «{$nome}» è scritta con il meno (meno {$cifra}) e il piano la accredita per {$cifra}"
+            : "Il capitolo «{$nome}» ripartisce la voce di entrata «{$entrata}», scritta con il meno (meno {$cifra}), che il piano accredita per {$cifra}";
+
+        return $testa . ': ' . ($comeDestinazione ? 'spostare budget su' : 'prelevare budget da') . " «{$nome}» cambierebbe il totale del piano. "
+            . "Correggi prima l'importo di «{$entrata}», scrivendolo senza il segno, poi sposta.";
+    }
+
+    /**
      * Il rifiuto di «Sposta spesa» su una voce di spesa scritta con il meno che l'avviso della pagina non nomina (fuori dal piano, con la copia a zero o
      * con una copia positiva): con il budget spostato il piano la addebiterebbe in positivo, o più di adesso, e la creazione di un piano non accetta una
      * cifra per una voce così. La strada è quella della nota: correggere la voce, se nessun altro piano la addebita; altrimenti i piani che la addebitano.

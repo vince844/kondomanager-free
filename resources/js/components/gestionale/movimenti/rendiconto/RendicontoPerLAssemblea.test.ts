@@ -20,7 +20,7 @@ const reload = vi.fn();
 const pagina: { props: Record<string, unknown> } = { props: {} };
 vi.mock('@inertiajs/vue3', () => ({ router: { post: (...a: unknown[]) => post(...a), delete: (...a: unknown[]) => elimina(...a), reload: (...a: unknown[]) => reload(...a) },
     usePage: () => pagina }));
-vi.mock('@/composables/permissions', () => ({ usePermission: () => ({ generateRoute: (nome: string) => nome }) }));
+vi.mock('@/composables/permissions', () => ({ usePermission: () => ({ generateRoute: (nome: string) => nome, hasPermission: () => true }) }));
 (globalThis as unknown as { route: unknown }).route = (nome: string, p: Record<string, unknown> = {}) =>
     `/${nome}/${p.condominio}/${p.esercizio}${p.versione ? `/${p.versione}` : ''}${p.documento ? `/${p.documento}` : ''}`;
 

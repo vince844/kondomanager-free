@@ -5,7 +5,7 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
 -->
 <script setup lang="ts">
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { Settings2, BookOpen, ChevronRight, FolderTree, Calculator, Printer, Layers, Receipt, ArrowUpDown, AlertTriangle, Wallet } from 'lucide-vue-next';
+import { Settings2, BookOpen, ChevronRight, FolderTree, Calculator, Printer, Layers, Receipt, ArrowUpDown, AlertTriangle, Wallet, Gauge } from 'lucide-vue-next';
 
 defineProps<{
     open: boolean;
@@ -185,6 +185,24 @@ defineEmits(['update:open']);
                 Per chi paga quando il ruolo della voce manca (la catena dei ruoli) consulta la guida <em>Ruoli e usufrutto</em> nel menu Guide.
               </div>
             </div>
+          </section>
+
+          <!-- Letture di fine anno -->
+          <section>
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+              <Gauge class="w-5 h-5 text-indigo-500" /> Le letture di fine anno
+            </h3>
+            <p class="mb-3 text-[13px] leading-relaxed">
+              Per una voce divisa fra più tabelle con i sottocontatori (l'energia elettrica fra ascensore, impianto termico e luci delle scale).
+            </p>
+            <ul class="list-disc list-inside space-y-1.5 text-[13px] text-slate-600 dark:text-slate-400 pl-2">
+              <li><strong>Dove:</strong> nel dettaglio della voce, il riquadro «Le letture di fine anno».</li>
+              <li><strong>Che cosa si scrive:</strong> il contatore generale e, per ogni tabella, la lettura o la percentuale; al più una tabella «per differenza».</li>
+              <li><strong>Esempio:</strong> generale 10.000 kWh, ascensore 5.000, impianto termico 2.000, luci per differenza: 50 %, 20 %, 30 %.</li>
+              <li><strong>Che cosa cambia:</strong> il conguaglio divide la spesa con queste percentuali; le rate del preventivo restano.</li>
+              <li><strong>Con il piano approvato:</strong> si scrivono lo stesso. In un esercizio chiuso no.</li>
+              <li><strong>Dove si vede:</strong> nella scheda «Controlli» del conguaglio, con quanto si sposta fra le tabelle.</li>
+            </ul>
           </section>
 
           <!-- SFORI -->

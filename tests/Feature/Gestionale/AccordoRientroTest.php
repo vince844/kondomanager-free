@@ -37,6 +37,10 @@ beforeEach(function () {
     $ruolo->givePermissionTo($permesso);
     $this->user = User::factory()->create(['name' => 'Anna Studio', 'email' => 'studio@prova.it']);
     $this->user->assignRole($ruolo);
+    // Caricare un file nel gestionale chiede anche «Crea documenti archivio», che l'amministratore di serie ha.
+    foreach (['Crea documenti archivio'] as $nomeDelPermesso) {
+        $ruolo->givePermissionTo(\Spatie\Permission\Models\Permission::firstOrCreate(['name' => $nomeDelPermesso, 'guard_name' => 'web']));
+    }
 });
 
 /** Giulia con le quattro rate; la 3 e la 4 si emettono quando nascono. Con `$altri` anche altre persone (unità => [nome, millesimi]). */

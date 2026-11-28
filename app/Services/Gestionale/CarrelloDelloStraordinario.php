@@ -11,7 +11,8 @@ use Illuminate\Support\Facades\DB;
 /**
  * Il carrello della scheda «Spese fuori preventivo» del nuovo piano rate, e ciò che non mostra.
  *
- * - **Il carrello** (prima in `FetchFattureStraordinarieController`): le fatture con una riga «Fuori preventivo» o addebitata a una sola unità, e le pregresse
+ * - **Il carrello** (prima in `FetchFattureStraordinarieController`): le fatture con una riga «Fuori preventivo», addebitata a una sola unità o (Coda 742) su
+ *   una voce che nel preventivo vale € 0 ({@see VoceFuoriDalPreventivo}), e le pregresse
  *   con una copertura per sopravvenienza, con quanto resta da mettere a rate (al netto delle note collegate e di quello che altri piani ne chiedono già).
  *   **Coda 686 (d), D198 (c):** solo le fatture della gestione scelta. Fino alla 1.12.0-beta.11 il carrello diceva «questa gestione» e offriva le fatture di
  *   tutto l'esercizio; la gestione è quella della fattura (Coda 687: la colonna, o la scrittura di competenza, o le voci: `FatturaPassiva::dellaGestione`).
@@ -46,7 +47,9 @@ final class CarrelloDelloStraordinario
             // Una fattura stornata non è più un fabbisogno da finanziare: dopo lo storno di una pregressa da € 610,00 il carrello la offriva ancora, e il
             // piano addebitava ai proprietari un documento annullato (beta.22). Il filtro sta su entrambe le query.
             ->where('fatture_passive.stato_pagamento', '!=', 'stornata')
-            ->where(fn ($q) => $q->where('righe_fattura.is_sopravvenienza', true)->orWhereNotNull('righe_fattura.immobile_id'))
+            // Coda 742: anche le righe su una voce che nel preventivo vale € 0 e che nessun piano chiede dalle voci (`VoceFuoriDalPreventivo`).
+            ->where(fn ($q) => $q->where('righe_fattura.is_sopravvenienza', true)->orWhereNotNull('righe_fattura.immobile_id')
+                ->orWhere(fn ($z) => VoceFuoriDalPreventivo::righe($z)))
             ->where(fn ($q) => FatturaPassiva::dellaGestione($q, $gestioneId))
             ->select(
                 'fatture_passive.id', 'fatture_passive.esercizio_id', 'fatture_passive.numero_documento', 'fatture_passive.data_documento',
@@ -69,6 +72,8 @@ final class CarrelloDelloStraordinario
             ->where('fatture_passive.stato_approvazione', '!=', 'contestata')
             ->where('fatture_passive.stato_pagamento', '!=', 'stornata')
             ->where('fattura_coperture.tipo_copertura', 'sopravvenienza')
+            // Solo la parte con la voce: quella senza voce (un dato delle versioni di prima) il motore non la sa ripartire, e la generazione lo dice.
+            ->whereNotNull('fattura_coperture.conto_id')
             ->where(fn ($q) => FatturaPassiva::dellaGestione($q, $gestioneId))
             ->select(
                 'fatture_passive.id', 'fatture_passive.esercizio_id', 'fatture_passive.numero_documento', 'fatture_passive.data_documento',
@@ -118,6 +123,7 @@ final class CarrelloDelloStraordinario
             }
         }
 
+        $avvisi = $this->avvisiDiSostituzione($condominioId, $ids);
         $risultato = [];
         foreach ($tutte as [$f, $pregressa]) {
             $totale = (int) $f->totale_straordinario;
@@ -137,10 +143,51 @@ final class CarrelloDelloStraordinario
                 'gia' => $gia,
                 'residuo' => max(0, $netto - $gia),
                 'note' => $netti[$f->id]['note'] ?? [],
+                'avviso_sostituzione' => $avvisi[(int) $f->id] ?? null,
             ];
         }
 
         return $risultato;
+    }
+
+    /**
+     * Coda 159: la fattura annullata (stornata, o rettificata da una nota di credito collegata) che un piano straordinario che ha già incassato chiede ancora,
+     * e una fattura nuova dello stesso fornitore nel carrello. Il programma non sa se la nuova sostituisce quella annullata: messa a rate per intero, i
+     * condòmini pagherebbero due volte la stessa spesa. L'avviso lo dice sulla fattura nuova, con il piano e il numero; decide l'amministratore.
+     *
+     * @param  list<int>  $ids  le fatture del carrello
+     * @return array<int, string>  fattura del carrello => avviso
+     */
+    private function avvisiDiSostituzione(int $condominioId, array $ids): array
+    {
+        $fornitori = DB::table('fatture_passive')->whereIn('id', $ids)->pluck('fornitore_id', 'id')->map(fn ($id) => (int) $id)->all();
+        if ($fornitori === []) {
+            return [];
+        }
+        $annullate = FatturaPassiva::query()->with('pianiRate')->where('condominio_id', $condominioId)->whereIn('fornitore_id', array_values(array_unique($fornitori)))
+            ->where('tipo_documento', 'fattura')
+            ->where(fn ($q) => $q->where('stato_pagamento', 'stornata')->orWhereHas('noteCollegate'))
+            ->whereHas('pianiRate', fn ($q) => $q->where('piani_rate.tipo', 'straordinario'))
+            ->orderBy('id')->get();
+        $perFornitore = [];
+        foreach ($annullate as $a) {
+            $incassato = $a->pianoAlGrado('incassato');
+            if ($incassato === null) {
+                continue;
+            }
+            $come = (is_object($a->stato_pagamento) ? $a->stato_pagamento->value : $a->stato_pagamento) === 'stornata' ? 'annullata' : 'rettificata da una nota di credito';
+            $perFornitore[(int) $a->fornitore_id][] = ['id' => (int) $a->id, 'frase' => 'Il piano «' . $incassato['piano']->nome . '» chiede ancora la fattura n. '
+                . ($a->numero_documento ?? 'S/N') . ', ' . $come . ': se questa la sostituisce, mettila a rate per la sola differenza, o correggi prima quel piano.'];
+        }
+        $esito = [];
+        foreach ($fornitori as $fatturaId => $fornitoreId) {
+            $prima = collect($perFornitore[$fornitoreId] ?? [])->first(fn (array $x) => $x['id'] !== (int) $fatturaId);
+            if ($prima !== null) {
+                $esito[(int) $fatturaId] = $prima['frase'];
+            }
+        }
+
+        return $esito;
     }
 
     /**
@@ -189,6 +236,8 @@ final class CarrelloDelloStraordinario
             ->where(fn ($q) => $q->where('conti.is_tecnico', false)->orWhereNull('conti.is_tecnico'))
             ->where(fn ($q) => $q->where('righe_fattura.is_sopravvenienza', false)->orWhereNull('righe_fattura.is_sopravvenienza'))
             ->whereNull('righe_fattura.immobile_id')
+            // Coda 742: la riga su una voce a € 0 sta nel carrello, non fra quelle «sulle voci».
+            ->where(fn ($q) => VoceFuoriDalPreventivo::nonRighe($q))
             ->groupBy('fatture_passive.id', 'fatture_passive.numero_documento', 'fatture_passive.data_documento', 'fornitori.ragione_sociale')
             ->orderByDesc('fatture_passive.data_documento')->orderByDesc('fatture_passive.id')
             ->get([

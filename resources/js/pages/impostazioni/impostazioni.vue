@@ -10,8 +10,6 @@ import AppLayout from '@/layouts/AppLayout.vue'
 import Heading from '@/components/Heading.vue'
 import { ref, computed } from 'vue'
 import { Users, Settings, DatabaseBackup, RefreshCw, Timer, Mail, Activity, Printer, Heart, Server, History, Gavel } from 'lucide-vue-next'
-import { usePermission } from '@/composables/permissions'
-import { Permission } from '@/enums/Permission'
 import { Button } from '@/components/ui/button'
 import { Item, ItemActions, ItemContent, ItemDescription, ItemMedia, ItemTitle } from '@/components/ui/item'
 import { trans } from 'laravel-vue-i18n';
@@ -48,10 +46,9 @@ const newVersion = computed(() => {
   return updateInfo?.new_version || '';
 })
 
-const { hasPermission, hasRole } = usePermission()
-
-// Il registro delle modifiche dello studio (1.12.0-beta.13, §14): la card c'è solo per chi ha «Vede il registro delle modifiche».
-const vedeIlRegistro = computed(() => hasPermission([Permission.VIEW_REGISTRO_MODIFICHE]) && !hasRole(['utente', 'fornitore']))
+// Le schede che chi guarda può aprire: le sceglie il server, con lo stesso controllo delle loro rotte (`ImpostazioniController::SCHEDE`).
+const schede = computed<string[]>(() => ((page.props as any).schede ?? []) as string[])
+const mostra = (chiave: string) => schede.value.includes(chiave)
 
 const searchTerm = ref("")
 
@@ -69,70 +66,70 @@ const filteredApps = computed(() => {
 })
 
 const apps = computed(() => [
-  {
+  ...(mostra('generali') ? [{
     name: 'impostazioni.dialogs.general_settings_title',
     logo: Settings,
     desc: 'impostazioni.dialogs.general_settings_description',
     href: "/impostazioni/generali", 
-  },
-  ...(vedeIlRegistro.value ? [{
+  }] : []),
+  ...(mostra('registro') ? [{
     name: 'impostazioni.dialogs.registro_modifiche_title',
     logo: History,
     desc: 'impostazioni.dialogs.registro_modifiche_description',
     href: "/impostazioni/registro-modifiche",
   }] : []),
-  {
+  ...(mostra('stampe') ? [{
     name: 'impostazioni.dialogs.print_settings_title',
     logo: Printer,
     desc: 'impostazioni.dialogs.print_settings_description',
     href: "/impostazioni/stampe",
-  },
+  }] : []),
   // Le assemblee (1.12.0-beta.13): i giorni di posta, la delega oltre il quinto, il voto discorde. Solo l'amministratore, come la rotta.
-  ...(hasRole(['amministratore']) ? [{
+  ...(mostra('assemblee') ? [{
     name: 'impostazioni.dialogs.assemblee_title',
     logo: Gavel,
     desc: 'impostazioni.dialogs.assemblee_description',
     href: "/impostazioni/assemblee",
   }] : []),
-  {
+  ...(mostra('utenti') ? [{
     name: 'impostazioni.dialogs.users_settings_title',
     logo: Users,
     desc: 'impostazioni.dialogs.users_settings_description',
     href: "/utenti",
-  },
-  {
+  }] : []),
+  ...(mostra('posta') ? [{
     name: 'impostazioni.dialogs.mail_settings_title', 
     logo: Mail,
     desc: 'impostazioni.dialogs.mail_settings_description',
     href: "/impostazioni/mail", 
-  },
-  {
+  }] : []),
+  ...(mostra('cron') ? [{
     name: 'impostazioni.dialogs.cron_settings_title', 
     logo: Timer,
     desc: 'impostazioni.dialogs.cron_settings_description',
     href: "/impostazioni/cron", 
-  },
-  {
+  }] : []),
+  ...(mostra('errori') ? [{
     name: 'impostazioni.dialogs.logs_settings_title',
     logo: Activity,
     desc: 'impostazioni.dialogs.logs_settings_description',
     href: "/logs", 
-  },
-  {
+  }] : []),
+  ...(mostra('backup') ? [{
     name: 'impostazioni.dialogs.backups_settings_title',
     logo: DatabaseBackup,
     desc: 'impostazioni.dialogs.backups_settings_description',
     href: "/impostazioni/backups",
     disabled: !backupsEnabled.value,
     running: backupRunning.value,
-  },
-  {
+  }] : []),
+  ...(mostra('installazione') ? [{
     name: 'impostazioni.dialogs.installazione_title',
     logo: Server,
     desc: 'impostazioni.dialogs.installazione_description',
     href: "/impostazioni/installazione",
-  },
-  {
+  }] : []),
+  ...(mostra('aggiornamento') ? [{
     name: 'impostazioni.dialogs.updates_title',
     logo: RefreshCw,
     desc: updateAvailable.value 
@@ -140,7 +137,7 @@ const apps = computed(() => [
         : trans('impostazioni.dialogs.updates_desc_latest'),
     href: '/system/upgrade',
     highlight: updateAvailable.value, 
-  },
+  }] : []),
   {
     name: 'impostazioni.dialogs.patreon_title',
     logo: Heart,

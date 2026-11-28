@@ -39,7 +39,10 @@ it('l\'avviso del deficit di un debito ereditato chiede il piano di ripianamento
         ->and($evento->meta['action_url'])->toBe(route('admin.gestionale.esercizi.piani-rate.create', ['condominio' => $condominio->id, 'esercizio' => $esercizio->id,
             'tipo' => 'straordinario'], false))
         ->and(mb_strtolower($evento->description))->not->toContain('moros')
-        ->and($evento->description)->toContain('è scoperto per € 122,00: è la parte che i pregressi chiesti ai condòmini non coprono, e nessuna rata la chiede.')
+        // La cifra dello scoperto non sta nella descrizione, che resterebbe quella della nascita: la dice la riga sotto il titolo, e il compito la tiene in `importo_buco`.
+        ->and($evento->description)->toContain('ha una parte scoperta: è quella che i pregressi chiesti ai condòmini non coprono, e nessuna rata la chiede.')
+        ->and($evento->description)->not->toContain('€ 122,00')
+        ->and((int) $evento->meta['importo_buco'])->toBe(12200)
         ->and($evento->description)->toContain('Si ripiana con un piano rate che chieda ai condòmini la cifra che manca: «Prepara il piano di ripianamento».')
         ->and($evento->description)->not->toContain('rate scadute');
 });

@@ -110,6 +110,13 @@ describe('il riepilogo finanziario', () => {
         expect(con(-500)).toContain('(disavanzo)');
     });
 
+    test('la rettifica di esercizi precedenti nel risultato: il segno davanti alla voce, «−» se negativa e «+» se positiva, mai dentro la cifra', () => {
+        const con = (rettifica: number) => testo(monta({ risultato: { quote_emesse: 411000, rettifica_esercizi_precedenti: rettifica, costi: 413100, risultato: -2100 } }).find('[data-test="risultato"]').text());
+
+        expect(con(-122000)).toContain('quote registrate in questo esercizio € 4.110,00 − rettifica di esercizi precedenti € 1.220,00 − costi € 4.131,00');
+        expect(con(5000)).toContain('quote registrate in questo esercizio € 4.110,00 + rettifica di esercizi precedenti € 50,00 − costi € 4.131,00');
+    });
+
     test('Coda 568 — il risultato si chiama «quote registrate in questo esercizio − costi», come nelle stampe, e così anche la riga che lega le quote ai piani', () => {
         const pagina = monta();
 

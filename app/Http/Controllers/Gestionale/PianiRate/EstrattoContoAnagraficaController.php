@@ -34,6 +34,7 @@ class EstrattoContoAnagraficaController extends Controller
      */
     public function show(Request $request, Condominio $condominio, Anagrafica $anagrafica)
     {
+        $this->personaDelCondominio($condominio, $anagrafica);
         $esercizio = $this->getEsercizioCorrente($condominio);
 
         $anagrafica->load(['immobili' => function($q) use ($condominio) {
@@ -76,6 +77,16 @@ class EstrattoContoAnagraficaController extends Controller
      *
      * @return list<array<string, mixed>>
      */
+    /**
+     * La persona è di questo condominio con la regola del pagante (`Anagrafica::delCondominio`): associata, titolare di un'unità, o con quote nelle rate
+     * di un suo piano. Le rotte non legano la persona al condominio (lo farebbe solo il pivot, e chi è stato tolto con un debito rimasto avrebbe un 404):
+     * la guardia è questa, e la persona di un altro condominio risponde 404 come prima.
+     */
+    private function personaDelCondominio(Condominio $condominio, Anagrafica $anagrafica): void
+    {
+        abort_unless(Anagrafica::delCondominio((int) $condominio->id)->whereKey($anagrafica->id)->exists(), 404);
+    }
+
     private function accordiRientro(Condominio $condominio, Anagrafica $anagrafica): array
     {
         $accordi = \App\Models\Gestionale\AccordoRientro::with(['rate', 'scadenze'])->where('condominio_id', $condominio->id)->where('anagrafica_id', $anagrafica->id)
@@ -202,6 +213,7 @@ class EstrattoContoAnagraficaController extends Controller
      */
     public function print(Request $request, Condominio $condominio, Anagrafica $anagrafica, EstrattoContoDellaPersona $estratto)
     {
+        $this->personaDelCondominio($condominio, $anagrafica);
         $esercizio = $this->getEsercizioCorrente($condominio);
 
         // ⚠️ `Output(..., 'I')` scrive il PDF sull'output buffer e torna vuota: mPDF mandava da sé,

@@ -9,7 +9,7 @@ use App\Http\Resources\Anagrafica\AnagraficaNomeResource;
 use App\Http\Resources\Commenti\CommentoResource;
 use App\Http\Resources\Condominio\CondominioOptionsResource;
 use App\Http\Resources\Condominio\CondominioResource;
-use App\Http\Resources\User\UserResource;
+use App\Http\Resources\User\AutoreResource;
 use App\Support\Segnalazioni\AssegnazioneSegnalazioni;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -57,7 +57,7 @@ class SegnalazioneResource extends JsonResource
             'creata_il'     => $this->created_at?->timezone((string) config('app.user_timezone', 'Europe/Rome'))->format('d/m/Y H:i'),
             'created_by' => $this->whenLoaded('createdBy', function () {
                 return [
-                    'user'       => new UserResource($this->createdBy),
+                    'user'       => new AutoreResource($this->createdBy),
                     // Della persona in rubrica dell'autore, id e nome (Coda 408): il resto sta nella sua scheda.
                     'anagrafica' => $this->createdBy->relationLoaded('anagrafica')
                         ? new AnagraficaNomeResource($this->createdBy->anagrafica)

@@ -220,6 +220,11 @@ defineEmits(['update:open']);
                 non pesa sui capitoli comuni né sul loro budget, ma diventa un credito del condominio verso quel
                 condòmino, che la ritroverà nel suo estratto conto.
               </p>
+              <p class="mb-2">
+                La voce scelta resta scritta sulla riga, fuori dal preventivo comune: se l'unità è in usufrutto, la spesa va a chi dice la
+                voce (sul «Proprietario» al proprietario o al nudo proprietario, sull'«Usufruttuario» all'usufruttuario). In modifica la
+                riga la mostra com'è stata scelta.
+              </p>
             </section>
             <section>
               <div class="flex items-center gap-2 mb-2">

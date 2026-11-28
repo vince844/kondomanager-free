@@ -49,7 +49,7 @@ import { CANALI_SPEDIZIONE, testoContiCambiati, testoPecDaRimandare, testoRiprov
 import { apriPdfInUnaScheda, fraseDaErroreConFile, frasePerErrore } from '@/lib/gestionale/incassi/ricevute';
 import { alterna, quanteSelezionate, selezionaPagina, selezioneVuota, tutteDeiFiltri, type Selezione } from '@/lib/gestionale/incassi/ricevute';
 import {
-    FRASE_DATA_PASSATA, FRASE_RISERVATEZZA, NOTA_PREGRESSO_NELLA_RATA, PERSONE_NEL_MENU, RIGA_TESORERIA, SPIEGAZIONI_DEI_FILTRI, euroTesto, giorno, personeDelMenu,
+    FRASE_DATA_PASSATA, FRASE_RISERVATEZZA, NOTA_PREGRESSO_NELLA_RATA, testoDiPrima, PERSONE_NEL_MENU, RIGA_TESORERIA, SPIEGAZIONI_DEI_FILTRI, euroTesto, giorno, personeDelMenu,
     testoData, testoDispensa, testoGiorniDellaRata,
     testoNonEmesse, testoSeiMesiDellaPersona, testoTotale, titoloVista, testoSeiMesiDel, testoDiCui, type NonEmesse, type SeiMesiDellaRata,
 } from '@/lib/gestionale/debiti/rateScadute';
@@ -57,7 +57,7 @@ import type { Flash } from '@/types/flash';
 
 interface Rata {
     rata_id: number; numero_rata: number; piano: string; unita: string | null; scadenza: string; residuo: number; giorni_ritardo: number | null;
-    pregresso: { origine: string; etichetta: string } | null; pregresso_nella_rata: boolean; sei_mesi: SeiMesiDellaRata | null;
+    pregresso: { origine: string; etichetta: string } | null; pregresso_nella_rata: boolean; sei_mesi: SeiMesiDellaRata | null; di_prima?: { importo: number; etichetta: string } | null;
     accordo?: ParteInAccordo | null;
     /** Con il filtro «I sei mesi del …»: la rata è di quella data. */
     del_sei_mesi?: boolean;
@@ -743,6 +743,7 @@ const perValore = (o: { valore: string }) => o.valore;
                                                             <Badge v-if="rata.ereditato" variant="outline" class="mr-1 h-5 border-violet-200 bg-violet-50 px-1.5 text-xs font-medium text-violet-800 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-200" data-testid="badge-ereditato">ereditato</Badge>
                                                             {{ rata.numero_rata === 0 ? 'Rata 0 (pregresso)' : `Rata ${rata.numero_rata}` }}
                                                             <span v-if="rata.pregresso_nella_rata" class="block text-slate-500">{{ NOTA_PREGRESSO_NELLA_RATA }}</span>
+                                                            <span v-if="rata.di_prima" class="block text-slate-500" data-testid="di-prima">{{ testoDiPrima(rata.di_prima) }}</span>
                                                             <!-- Decisione 494 (3): da chi e con quale successione; dal debito ereditato si apre la proposta degli interessi dell'erede. -->
                                                             <span v-if="rata.ereditato" class="block text-slate-600 dark:text-slate-300" data-testid="ereditato-da">{{ testoEreditatoInElenco(rata.ereditato) }}
                                                                 <button type="button" class="ml-1 underline" data-testid="interessi-dell-erede" @click="proponiInteressi([r.anagrafica_id])">Proponi gli interessi</button></span>
