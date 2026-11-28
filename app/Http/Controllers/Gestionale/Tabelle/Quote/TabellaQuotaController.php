@@ -124,6 +124,10 @@ class TabellaQuotaController extends Controller
                 'scala_id',
                 'tipologia_id',
                 'pertinenza_di_immobile_id',
+                // «Incolla da un foglio di calcolo»: le tabelle dei tecnici sono spesso per
+                // subalterno, e la finestra riconosce l'unità anche da `particella/subalterno`.
+                'particella_catasto',
+                'subalterno_catasto',
             )
             ->orderBy('nome')
             ->get();

@@ -15,9 +15,12 @@ Additional terms under AGPL-3.0 section 7(b) and 7(c) apply: see the NOTICE file
  * tratta in modo diverso pur mostrandole quasi uguali: riga assente, valore zero e valore vuoto.
  * Prima della beta.61 le prime due erano indistinguibili e la terza non esisteva. È il genere di
  * cosa che, non detta, si scopre al primo riparto sbagliato.
+ *
+ * La voce «Incolla da un foglio» racconta un caso, e dice le due cose che la finestra chiede
+ * invece di indovinare: quale colonna sono i valori, e che cosa vuol dire il punto.
  */
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { ChevronRight, Hash, Layers, Plus, Search, AlertTriangle, Check } from 'lucide-vue-next';
+import { ChevronRight, ClipboardPaste, Hash, Layers, Plus, Search, AlertTriangle, Check } from 'lucide-vue-next';
 
 defineProps<{
     open: boolean;
@@ -75,6 +78,55 @@ defineEmits(['update:open']);
                   serve a non dover risalire in cima ogni volta che ne aggiungi un'altra.
                 </p>
               </div>
+            </div>
+          </section>
+
+          <section data-guida="incolla-da-un-foglio">
+            <h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+              <ClipboardPaste class="w-5 h-5 text-slate-500" />
+              Incolla da un foglio
+            </h3>
+            <p class="mb-3">
+              I millesimi arrivano quasi sempre in un foglio di calcolo, dal tecnico che ha redatto
+              la tabella o dall'amministratore di prima. Invece di batterli uno a uno, seleziona nel
+              foglio <strong>la colonna delle unità e quella dei valori</strong>, copia, e incolla
+              nella finestra di «Incolla da un foglio».
+            </p>
+            <div class="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-800 mb-3">
+              <h4 class="font-bold text-slate-900 dark:text-white mb-2">Un caso</h4>
+              <p class="leading-relaxed text-[13px] mb-2">
+                Il tecnico ti manda la tabella di proprietà della palazzina B: quindici righe, con
+                «Appartamento 1 — 94,91», «Appartamento 2 — 95,97» e così via. Associ in blocco le
+                unità della palazzina B, apri «Incolla da un foglio» e incolli le due colonne.
+              </p>
+              <p class="leading-relaxed text-[13px] mb-0">
+                La finestra ti mostra, riga per riga, l'unità che ha riconosciuto, il valore che ha
+                <strong>adesso</strong> e quello <strong>letto dal foglio</strong>. Quattordici
+                righe sono riconosciute; una, «Apartamento 15» con un refuso, è nel riquadro delle
+                righe da guardare. Premi «Applica 14 valori», correggi a mano la quindicesima e
+                salvi.
+              </p>
+            </div>
+            <ul class="space-y-2 mb-3">
+              <li class="flex gap-2">
+                <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                <span><strong>L'unità</strong> si riconosce dal nome, oppure dai dati catastali scritti <em>particella/subalterno</em> (658/10). Si cerca prima fra le unità già nell'elenco: se più palazzine hanno un «Appartamento 1», associa prima quelle della palazzina giusta.</span>
+              </li>
+              <li class="flex gap-2">
+                <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                <span><strong>Più colonne di valori</strong> (proprietà, scale, ascensore): la finestra ti chiede quale è quella di questa tabella. Non prende l'ultima da sola.</span>
+              </li>
+              <li class="flex gap-2">
+                <ChevronRight class="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                <span><strong>Il punto e la virgola</strong>: «94,91» e «94.91» si leggono allo stesso modo. Se nel foglio c'è solo «1.250», che può essere milleduecentocinquanta o uno virgola venticinque, la finestra ti mostra le due letture e scegli tu.</span>
+              </li>
+            </ul>
+            <div class="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-900/50">
+              <p class="text-blue-800 dark:text-blue-200/80 leading-relaxed text-[13px] mb-0">
+                <strong>«Applica» non salva.</strong> I valori entrano nell'elenco, dove li vedi e
+                li puoi correggere, e il totale in fondo li conta subito. Le righe che il foglio non
+                nomina restano come sono. Si salva tutto con «Salva quote», come sempre.
+              </p>
             </div>
           </section>
 
