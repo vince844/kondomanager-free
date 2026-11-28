@@ -98,3 +98,15 @@ it('non fa risorgere le tabelle di lookup che l\'amministratore ha cancellato', 
 
     expect(CategoriaDocumento::where('name', $nome)->exists())->toBeFalse();
 });
+
+it('ogni descrizione di permesso e di ruolo sta nella sua colonna di 255 caratteri', function () {
+    // SQLite, il database delle prove, non controlla la lunghezza: MySQL sì, e con una descrizione più lunga
+    // l'installazione si interrompe e l'aggiornamento salta in silenzio ruoli e permessi.
+    foreach (PermissionEnum::cases() as $permesso) {
+        expect(mb_strlen($permesso->description()))->toBeLessThanOrEqual(255, "Permesso «{$permesso->value}»");
+    }
+
+    foreach (RoleEnum::cases() as $ruolo) {
+        expect(mb_strlen($ruolo->description()))->toBeLessThanOrEqual(255, "Ruolo «{$ruolo->value}»");
+    }
+});

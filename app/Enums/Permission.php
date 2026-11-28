@@ -165,7 +165,7 @@ enum Permission: string
     {
         return match ($this) {
             // Access
-            self::ACCESS_ADMIN_PANEL => 'Permette di entrare nel pannello amministratore. Il gestionale di ogni condominio si apre con il solo accesso; le unità e i loro documenti, la struttura, le tabelle millesimali e i millesimi chiedono anche «Modifica condomini», caricare un file «Crea documenti archivio»; le altre sezioni chiedono i loro permessi',
+            self::ACCESS_ADMIN_PANEL => 'Permette di entrare nel pannello amministratore e nel gestionale dei condomini. Modificare unità e loro documenti, struttura, tabelle e millesimi chiede anche «Modifica condomini», caricare un file «Crea documenti archivio»; il resto ha i suoi permessi',
 
             // Settings
             self::MANAGE_GENERAL_SETTINGS => 'Permette di gestire le impostazioni generali',
